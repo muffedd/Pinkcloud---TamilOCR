@@ -281,9 +281,11 @@ def get_job_page_image(job_id: str, n: str):
 # "endpoint not deployed" and silently falls back to localStorage.
 import os
 import re as _re
+import tempfile
 from datetime import datetime, timezone
+from typing import Annotated
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 CORRECTIONS_FILE = "corrections.json"
 MAX_CORRECTIONS = 10_000  # soft cap per job; bounds the JSON blob
@@ -291,15 +293,31 @@ _CORR_JOB_ID_RE = _re.compile(r"[0-9a-f]{32}")  # same rule as /jobs/{id}/image
 
 
 class Correction(BaseModel):
-    page: int      # 1-based, matches result.pages[].page
-    line: str      # line id, e.g. "L3"
-    word: int      # 1-based word index in the line body (split on whitespace)
-    before: str    # OCR word as recognized
-    after: str     # reviewer-accepted replacement
+    # 1-based, matches result.pages[].page
+    page: int = Field(ge=1)
+    # line id, e.g. "L3"
+    line: str = Field(min_length=1, max_length=32)
+    # 1-based word index in the line body (split on whitespace)
+    word: int = Field(ge=1)
+    # OCR word as recognized
+    before: str = Field(max_length=256)
+    # reviewer-accepted replacement; stripped, and blank-after-strip is a 422
+    after: Annotated[str, StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=256)]
 
 
 class CorrectionsDoc(BaseModel):
     corrections: list[Correction] = Field(max_length=MAX_CORRECTIONS)
+
+
+# One lock per job serializes PUTs for that job (single-process server).
+_corr_locks: dict[str, _threading.Lock] = {}
+_corr_locks_guard = _threading.Lock()
+
+
+def _corrections_lock(job_id: str) -> _threading.Lock:
+    with _corr_locks_guard:
+        return _corr_locks.setdefault(job_id, _threading.Lock())
 
 
 def _require_job(job_id: str) -> None:
@@ -345,10 +363,29 @@ def put_corrections(job_id: str, body: CorrectionsDoc):
         "corrections": [c.model_dump() for c in body.corrections],
         "updated_at": updated_at,
     }
-    # Write-then-rename so a crash never leaves a half-written file.
-    tmp = path.with_name(CORRECTIONS_FILE + ".tmp")
-    tmp.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp, path)
+    # Write-then-rename so a crash never leaves a half-written file. Each
+    # write gets its own temp file (concurrent PUTs used to share one name
+    # and collide), and a per-job lock keeps last-writer-wins ordering sane.
+    with _corrections_lock(job_id):
+        with tempfile.NamedTemporaryFile(
+                "w", encoding="utf-8", dir=path.parent,
+                prefix=CORRECTIONS_FILE + ".", suffix=".tmp",
+                delete=False) as fh:
+            tmp_name = fh.name
+            try:
+                fh.write(json.dumps(doc, ensure_ascii=False))
+            except BaseException:
+                fh.close()
+                os.unlink(tmp_name)
+                raise
+        try:
+            os.replace(tmp_name, path)
+        except BaseException:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
     return {"job_id": job_id, **doc}
 
 
