@@ -280,6 +280,12 @@ def _job_summary(job: dict) -> dict:
         "pages_needing_review": (
             sum(1 for p in pages if p.get("needs_review")) if done else None
         ),
+        # Saved reviewer fixes that still apply to the current OCR text
+        # (stale ones whose before-word no longer matches are not counted).
+        "corrections_count": (
+            _export.count_applicable_corrections(job["id"], pages)
+            if done else None
+        ),
         "error": (result or {}).get("error") if job["status"] == "error" else None,
         "result_url": f"/jobs/{job['id']}",
         "receipt_url": f"/jobs/{job['id']}/receipt" if done else None,
@@ -308,8 +314,10 @@ def search(q: str = Query(..., min_length=1, max_length=200),
 
     q is matched as whole-word tokens (implicit AND). Results carry the
     job + page + line refs and a snippet with hits wrapped in <mark>.
-    Only 'done' jobs are searched; raw stored OCR text is indexed
-    (reviewer corrections are not)."""
+    Only 'done' jobs are searched. The index holds the FINAL line text:
+    saved reviewer corrections are folded in when the job finishes and the
+    index is refreshed on every corrections PUT, so searching a corrected
+    word hits the corrected page."""
     if not q.strip():
         raise HTTPException(status_code=400, detail="empty search query")
     if not db.fts_available():
@@ -538,6 +546,10 @@ def put_corrections(job_id: str, body: CorrectionsDoc):
             except OSError:
                 pass
             raise
+        # Corrections are the S2 save path: the FTS index holds FINAL
+        # (corrected) line text, so refresh this job's rows with the new
+        # map. A no-op for unfinished jobs and FTS-less builds.
+        db.reindex_job(job_id)
     return {"job_id": job_id, **doc}
 
 

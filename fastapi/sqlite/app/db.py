@@ -3,9 +3,12 @@
 Two tables, stdlib sqlite3 only:
   - jobs: one row per uploaded document, its hash, processing status,
     and (when done) the full result JSON.
-  - line_fts: FTS5 index over every OCR line body of finished jobs,
-    with job/page/line refs, powering GET /search. Rebuilt row-by-row
-    from jobs.result_json, so the jobs table stays the source of truth.
+  - line_fts: FTS5 index over the FINAL line text of finished jobs (raw
+    OCR with saved reviewer corrections applied), with job/page/line refs,
+    powering GET /search. Rebuilt row-by-row from jobs.result_json +
+    uploads/<job_id>/corrections.json, so the jobs table stays the source
+    of truth. The default unicode61 tokenizer treats Tamil letters as word
+    characters, so Tamil queries tokenize correctly.
 """
 
 import json
@@ -35,7 +38,10 @@ def _fts5_supported(conn: sqlite3.Connection) -> bool:
             " job_id UNINDEXED,"  # job uuid hex
             " page UNINDEXED,"    # 1-based page number
             " line UNINDEXED,"    # line id, e.g. 'L3'
-            " body"               # OCR line text (the indexed column)
+            " body,"              # final line text (the indexed column)
+            # unicode61 (the default, spelled out for clarity): Tamil
+            # letters are word characters, so Tamil text tokenizes.
+            " tokenize='unicode61'"
             ")"
         )
     except sqlite3.OperationalError:
@@ -102,19 +108,30 @@ def list_jobs(limit: int, offset: int) -> tuple[list[dict], int]:
         return [dict(r) for r in rows], total
 
 
-def _index_job_result(conn: sqlite3.Connection, job_id: str,
-                      result_json: str | None) -> None:
-    """(Re)index one finished job: delete its old rows, insert one FTS row
-    per OCR line. Indexes whatever text the contract carries - no
-    assumptions about the OCR engine or script."""
-    conn.execute("DELETE FROM line_fts WHERE job_id = ?", (job_id,))
+def _final_pages(job_id: str, result_json: str | None) -> list[dict]:
+    """The job's pages with saved reviewer corrections applied - the FINAL
+    line text, which is what search must find. Uses export's still-applies
+    logic, so a stale correction (before-word no longer matching) changes
+    nothing. Imported lazily: this module stays stdlib-only at module
+    level, and export pulls in the imaging stack."""
     if not result_json:
-        return
+        return []
     try:
         result = json.loads(result_json)
     except ValueError:
-        return
-    for page in (result or {}).get("pages") or []:
+        return []
+    from . import export
+    return export.apply_saved_corrections(
+        job_id, (result or {}).get("pages") or [])
+
+
+def _index_job_result(conn: sqlite3.Connection, job_id: str,
+                      result_json: str | None) -> None:
+    """(Re)index one finished job: delete its old rows, insert one FTS row
+    per FINAL (corrections-applied) line. Indexes whatever text the
+    contract carries - no assumptions about the OCR engine or script."""
+    conn.execute("DELETE FROM line_fts WHERE job_id = ?", (job_id,))
+    for page in _final_pages(job_id, result_json):
         page_no = page.get("page")
         for line in page.get("lines") or []:
             body = (line.get("body") or "").strip()
@@ -125,6 +142,23 @@ def _index_job_result(conn: sqlite3.Connection, job_id: str,
                 "VALUES (?, ?, ?, ?)",
                 (job_id, page_no, line.get("id"), body),
             )
+
+
+def reindex_job(job_id: str) -> None:
+    """Rebuild one job's search rows from its stored result + current saved
+    corrections. Called by the corrections PUT route after a save, so a
+    corrected word becomes searchable immediately. No-op for unfinished
+    jobs (nothing indexed) and FTS-less builds."""
+    if not fts_available():
+        return
+    job = get_job(job_id)
+    if job is None:
+        return
+    with _connect() as conn:
+        if job["status"] == "done":
+            _index_job_result(conn, job_id, job["result_json"])
+        else:
+            conn.execute("DELETE FROM line_fts WHERE job_id = ?", (job_id,))
 
 
 def set_result(job_id: str, status: str, result_json: str) -> None:

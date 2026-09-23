@@ -134,6 +134,22 @@ def apply_saved_corrections(job_id: str, pages: list[dict]) -> list[dict]:
         return pages
 
 
+def count_applicable_corrections(job_id: str, pages: list[dict]) -> int:
+    """How many of the job's saved corrections still apply to the CURRENT
+    OCR text - the same still-applies rule as apply_corrections (a stale
+    correction whose `before` no longer matches the word is skipped, and a
+    word already changed by a later correction counts only the winner).
+    Powers GET /jobs' corrections_count, so the Library shows the fixes a
+    reviewer would actually see applied, not the raw corrections-array
+    length. Stored pages never carry tier "human" (the contract tiers are
+    T1/T2), so every "human" entry below came from this application."""
+    applied = apply_saved_corrections(job_id, pages)
+    return sum(
+        1 for p in applied for c in (p.get("corrections") or [])
+        if c.get("tier") == "human"
+    )
+
+
 # --------------------------------------------------------------------------
 # receipt
 # --------------------------------------------------------------------------
