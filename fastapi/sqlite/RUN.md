@@ -39,7 +39,22 @@ curl -s http://127.0.0.1:8000/jobs/af3c8e14...
 # → {"job_id": "...", "status": "done", "result": {"pages": [ ... contract JSON ... ]}}
 ```
 
-Accepted types: pdf, jpg, jpeg, png, tiff (anything else → HTTP 400).
+Accepted types: pdf, jpg, jpeg, png, tiff, webp (anything else → HTTP 400).
+
+### Multi-image job (several photos → one job)
+
+Repeat the `files` field instead of sending `file`. Images are kept in
+upload order, one page per image (page 1 = first file). PDFs are
+single-file only.
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/jobs \
+  -F "files=@p1.jpg" -F "files=@p2.png" -F "files=@p3.webp"
+```
+
+Each image is stored byte-for-byte as `master-001.<ext>`, `master-002.<ext>`, ...
+The job's `sha256` is SHA-256 over the per-image SHA-256 hex digests joined
+by newlines, in page order. Sending both `file` and `files` → 400.
 
 ## 4. The output contract (frozen)
 
