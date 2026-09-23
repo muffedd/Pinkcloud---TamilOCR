@@ -79,6 +79,13 @@ How Sarvam output maps onto the contract:
 Tests never call Sarvam: `tests/conftest.py` removes `SARVAM_API_KEY` and
 `tests/test_sarvam_ocr.py` uses a mocked HTTP transport.
 
+## AI fix (optional, Gemini)
+
+`POST /jobs/{id}/suggest` answers 503 until `GEMINI_API_KEY` is set (model
+`gemini-3.1-flash-lite`; override with `SUGGEST_MODEL`, disable with
+`SUGGEST_PROVIDER=off`). Set the key in the server environment only, never in
+code or chat. Details: `schema/ai-fix-contract.md`. Tests never call Gemini.
+
 ## 3. POST a scanned page
 
 ```bash

@@ -16,6 +16,9 @@ import os
 import pytest
 
 os.environ.pop("SARVAM_API_KEY", None)
+# Same for the AI fix provider: no test may spend on Gemini.
+for _var in ("GEMINI_API_KEY", "SUGGEST_PROVIDER", "SUGGEST_MODEL"):
+    os.environ.pop(_var, None)
 
 # Flywheel store: tests must never write into the developer's real
 # flywheel.db (test pairs would show up as live dictionary suggestions in
