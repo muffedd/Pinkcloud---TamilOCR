@@ -22,7 +22,7 @@ Score scale (agreed contract):
                repetition loops)
   0.0          empty line
 
-Pure standard library: importable without Paddle, Sarvam or the web app.
+Pure standard library: importable without Sarvam or the web app.
 """
 
 from __future__ import annotations

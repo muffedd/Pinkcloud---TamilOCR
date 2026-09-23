@@ -10,19 +10,6 @@ pypdfium2==5.13.0
 numpy==2.3.5
 pillow==12.3.0
 python-docx==1.2.0   # export.docx (Word export)
-httpx==0.28.1   # needed by tests (starlette TestClient)
+httpx==0.28.1   # Sarvam OCR client (app/ocr.py) + starlette TestClient in tests
 pytest==9.1.1    # backend test runner
 
-# ---- Optional: real OCR ----------------------------------------------------
-# Install these only if you want actual Tamil OCR instead of the stub result.
-# They are large downloads; the backend runs fine without them.
-#
-#   pip install "paddlepaddle==3.3.1" "paddleocr==3.7.0"
-#
-# paddlepaddle==3.3.1   # CPU build (Python <= 3.13; no 3.14 wheels yet)
-# paddleocr==3.7.0      # PP-OCRv5_mobile_det + ta_PP-OCRv5_mobile_rec models
-#
-# NOTE: paddleocr/paddlex pulls in opencv-contrib-python, which overrides
-# opencv-python-headless's cv2 in that environment (same cv2 namespace).
-# That is expected in the optional OCR env and harmless here — this file
-# pins headless only so a clean install of the core backend never conflicts.

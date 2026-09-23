@@ -1,22 +1,19 @@
 """OCR fast pass for Pink Cloud.
 
-Two engines behind the same ocr_page() contract:
+One engine behind the ocr_page() contract:
 
-  sarvam (default)  Sarvam Document AI "Digitise" (Sarvam Vision, ta-IN).
-                    POST /doc-ai/v1/job/digitise -> poll status ->
-                    download-url -> ZIP with metadata/page_NNN.json.
-                    Needs SARVAM_API_KEY in the environment.
-  paddle            Local PaddleOCR 3.x (offline fallback):
-                      det: PP-OCRv5_mobile_det
-                      rec: ta_PP-OCRv5_mobile_rec   (Tamil)
+  sarvam   Sarvam Document AI "Digitise" (Sarvam Vision, ta-IN).
+           POST /doc-ai/v1/job/digitise -> poll status ->
+           download-url -> ZIP with metadata/page_NNN.json.
+           Needs SARVAM_API_KEY in the environment.
+
+If the key is missing or a Sarvam call fails, the page gets clearly
+marked "[stub]" lines (confidence 0 -> needs_review) instead of failing
+the job. There is no local/offline OCR engine.
 
 Environment:
-  OCR_ENGINE        "sarvam" (default) or "paddle".
   SARVAM_API_KEY    Sarvam API subscription key. Read at call time, never
                     logged, never stored.
-  SARVAM_FALLBACK   "paddle" (default) or "none". When Sarvam is selected
-                    but the key is missing or a call fails, "paddle" runs
-                    the local engine for that page instead of failing.
   SARVAM_LANGUAGE   default "ta-IN".
   SARVAM_TIMEOUT_S  per-page budget for the whole Sarvam job, default 120.
   SARVAM_POLL_S     status poll interval, default 3.
@@ -28,10 +25,6 @@ top-to-bottom, so line bboxes are an approximation and every line carries
 its block's confidence (a layout score, not per-line recognition
 certainty).
 
-paddle is imported LAZILY inside the function, so the whole backend runs
-(and passes imports) on machines without paddle installed — we then return
-a STUB result, clearly marked, so the app still works end to end.
-
 Engine failures are logged (logger.exception) and surfaced in /health via
 engine_status(); stub output is never presented as real OCR text.
 """
@@ -42,173 +35,52 @@ import io
 import json
 import logging
 import os
-import subprocess
-import sys
 import time
 import zipfile
 
 logger = logging.getLogger("pinkcloud.ocr")
 
-# Single global engine; building it takes seconds, so we reuse it.
-_ENGINE = None
-_ENGINE_STATE = "not_initialized"  # not_initialized | paddle | stub
-_ENGINE_ERROR: str | None = None
-# Which engine produced the last page, and the last Sarvam failure.
+# Which engine produced the last page ("sarvam" | "stub"), and the last
+# Sarvam failure (key scrubbed).
 _LAST_ENGINE: str | None = None
 _SARVAM_ERROR: str | None = None
 
-# Real PP-OCRv5 settings (verified against paddleocr 3.7.0):
-#  - text_detection_model_name / text_recognition_model_name are the 3.x
-#    argument names (det_model_name/rec_model_name raise ValueError).
-#  - enable_mkldnn=False: paddlepaddle 3.3.1 CPU crashes in predict() with
-#    NotImplementedError: ConvertPirAttribute2RuntimeAttribute when MKLDNN
-#    is on. It is a "common arg" accepted via **kwargs.
-#  - use_doc_orientation_classify / use_doc_unwarping off: unwarping
-#    rescales/rewarps the image and breaks the bbox-on-1600px contract.
-_ENGINE_KWARGS = dict(
-    text_detection_model_name="PP-OCRv5_mobile_det",
-    text_recognition_model_name="ta_PP-OCRv5_mobile_rec",
-    use_doc_orientation_classify=False,
-    use_doc_unwarping=False,
-    use_textline_orientation=True,
-    enable_mkldnn=False,
-)
+# Env values from the removed PaddleOCR engine; still honoured as "ignored,
+# with a warning" so an old .env never silently changes behaviour.
+_LEGACY_ENV = ("OCR_ENGINE", "SARVAM_FALLBACK")
 
 
-def _paddle_importable() -> tuple[bool, str]:
-    """Probe paddle importability in a SUBPROCESS.
-
-    Official paddlepaddle 3.3.1 wheels require an AVX-capable CPU. On a
-    CPU without AVX, importing paddle's native lib hard-crashes the
-    process (access violation) — a try/except CANNOT save the server
-    from that. Running the import in a child process turns that crash
-    into a clean, loggable 'unavailable' and the backend keeps serving
-    stub output.
-    """
-    import importlib.util
-
-    if importlib.util.find_spec("paddle") is None:
-        return False, "paddlepaddle is not installed"
-    try:
-        r = subprocess.run(
-            [sys.executable, "-c", "import paddle"],
-            capture_output=True,
-            timeout=180,
-        )
-    except Exception as exc:  # probe itself failed — treat as unavailable
-        return False, f"paddle probe failed: {exc}"
-    if r.returncode == 0:
-        return True, ""
-    tail = (r.stderr or b"").decode(errors="replace").strip().splitlines()
-    reason = tail[-1] if tail else f"paddle import exited with code {r.returncode}"
-    return False, f"paddle cannot run on this machine: {reason}"
-
-
-def _get_engine():
-    """Build PaddleOCR once. Returns None if paddle isn't usable."""
-    global _ENGINE, _ENGINE_STATE, _ENGINE_ERROR
-    if _ENGINE is not None:
-        return _ENGINE
-    if _ENGINE_STATE == "stub":
-        return None
-    try:
-        # Pre-flight: never import paddle in-process before we know the
-        # native lib loads on this CPU (see _paddle_importable).
-        ok, reason = _paddle_importable()
-        if not ok:
-            raise RuntimeError(reason)
-
-        from paddleocr import PaddleOCR  # lazy import: only if installed
-
-        _ENGINE = PaddleOCR(**_ENGINE_KWARGS)
-        _ENGINE_STATE = "paddle"
-        _ENGINE_ERROR = None
-        logger.info("PaddleOCR engine ready: %s", _ENGINE_KWARGS)
-    except Exception:
-        # A failed engine must be VISIBLE, never silently swallowed.
-        _ENGINE = None
-        _ENGINE_STATE = "stub"
-        import traceback
-
-        _ENGINE_ERROR = traceback.format_exc(limit=3).strip().splitlines()[-1]
-        logger.exception("PaddleOCR engine init failed — OCR falls back to STUB output")
-    return _ENGINE
-
-
-def selected_engine() -> str:
-    """Engine chosen by OCR_ENGINE (default sarvam)."""
-    v = (os.environ.get("OCR_ENGINE") or "sarvam").strip().lower()
-    return "paddle" if v == "paddle" else "sarvam"
-
-
-def _sarvam_fallback() -> str:
-    v = (os.environ.get("SARVAM_FALLBACK") or "paddle").strip().lower()
-    return "none" if v == "none" else "paddle"
+def warn_legacy_env() -> None:
+    """Log once at startup if a removed engine setting is still set."""
+    for name in _LEGACY_ENV:
+        v = (os.environ.get(name) or "").strip().lower()
+        if v and v not in ("sarvam", "none"):
+            logger.warning(
+                "%s=%s is ignored: PaddleOCR was removed, Sarvam is the only "
+                "OCR engine (failures fall back to marked [stub] lines)", name, v)
 
 
 def engine_status() -> dict:
     """Report OCR engine state for /health and diagnostics.
 
     ocr_engine is the engine that produced the most recent page
-    ("sarvam" | "paddle" | "stub"), or, before any page, the engine that
-    is ready to run. ocr_engine_selected is what OCR_ENGINE asks for.
+    ("sarvam" | "stub"), or, before any page, what the next page will use:
+    "sarvam" when a key is set, otherwise "stub".
     """
-    selected = selected_engine()
     if _LAST_ENGINE is not None:
         engine = _LAST_ENGINE
-    elif selected == "sarvam" and _sarvam_key():
-        engine = "sarvam"
     else:
-        engine = _ENGINE_STATE
-    status = {"ocr_engine": engine, "ocr_engine_selected": selected}
-    if selected == "sarvam":
-        status["sarvam_key_set"] = bool(_sarvam_key())
-        if _SARVAM_ERROR:
-            status["sarvam_error"] = _SARVAM_ERROR
-    if _ENGINE_ERROR and engine != "sarvam":
-        status["ocr_error"] = _ENGINE_ERROR.strip().splitlines()[-1]
+        engine = "sarvam" if _sarvam_key() else "stub"
+    status = {
+        "ocr_engine": engine,
+        "ocr_engine_selected": "sarvam",
+        "sarvam_key_set": bool(_sarvam_key()),
+    }
+    if _SARVAM_ERROR:
+        status["sarvam_error"] = _SARVAM_ERROR
+    if engine == "stub":
+        status["ocr_error"] = _SARVAM_ERROR or "SARVAM_API_KEY is not set"
     return status
-
-
-def _parse_engine_results(results) -> list[dict]:
-    """Convert PaddleOCR 3.x predict() output into contract lines.
-
-    Kept paddle-free so it can be unit-tested without paddle installed.
-    Handles NumPy output: rec_boxes is a NumPy array (use .tolist()),
-    coordinates may be NumPy integers (normalize to plain Python ints).
-    """
-    lines: list[dict] = []
-    for page in results or []:
-        texts = page.get("rec_texts") or []
-        scores = page.get("rec_scores") or []
-        boxes = page.get("rec_boxes")
-        if boxes is not None:  # NumPy array of [x1, y1, x2, y2] rows
-            boxes = boxes.tolist()
-        else:
-            boxes = page.get("rec_polys") or []
-
-        for i, text in enumerate(texts):
-            conf = float(scores[i]) if i < len(scores) else 0.0
-            bbox = [0, 0, 0, 0]
-            if i < len(boxes) and boxes[i] is not None:
-                box = boxes[i]
-                try:
-                    if len(box) == 4 and all(
-                        isinstance(v, (int, float)) for v in box
-                    ):
-                        # [x1, y1, x2, y2] — normalize NumPy scalars to ints
-                        x1, y1, x2, y2 = (int(round(float(v))) for v in box)
-                    else:
-                        # 4-point polygon — take its bounding box
-                        xs = [int(round(float(p[0]))) for p in box]
-                        ys = [int(round(float(p[1]))) for p in box]
-                        x1, y1, x2, y2 = min(xs), min(ys), max(xs), max(ys)
-                    bbox = [x1, y1, max(1, x2 - x1), max(1, y2 - y1)]
-                except (TypeError, ValueError, IndexError):
-                    logger.warning("unparseable OCR box at index %s: %r", i, box)
-                    bbox = [0, 0, 0, 0]
-            lines.append({"body": str(text), "bbox": bbox, "confidence": conf})
-    return lines
 
 
 def ocr_page(img) -> tuple[list[dict], float]:
@@ -217,41 +89,24 @@ def ocr_page(img) -> tuple[list[dict], float]:
     Returns (lines, ms) where each line is:
         {"body": str, "bbox": [x, y, w, h], "confidence": float}
     bboxes are on the SAME 1600px-capped image the router scored, so the
-    frontend can draw boxes directly.
+    frontend can draw boxes directly. On any Sarvam failure (including a
+    missing key) the page gets marked "[stub]" lines.
     """
     global _LAST_ENGINE, _SARVAM_ERROR
     t0 = time.perf_counter()
-
-    if selected_engine() == "sarvam":
-        try:
-            lines = _sarvam_ocr(img)
-            _LAST_ENGINE = "sarvam"
-            _SARVAM_ERROR = None
-            return lines, (time.perf_counter() - t0) * 1000.0
-        except Exception as exc:
-            _SARVAM_ERROR = _safe_error(exc)
-            if _sarvam_fallback() == "none":
-                _LAST_ENGINE = "stub"
-                logger.exception("Sarvam OCR failed; SARVAM_FALLBACK=none -> STUB output")
-                return _stub_lines(img), (time.perf_counter() - t0) * 1000.0
-            if _sarvam_key():
-                logger.exception("Sarvam OCR failed; falling back to local PaddleOCR")
-            else:
-                logger.warning("SARVAM_API_KEY not set; using local PaddleOCR")
-
-    lines = _paddle_ocr(img)
-    return lines, (time.perf_counter() - t0) * 1000.0
-
-
-def _paddle_ocr(img) -> list[dict]:
-    global _LAST_ENGINE
-    engine = _get_engine()
-    if engine is None:
+    try:
+        lines = _sarvam_ocr(img)
+    except Exception as exc:
+        _SARVAM_ERROR = _safe_error(exc)
         _LAST_ENGINE = "stub"
-        return _stub_lines(img)
-    results = engine.predict(img)
-    _LAST_ENGINE = "paddle"
-    return _parse_engine_results(results)
+        if _sarvam_key():
+            logger.exception("Sarvam OCR failed -> STUB output for this page")
+        else:
+            logger.warning("SARVAM_API_KEY not set -> STUB output for this page")
+        return _stub_lines(img), (time.perf_counter() - t0) * 1000.0
+    _LAST_ENGINE = "sarvam"
+    _SARVAM_ERROR = None
+    return lines, (time.perf_counter() - t0) * 1000.0
 
 
 # --------------------------------------------------------------------------
@@ -453,7 +308,7 @@ def _parse_sarvam_page(page: dict, img_w: int, img_h: int) -> list[dict]:
 
 
 def failed_page_lines(img, exc: Exception) -> list[dict]:
-    """Marked placeholder line for a page whose OCR call raised (any engine).
+    """Marked placeholder line for a page whose OCR call raised.
 
     Same "[stub]" marking as _stub_lines, so the page is flagged
     needs_review (confidence 0), the text layer / txt / docx exports skip
@@ -468,14 +323,14 @@ def failed_page_lines(img, exc: Exception) -> list[dict]:
 
 
 def _stub_lines(img) -> list[dict]:
-    """Placeholder lines when paddle is missing or failed to initialize.
+    """Placeholder lines when Sarvam is unavailable (no key, or the call failed).
 
     The "[stub]" marker is intentional: stub output must never be
     mistaken for real OCR text (also flagged via needs_review / health).
     """
     h, w = img.shape[:2]
     line_w = int(w * 0.6)
-    body = "[stub] OCR unavailable - paddle not installed or engine init failed"
+    body = "[stub] OCR unavailable - Sarvam OCR failed or SARVAM_API_KEY not set"
     return [
         {
             "body": body,

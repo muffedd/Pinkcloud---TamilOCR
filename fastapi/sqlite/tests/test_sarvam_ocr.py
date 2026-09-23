@@ -176,63 +176,101 @@ def test_retries_429_then_succeeds(env):
     assert [c.url.path for c in fake.calls[:2]] == ["/doc-ai/v1/job/digitise"] * 2
 
 
-def test_failed_job_falls_back_to_paddle_path(env):
+def _is_stub(lines):
+    return bool(lines) and all(
+        l["body"].startswith("[stub]") and l["confidence"] == 0.0 for l in lines)
+
+
+def test_failed_job_returns_marked_stub(env):
     fake = FakeSarvam(statuses=("failed",))
     _patch_client(env, fake)
-    env.setattr(ocr, "_paddle_ocr", lambda img: [{"body": "paddle", "bbox": [1, 1, 1, 1], "confidence": 0.9}])
     lines, _ = ocr.ocr_page(_img())
-    assert lines[0]["body"] == "paddle"
+    assert _is_stub(lines)
     st = ocr.engine_status()
+    assert st["ocr_engine"] == "stub"
     assert "failed" in st["sarvam_error"]
     assert FAKE_KEY not in json.dumps(st)
 
 
-def test_http_401_falls_back_and_error_is_visible(env):
+def test_http_401_returns_stub_and_error_is_visible(env):
     fake = FakeSarvam(fail={"/digitise": [httpx.Response(401, text="invalid key")]})
     _patch_client(env, fake)
-    env.setattr(ocr, "_paddle_ocr", lambda img: [])
-    ocr.ocr_page(_img())
+    lines, _ = ocr.ocr_page(_img())
+    assert _is_stub(lines)
     assert "401" in ocr.engine_status()["sarvam_error"]
 
 
-def test_fallback_none_returns_marked_stub(env):
-    env.setenv("SARVAM_FALLBACK", "none")
+def test_rejected_job_returns_marked_stub(env):
     fake = FakeSarvam(statuses=("rejected",))
     _patch_client(env, fake)
     lines, _ = ocr.ocr_page(_img())
-    assert lines and all(l["body"].startswith("[stub]") and l["confidence"] == 0.0 for l in lines)
+    assert _is_stub(lines)
     assert ocr.engine_status()["ocr_engine"] == "stub"
 
 
-def test_missing_key_uses_paddle_without_network(env):
+def test_missing_key_returns_stub_without_network(env):
     env.delenv("SARVAM_API_KEY")
     fake = FakeSarvam()
     _patch_client(env, fake)
-    env.setattr(ocr, "_paddle_ocr", lambda img: [{"body": "p", "bbox": [0, 0, 1, 1], "confidence": 1.0}])
+    assert ocr.engine_status()["ocr_engine"] == "stub"  # before any page
     lines, _ = ocr.ocr_page(_img())
-    assert lines[0]["body"] == "p" and fake.calls == []
+    assert _is_stub(lines) and fake.calls == []
     st = ocr.engine_status()
+    assert st["ocr_engine"] == "stub"
     assert st["ocr_engine_selected"] == "sarvam" and st["sarvam_key_set"] is False
+    assert "SARVAM_API_KEY" in st["ocr_error"]
 
 
-def test_ocr_engine_paddle_never_calls_sarvam(env):
-    env.setenv("OCR_ENGINE", "paddle")
+def test_status_before_any_page_with_key_is_sarvam(env):
+    st = ocr.engine_status()
+    assert st["ocr_engine"] == "sarvam" and st["sarvam_key_set"] is True
+    assert "ocr_error" not in st
+
+
+@pytest.mark.parametrize("name,value", [("OCR_ENGINE", "paddle"),
+                                        ("SARVAM_FALLBACK", "paddle")])
+def test_removed_paddle_settings_are_ignored(env, name, value):
+    """Old .env values can't route around Sarvam or revive a local engine."""
+    env.setenv(name, value)
     fake = FakeSarvam()
     _patch_client(env, fake)
-    env.setattr(ocr, "_paddle_ocr", lambda img: [])
-    ocr.ocr_page(_img())
-    assert fake.calls == []
-    assert ocr.engine_status()["ocr_engine_selected"] == "paddle"
+    lines, _ = ocr.ocr_page(_img())
+    assert len(lines) == 5 and fake.calls  # Sarvam was called
+    assert ocr.engine_status()["ocr_engine"] == "sarvam"
 
 
-def test_timeout_raises_and_falls_back(env):
+@pytest.mark.parametrize("name", ["OCR_ENGINE", "SARVAM_FALLBACK"])
+def test_removed_paddle_settings_still_fall_back_to_stub(env, name):
+    env.setenv(name, "paddle")
+    _patch_client(env, FakeSarvam(statuses=("failed",)))
+    assert _is_stub(ocr.ocr_page(_img())[0])
+
+
+def test_removed_paddle_settings_log_warning(env, caplog):
+    env.setenv("OCR_ENGINE", "paddle")
+    with caplog.at_level("WARNING", logger="pinkcloud.ocr"):
+        ocr.warn_legacy_env()
+    assert "OCR_ENGINE=paddle is ignored" in caplog.text
+    env.setenv("OCR_ENGINE", "sarvam")
+    caplog.clear()
+    ocr.warn_legacy_env()
+    assert caplog.text == ""
+
+
+def test_timeout_raises_and_returns_stub(env):
     env.setenv("SARVAM_TIMEOUT_S", "0")
     env.setenv("SARVAM_POLL_S", "1")
     fake = FakeSarvam(statuses=("running",))
     _patch_client(env, fake)
-    env.setattr(ocr, "_paddle_ocr", lambda img: [])
-    ocr.ocr_page(_img())
+    assert _is_stub(ocr.ocr_page(_img())[0])
     assert "still 'running'" in ocr.engine_status()["sarvam_error"]
+
+
+def test_no_paddle_left_in_engine():
+    import pathlib
+    src = pathlib.Path(ocr.__file__).read_text(encoding="utf-8")
+    assert "import paddle" not in src and "from paddleocr" not in src
+    assert not hasattr(ocr, "_paddle_ocr") and not hasattr(ocr, "_get_engine")
 
 
 def test_key_is_never_hardcoded():

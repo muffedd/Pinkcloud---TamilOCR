@@ -3,9 +3,9 @@
 Run from fastapi/sqlite/:
     python -m pytest tests/ -v
 
-Works in two environments:
-  - fresh venv WITHOUT paddle: stub-OCR tests run, real-OCR test skips
-  - OCR venv WITH paddlepaddle 3.3.1 + paddleocr 3.7.0: everything runs
+Never calls the network: tests/conftest.py drops SARVAM_API_KEY, so
+end-to-end runs get the marked [stub] OCR lines (Sarvam itself is covered
+with a mocked transport in tests/test_sarvam_ocr.py).
 """
 
 import hashlib
@@ -18,7 +18,6 @@ from fastapi.testclient import TestClient
 
 from app import db, storage
 from app.main import app
-from app.ocr import _parse_engine_results
 from app.pdfutil import load_pages, to_gray
 from app.router import choose_profile, compute_scores
 from app.schema_out import build_page_result
@@ -147,42 +146,12 @@ def test_multipage_tiff_keeps_all_pages(client, sample_files):
 # 2. OCR wiring
 # --------------------------------------------------------------------------
 
-def test_ocr_parses_paddle3_numpy_output():
-    """rec_boxes arrives as NumPy ([x1,y1,x2,y2] rows, NumPy ints) —
-    parsing must normalize to plain Python ints with no truthiness checks."""
-    rec_texts = ["அகர முதல", "எழுத்தெல்லாம்"]
-    rec_scores = [0.97, 0.88]
-    rec_boxes = np.array([[10, 20, 300, 50], [12, 24, 310, 55]], dtype=np.int32)
-    polys = None
-
-    # simulate the exact paddle dict shape (None for rec_polys)
-    results = [{"rec_texts": rec_texts, "rec_scores": rec_scores,
-                "rec_boxes": rec_boxes, "rec_polys": polys}]
-
-    lines = _parse_engine_results(results)
-    assert len(lines) == 2
-    assert lines[0]["body"] == "அகர முதல"
-    assert lines[0]["confidence"] == pytest.approx(0.97)
-    x, y, w, h = lines[0]["bbox"]
-    assert (x, y, w, h) == (10, 20, 290, 30)
-    # plain Python ints, not np.int32 (contract must JSON-serialize)
-    assert type(x) is int and type(w) is int
-
-
-def test_ocr_parse_polys_fallback():
-    """When rec_boxes is None, 4-point polygons are used."""
-    poly = np.array([[5, 6], [100, 4], [102, 40], [7, 42]], dtype=np.float32)
-    lines = _parse_engine_results(
-        [{"rec_texts": ["x"], "rec_scores": [0.9],
-          "rec_boxes": None, "rec_polys": [poly]}])
-    assert lines[0]["bbox"] == [5, 4, 97, 38]
-
-
 def test_health_ok(client):
     """ok:true plus the OCR engine marker (stub output must be visible)."""
     r = client.get("/health").json()
     assert r["ok"] is True
-    assert r["ocr_engine"] in {"sarvam", "paddle", "stub", "not_initialized"}
+    assert r["ocr_engine"] in {"sarvam", "stub"}
+    assert r["ocr_engine_selected"] == "sarvam"
 
 
 # --------------------------------------------------------------------------
@@ -321,48 +290,21 @@ def test_page_result_matches_frozen_contract():
 
 
 # --------------------------------------------------------------------------
-# 7. real OCR end-to-end (skips when paddle is not installed)
+# 7. no Sarvam key end-to-end: marked stub page, never fake text
 # --------------------------------------------------------------------------
 
-paddle_ok = True
-try:
-    # Detect WITHOUT importing in-process: on non-AVX CPUs importing
-    # paddle hard-crashes the test process, so probe via subprocess.
-    import subprocess as _sp
-    import sys as _sys
-    _p = _sp.run([_sys.executable, "-c", "import paddle"], capture_output=True)
-    paddle_ok = _p.returncode == 0
-except Exception:
-    paddle_ok = False
-
-
-@pytest.mark.skipif(not paddle_ok, reason="paddle not installed (stub mode)")
-def test_real_scan_end_to_end_real_text(client, sample_files):
-    """Full run through POST /jobs with the REAL PP-OCRv5 mobile models on
-    a rendered Tamil page: the stored result must contain real Tamil
-    text with high confidence, and /health must report the paddle engine."""
-    assert client.get("/health").json()["ocr_engine"] == "paddle"
-
-    # Render a clean Tamil page (Thirukkural 1) with Nirmala UI.
-    from PIL import Image, ImageDraw, ImageFont
-    img = Image.new("RGB", (1240, 800), (235, 235, 228))
-    draw = ImageDraw.Draw(img)
-    font = ImageFont.truetype("C:/Windows/Fonts/Nirmala.ttf", 44)
-    draw.text((140, 150), "அகர முதல எழுத்தெல்லாம் ஆதி", font=font, fill=(25, 25, 25))
-    draw.text((140, 300), "பகவன் முதற்றே உலகு", font=font, fill=(25, 25, 25))
-    p = sample_files["clean.png"].parent / "tamil_kural.png"
-    img.save(str(p))
-
-    r = _upload(client, p)
-    assert r.status_code == 200, r.text
-    job = client.get(f"/jobs/{r.json()['job_id']}").json()
+def test_no_key_end_to_end_is_marked_stub(client, sample_files):
+    """Without SARVAM_API_KEY (conftest drops it) the job still completes;
+    every line is a marked [stub] line at confidence 0, the page needs
+    review, and /health says stub (not a real engine)."""
+    job = _post_and_get(client, sample_files["clean.png"])
     page = job["result"]["pages"][0]
-
-    tamil = [ln["body"] for ln in page["lines"]
-             if any("\u0b80" <= ch <= "\u0bff" for ch in ln["body"])]
-    assert tamil, f"no Tamil text recognized: {page['lines']}"
-    assert page["lines"][0]["confidence"] > 0.6
-    print("\nREAL OCR TEXT:", tamil)
+    assert page["lines"]
+    assert all(ln["body"].startswith("[stub]") for ln in page["lines"])
+    assert all(ln["confidence"] == 0.0 for ln in page["lines"])
+    assert page["needs_review"] is True
+    h = client.get("/health").json()
+    assert h["ocr_engine"] == "stub" and h["sarvam_key_set"] is False
 
 
 # --------------------------------------------------------------------------

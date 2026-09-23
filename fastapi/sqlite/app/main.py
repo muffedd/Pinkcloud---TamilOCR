@@ -8,7 +8,7 @@ Pipeline per upload:
   4. load pages           -> pdfutil.py  (PDF via pypdfium2, images via
      cv2, ALL pages of multi-page TIFFs)
   5. score + route        -> router.py   (FAST / HEAVY badge per page)
-  6. OCR fast pass        -> ocr.py      (lazy PaddleOCR 3.x, marked stub
+  6. OCR fast pass        -> ocr.py      (Sarvam Document AI, marked stub
      fallback; engine failures are logged and shown in /health)
   7. build contract JSON  -> schema_out.py
   8. store result         -> db.py
@@ -29,7 +29,7 @@ from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
 from . import db, storage
-from .ocr import engine_status, failed_page_lines, ocr_page, _get_engine
+from .ocr import engine_status, failed_page_lines, ocr_page, warn_legacy_env
 from .pdfutil import load_pages, probe_decode, to_gray
 from .router import choose_profile, compute_scores
 from .schema_out import (build_job_result, build_page_result, enrich_page,
@@ -90,14 +90,15 @@ def _read_capped(f: UploadFile, budget: int) -> bytes:
 
 @app.on_event("startup")
 def on_startup() -> None:
-    """Create the SQLite table and probe the OCR engine at boot.
+    """Create the SQLite table at boot.
 
-    The engine probe is non-fatal: a missing/broken paddle logs an
-    exception and /health reports the stub engine — the API still works.
+    Sarvam is a hosted API read per page, so there is no engine to load;
+    /health reports sarvam_key_set. Removed PaddleOCR settings (OCR_ENGINE,
+    SARVAM_FALLBACK=paddle) only log a warning.
     """
     logging.basicConfig(level=logging.INFO)
     db.init_db()
-    _get_engine()  # eager init so /health reflects reality from the start
+    warn_legacy_env()
 
 
 @app.get("/health")
@@ -122,9 +123,9 @@ def _pipeline(job_id: str, master: Path | list[Path]) -> list[dict]:
         scores = compute_scores(gray)
         profile, scores = choose_profile(scores)
 
-        # (6) OCR fast pass (clearly-marked stub lines if paddle missing).
-        #     A failure on ONE page (Sarvam + paddle fallback, or paddle
-        #     alone) must not sink the job: that page gets a marked stub
+        # (6) OCR fast pass (clearly-marked stub lines if Sarvam is
+        #     unavailable). A failure on ONE page that escapes ocr_page()
+        #     must not sink the job: that page gets a marked stub
         #     line (-> needs_review) and the other pages still run.
         try:
             ocr_lines, ocr_ms = ocr_page(img)

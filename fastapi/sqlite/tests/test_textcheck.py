@@ -1,7 +1,7 @@
 """Tests for app/textcheck.py (module D: per-line text-quality proxy).
 
 Run from fastapi/sqlite/:  python -m pytest tests/test_textcheck.py -v
-Needs only the standard library + pytest (no Paddle, no Sarvam, no web app).
+Needs only the standard library + pytest (no Sarvam, no web app).
 Real lines come from ocr_outputs/sarvam/raw/sample*/sample*.png/metadata/page_001.json.
 """
 
@@ -133,7 +133,7 @@ def test_deterministic():
 
 
 def test_importable_standalone_without_app_deps():
-    code = ("import sys; sys.modules['cv2'] = None; sys.modules['paddleocr'] = None; "
+    code = ("import sys; sys.modules['cv2'] = None; "
             "sys.modules['fastapi'] = None; sys.modules['numpy'] = None; "
             "import importlib.util, pathlib; "
             "spec = importlib.util.spec_from_file_location('textcheck', 'app/textcheck.py'); "

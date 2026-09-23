@@ -75,23 +75,23 @@ def _check_page2_failed(job):
 
 # ---- F4: per-page OCR error isolation ------------------------------------
 
-def test_paddle_failure_on_one_page_keeps_job(client, monkeypatch):
-    monkeypatch.setenv("OCR_ENGINE", "paddle")
-    monkeypatch.setenv("SARVAM_API_KEY", "sk-secret-123")  # only for scrub check
-    monkeypatch.setattr(ocr, "_paddle_ocr", _fail_on_call(2, ocr._stub_lines))
-    _check_page2_failed(_upload_pdf(client))
-
-
-def test_sarvam_and_fallback_failure_on_one_page_keeps_job(client, monkeypatch):
-    monkeypatch.setenv("OCR_ENGINE", "sarvam")
+def test_sarvam_failure_on_one_page_keeps_job(client, monkeypatch):
+    """Sarvam raising on page 2 only: page 2 is a marked [stub] page, pages
+    1 and 3 keep their OCR, the job is done."""
     monkeypatch.setenv("SARVAM_API_KEY", "sk-secret-123")
-    monkeypatch.setenv("SARVAM_FALLBACK", "paddle")
-
-    def sarvam_down(img):
-        raise RuntimeError("sarvam down")
-    monkeypatch.setattr(ocr, "_sarvam_ocr", sarvam_down)
-    monkeypatch.setattr(ocr, "_paddle_ocr", _fail_on_call(2, ocr._stub_lines))
-    _check_page2_failed(_upload_pdf(client))
+    ok = lambda img: [{"body": "சரி", "bbox": [1, 1, 10, 10], "confidence": 0.9}]
+    monkeypatch.setattr(ocr, "_sarvam_ocr", _fail_on_call(2, ok))
+    job = _upload_pdf(client)
+    assert job["status"] == "done"
+    pages = job["result"]["pages"]
+    assert [p["page"] for p in pages] == [1, 2, 3]
+    assert pages[0]["lines"][0]["body"] == "சரி"
+    assert pages[2]["lines"][0]["body"] == "சரி"
+    bad = pages[1]
+    assert bad["needs_review"] is True
+    assert all(ln["body"].startswith("[stub]") and ln["confidence"] == 0.0
+               for ln in bad["lines"])
+    assert "sk-secret-123" not in str(client.get("/health").json())  # key scrubbed
 
 
 def test_sarvam_raising_past_ocr_page_keeps_job(client, monkeypatch):
