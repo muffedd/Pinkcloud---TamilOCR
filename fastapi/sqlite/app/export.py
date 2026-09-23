@@ -45,6 +45,94 @@ RECEIPT_VERSION = 1
 
 
 # --------------------------------------------------------------------------
+# saved reviewer corrections (uploads/<job_id>/corrections.json)
+# --------------------------------------------------------------------------
+
+CORRECTIONS_FILE = "corrections.json"
+
+
+def load_saved_corrections(job_id: str) -> list[dict]:
+    """Read the job's saved correction map written by the corrections route.
+
+    Shape: {"corrections": [{page, line, word, before, after}, ...], ...}.
+    Absent, unreadable or malformed files give [] (export falls back to raw
+    OCR text); malformed entries are skipped individually."""
+    path = storage.UPLOAD_ROOT / job_id / CORRECTIONS_FILE
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:  # missing, unreadable, not JSON
+        return []
+    items = doc.get("corrections") if isinstance(doc, dict) else doc
+    if not isinstance(items, list):
+        return []
+    out = []
+    for c in items:
+        try:
+            page, word = int(c["page"]), int(c["word"])
+            line, after = str(c["line"]), str(c["after"])
+        except Exception:
+            continue
+        before = c.get("before")
+        if page < 1 or word < 1 or not after.strip():
+            continue
+        out.append({"page": page, "line": line, "word": word,
+                    "before": None if before is None else str(before),
+                    "after": after.strip()})
+    return out
+
+
+def apply_corrections(pages: list[dict], corrections: list[dict]) -> list[dict]:
+    """Return a copy of pages with each correction's `after` substituted for
+    the word at (page, line id, 1-based word index; line body split on
+    whitespace). A correction whose `before` no longer matches the OCR word
+    (stale map) or points outside the line is skipped, never guessed.
+    Applied ones are appended to the page copy's `corrections` list with
+    tier "human", so the receipt counts them. Stored job JSON is untouched."""
+    if not corrections:
+        return pages
+    by_key: dict[tuple, dict] = {}
+    for c in corrections:
+        by_key[(c["page"], c["line"], c["word"])] = c  # last one wins
+    out = []
+    for i, p in enumerate(pages, start=1):
+        pno = int(p.get("page", i))
+        new_lines, applied = [], []
+        for line in p.get("lines") or []:
+            words = str(line.get("body", "")).split()
+            changed = False
+            for w in range(1, len(words) + 1):
+                c = by_key.get((pno, str(line.get("id")), w))
+                if c is None:
+                    continue
+                if c["before"] is not None and c["before"] != words[w - 1]:
+                    continue
+                words[w - 1] = c["after"]
+                changed = True
+                applied.append({"tier": "human", "line": line.get("id"),
+                                "word": w, "before": c["before"],
+                                "after": c["after"]})
+            new_lines.append({**line, "body": " ".join(words)} if changed else line)
+        if applied:
+            q = dict(p)
+            q["lines"] = new_lines
+            q["text"] = "\n".join(
+                l.get("body", "") for l in sorted(new_lines, key=lambda l: l.get("seq", 0)))
+            q["corrections"] = list(p.get("corrections") or []) + applied
+            out.append(q)
+        else:
+            out.append(p)
+    return out
+
+
+def apply_saved_corrections(job_id: str, pages: list[dict]) -> list[dict]:
+    """pages with the job's saved corrections applied (raw pages on any error)."""
+    try:
+        return apply_corrections(pages, load_saved_corrections(job_id))
+    except Exception:
+        return pages
+
+
+# --------------------------------------------------------------------------
 # receipt
 # --------------------------------------------------------------------------
 
