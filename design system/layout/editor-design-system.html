@@ -24,6 +24,13 @@
   --pc-gradient-destructive:linear-gradient(180deg,#E36323 0%,#DF5A18 100%);
   --pc-color-primary-solid:#D93A0B;      /* compact buttons, labels < 19px bold: 4.6:1 with white */
   --pc-color-primary-active:#B32E08;
+  --pc-color-primary-press:#9C2706;      /* pressed: one step darker than hover */
+  --pc-color-primary-disabled:#ECAB97;   /* solid pale tint, white text, no opacity */
+  --pc-color-soft:#E7E4E0; --pc-color-soft-hover:#DEDAD5; --pc-color-soft-press:#D3CEC8;   /* soft button */
+  --pc-shadow-outline-btn:inset 0 0 0 1px #D6D0CA;   /* outline button line (inset, not a drop shadow) */
+  --pc-radius-btn:10px; --pc-radius-btn-sm:8px;
+  --pc-fs-btn:15px; --pc-fs-btn-sm:13.5px;
+  --pc-font-button:"Suisse Intl Trial","Suisse Intl","Helvetica Neue",Helvetica,Arial,sans-serif;
   --pc-color-primary-soft:#FFF4EF; --pc-color-primary-soft-border:#FFC9B3;
   --pc-color-destructive-solid:#C4380C;
   --pc-color-focus-ring:#F94612;
@@ -69,7 +76,11 @@
   --pc-shadow-sm:0 1px 2px #1E1A180F;   /* popup, toast, toggle thumb only */
   /* ---- Motion ---- */
   --pc-motion-fast:100ms; --pc-motion-base:160ms; --pc-motion-slow:200ms;
+  --pc-motion-press:90ms; --pc-motion-release:220ms; --pc-motion-color:150ms; --pc-motion-hover:240ms; --pc-motion-toggle:260ms;
   --pc-ease-out:cubic-bezier(.23,1,.32,1);
+  --pc-ease-spring:cubic-bezier(.34,1.36,.64,1);
+  --pc-ease-in-out:cubic-bezier(.65,0,.35,1);
+  --pc-scale-press:.96; --pc-scale-press-sm:.97;
   /* ---- Editor grid (layout plan, 1366x768) ---- */
   --pc-topbar-h:52px; --pc-scan-w:580px; --pc-text-w:506px; --pc-rail-w:280px;
 }
@@ -113,15 +124,26 @@ table.spec tr:last-child td{border-bottom:0}
 .note.warn{border-color:var(--pc-color-conf-doubt-line);background:var(--pc-color-warning-bg);color:var(--pc-color-warning)}
 
 /* ================= COMPONENTS ================= */
-/* Compact solid button (Export, Accept). Delete-button recipe, v2 solid fill. */
-.btn{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 14px;border-radius:var(--pc-radius-control);border:0;transition:transform var(--pc-motion-base) var(--pc-ease-out),background-color var(--pc-motion-fast);font:700 14px/20px var(--pc-font-sans);letter-spacing:.01em;color:#fff;cursor:pointer;white-space:nowrap}
-.btn--solid{background:var(--pc-color-primary-solid)}
-.btn:active{transform:scale(.97)}
-.btn--solid:hover{background:var(--pc-color-primary-active)}
-.btn--solid:focus-visible{outline:2px solid var(--pc-color-focus-ring);outline-offset:2px}
-.btn--sm{height:30px;padding:0 12px;font-size:13px}
-.btn--outline{background:var(--pc-color-bg-surface);color:var(--pc-color-text-primary);border:var(--pc-hairline)}
-.btn--ghost{background:transparent;color:var(--pc-color-text-secondary)}
+/* Button family (solid / soft / outline / ghost), one motion. Matches design system/components/buttons-motion.html.
+   Hover: fill one step darker + label swap. Press: scale(.96) + press color, springs back. No shadows. */
+.btn{--bg:var(--pc-color-primary-solid);--bg-h:var(--pc-color-primary-active);--bg-p:var(--pc-color-primary-press);--fg:#fff;--px:16px;position:relative;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 var(--px);border-radius:var(--pc-radius-btn);border:0;background:var(--bg);color:var(--fg);font:500 var(--pc-fs-btn)/1 var(--pc-font-button);letter-spacing:0;cursor:pointer;white-space:nowrap;overflow:hidden;user-select:none;transition:transform var(--pc-motion-release) var(--pc-ease-spring),background-color var(--pc-motion-color) var(--pc-ease-out),color var(--pc-motion-color) var(--pc-ease-out)}
+.btn--solid{}
+.btn--soft{--bg:var(--pc-color-soft);--bg-h:var(--pc-color-soft-hover);--bg-p:var(--pc-color-soft-press);--fg:var(--pc-color-text-primary)}
+.btn--outline{--bg:transparent;--bg-h:var(--pc-color-bg-hover);--bg-p:var(--pc-color-soft);--fg:var(--pc-color-text-primary);box-shadow:var(--pc-shadow-outline-btn)}
+.btn--ghost{--bg:transparent;--bg-h:var(--pc-color-bg-hover);--bg-p:var(--pc-color-soft);--fg:var(--pc-color-text-secondary)}
+.btn--sm{--px:12px;height:30px;font-size:var(--pc-fs-btn-sm);border-radius:var(--pc-radius-btn-sm)}
+@media (hover:hover) and (pointer:fine){.btn:hover{background:var(--bg-h)}}
+.btn.is-hover{background:var(--bg-h)}
+.btn:active,.btn.is-press{transform:scale(var(--pc-scale-press));background:var(--bg-p);transition:transform var(--pc-motion-press) var(--pc-ease-out),background-color var(--pc-motion-press) var(--pc-ease-out)}
+.btn--sm:active,.btn--sm.is-press{transform:scale(var(--pc-scale-press-sm))}
+.btn:disabled{cursor:not-allowed;pointer-events:none;transform:none}
+.btn--solid:disabled{background:var(--pc-color-primary-disabled);color:#fff}
+.btn:focus-visible{outline:2px solid var(--pc-color-focus-ring);outline-offset:2px}
+.btn .lb{position:relative;display:inline-grid}
+.btn .lb>span{grid-area:1/1;transition:transform var(--pc-motion-hover) var(--pc-ease-spring)}
+.btn .lb>span+span{transform:translateX(calc(100% + var(--px) + 2px))}
+@media (hover:hover) and (pointer:fine){.btn:hover .lb>span:first-child{transform:translateX(calc(-100% - var(--px) - 2px))}.btn:hover .lb>span+span{transform:translateX(0)}}
+@media (prefers-reduced-motion:reduce){.btn,.btn .lb>span{transition-property:background-color,color}.btn:active{transform:none}.btn .lb>span+span{display:none}.btn:hover .lb>span:first-child{transform:none}}
 .btn svg{width:16px;height:16px;flex:none}
 
 /* Processing-state pill (from processing-states-pills.html, scaled: 34px -> 26px) */
@@ -359,7 +381,7 @@ footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--pc-color-bord
   <div class="annlist">
     <div><span class="n">1</span><p><b>Page pills</b>Flat, no shadow. Current page gets a 1px inset ring in its own color. Click to jump.</p></div>
     <div><span class="n">2</span><p><b>Auto / Review</b>Segmented control: neutral track, white thumb with hairline + the one faint shadow.</p></div>
-    <div><span class="n">3</span><p><b>Export</b>The only filled button. Flat #D93A0B, no shadow, no ring. Press scales to 0.97.</p></div>
+    <div><span class="n">3</span><p><b>Export</b>The only filled button. Shipped family: 36px, radius 10, Suisse Intl 500 15px, #D93A0B / hover #B32E08 / press #9C2706 / disabled #ECAB97.</p></div>
     <div><span class="n">4</span><p><b>Active box</b>Selected word on the scan: 1.5px #D93A0B + 14% orange fill. Doubt: 1px amber + 30% yellow. Nothing else is boxed.</p></div>
     <div><span class="n">5</span><p><b>Lens</b>Confidence or Provenance. One underline layer at a time.</p></div>
     <div><span class="n">6</span><p><b>Fix popup</b>Hairline + faint shadow only. Tanglish in, Tamil preview, Reject / Accept.</p></div>
@@ -381,7 +403,7 @@ footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--pc-color-bord
     <tr><td><b>.pane-title</b> (new)</td><td>Suisse Intl 700</td><td>13px / 1</td><td>0.01em</td><td>Pane headers</td></tr>
     <tr><td>.small</td><td>Suisse Intl 500</td><td>0.875rem / 1.45</td><td>0.01em</td><td>Metadata, toast, legend (12-13px)</td></tr>
     <tr><td>.eyebrow</td><td>Suisse Intl 700 caps</td><td>0.75rem / 1</td><td>0.12em</td><td>"Fix word" label (11px)</td></tr>
-    <tr><td>.button</td><td>Suisse Intl 700</td><td>14px / 20px (13px small)</td><td>0.01em</td><td>Export, Accept, Reject</td></tr>
+    <tr><td>.button</td><td>Suisse Intl 500 (button stack)</td><td>15px / 1 (13.5px small)</td><td>0</td><td>Export, Accept, Reject. Stack: Suisse Intl, then Helvetica Neue / Helvetica / Arial - never Satoshi</td></tr>
     <tr><td><b>.code</b></td><td>Menlo 400-500</td><td>11-13px / 1.3-1.6</td><td>0, tabular-nums</td><td>Line ids (L3), confidences (0.41), Tanglish input, kbd chips, hashes</td></tr>
   </table>
 </section>
@@ -395,12 +417,13 @@ footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--pc-color-bord
       <li><b>Raised:</b> hairline + <code>0 1px 2px #1E1A180F</code>. Only on things that float above the page: fix popup, toast, toggle thumb.</li>
       <li>No colored shadows, no stacked shadows, no inset shadows, no glow rings. Focus uses a 2px #F94612 outline, 2px offset.</li></ul></div>
     <div class="card"><h4>Radius</h4><ul>
-      <li>3px: word highlight.</li><li>6-7px: pills, toggle thumbs, kbd.</li><li>8px: buttons, inputs, toggle tracks.</li><li>10px: popup, toast, cards, app frame.</li><li>No full-pill buttons in the editor.</li></ul></div>
+      <li>3px: word highlight.</li><li>6-7px: pills, toggle thumbs, kbd.</li><li>8px: small buttons (.btn--sm), inputs, toggle tracks.</li><li>10px: buttons (Export), popup, toast, cards, app frame.</li><li>No full-pill buttons in the editor.</li></ul></div>
     <div class="card"><h4>Motion</h4><ul>
-      <li>Ease: <code>cubic-bezier(.23,1,.32,1)</code> (strong ease-out). Never ease-in.</li>
-      <li>Button press: <code>scale(.97)</code>, 160ms.</li>
+      <li>Eases: <code>--pc-ease-out cubic-bezier(.23,1,.32,1)</code> for color and enters, <code>--pc-ease-spring cubic-bezier(.34,1.36,.64,1)</code> for release, label swap and toggle thumb. Never ease-in.</li>
+      <li>Button press: <code>scale(.96)</code> (.97 on small buttons) + press color in 90ms. Release springs back in 220ms. Hover color 150ms.</li>
+      <li>Button hover: label swap - the label slides out and its twin slides in, 240ms spring. Only when the label is wrapped in <code>.lb</code>.</li>
       <li>Popup enters from <code>scale(.96)</code> + opacity 0 to 1 in 160ms, with transform-origin at the active word. It exits in 100ms.</li>
-      <li>Toggle thumb slides 160ms. Scroll-to-word 200ms.</li>
+      <li>Toggle thumb slides 260ms spring. Toast enters 200ms. Scroll-to-word 200ms.</li>
       <li>No animation on J/K navigation or highlight changes. Keyboard actions are frequent, so they must feel instant.</li>
       <li>Respect <code>prefers-reduced-motion</code>: drop scale, keep opacity.</li></ul></div>
   </div>
@@ -411,8 +434,9 @@ footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--pc-color-bord
   <div class="sec-h"><span class="sec-n">03</span><h2 class="h2">Top bar</h2></div>
   <p class="sec-p">52px, surface white, 1px subtle bottom border, 16px side padding, 12px gaps. Holds only: wordmark, page badges, Auto/Review toggle, offline badge, Export. No menus, search, avatar, tabs or zoom (layout plan rule).</p>
   <div class="grid3">
-    <div class="card"><h4>Export button</h4><div class="demo" style="display:flex;gap:12px;align-items:center"><button class="btn btn--solid">Export</button><button class="btn btn--solid" style="background:var(--pc-color-primary-active)">Hover</button><button class="btn btn--solid" style="opacity:.4">Disabled</button></div>
-      <ul><li>34px high, 14px padding, radius 8, Suisse Intl Bold 14/20 white. Label only, no icon.</li><li>Flat fill #D93A0B, hover #B32E08, press scale(.97). No shadow, no ring, no gradient.</li><li>Disabled (40%) until at least one page finished OCR. Goes to page 3.</li><li>The #F94612→#FA683D gradient is for labels 19px+ bold (Start OCR, Download PDF).</li></ul></div>
+    <div class="card"><h4>Export button</h4><div class="demo" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="btn btn--solid"><span class="lb"><span>Export</span><span aria-hidden="true">Export</span></span></button><button class="btn btn--solid is-hover">Hover</button><button class="btn btn--solid is-press">Press</button><button class="btn btn--solid" disabled>Disabled</button></div>
+      <div class="demo" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="btn btn--soft">Soft</button><button class="btn btn--outline">Outline</button><button class="btn btn--outline btn--sm">Reject</button><button class="btn btn--solid btn--sm">Accept</button></div>
+      <ul><li>Shipped button family (buttons-motion.html): 36px high, 16px side padding, radius 10, Suisse Intl 500 15px, no letter-spacing. Small: 30px, 12px padding, radius 8, 13.5px. Export is label only, no icon.</li><li>Solid: #D93A0B · hover #B32E08 · press #9C2706 · disabled #ECAB97 with white text (no opacity trick). Soft #E7E4E0 / #DEDAD5 / #D3CEC8. Outline: transparent + inset 1px #D6D0CA line. No drop shadow, no ring, no gradient.</li><li>Motion: hover label swap (240ms spring), press scale(.96) + press color (90ms), spring release (220ms).</li><li>Disabled until at least one page finished OCR. Goes to page 3.</li><li>The #F94612→#FA683D gradient is for labels 19px+ bold (Start OCR, Download PDF).</li></ul></div>
     <div class="card"><h4>Page badges</h4><div class="demo flow"><span class="pill pill--ok is-current"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>P1 · clean</span><span class="pill pill--warn"><span class="dot"></span>P2 · 3 doubt</span></div>
       <ul><li>Flat state pill at 26px: radius 7, padding 0 9, gap 6, Suisse Intl 500 12.5px, tinted bg, no shadow, no border.</li><li>Label = page number + state word. Icon shape changes per state so color is never alone.</li><li>Current page: 1px inset ring in the pill's own text color. Click = jump; keyboard 1-9 optional.</li><li>More than 8 pages: show 7 + "+N" outline pill that opens a page list popover.</li></ul></div>
     <div class="card"><h4>Offline badge</h4><div class="demo"><span class="offline"><span class="dot"></span>Offline</span></div>
@@ -549,7 +573,9 @@ footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--pc-color-bord
   <p class="sec-p">The editor subset. Everything else stays as in color-system v2. New tokens are marked.</p>
 <pre class="tokens">:root {
   /* brand */           --pc-color-primary:#F94612; --pc-color-primary-gradient-end:#FA683D;
-                        --pc-color-primary-solid:#D93A0B; --pc-color-primary-active:#B32E08; --pc-color-primary-soft:#FFF4EF;
+                        --pc-color-primary-solid:#D93A0B; --pc-color-primary-active:#B32E08; --pc-color-primary-press:#9C2706; --pc-color-primary-disabled:#ECAB97; /* new */
+                        --pc-color-soft:#E7E4E0; --pc-color-soft-hover:#DEDAD5; --pc-color-soft-press:#D3CEC8; /* new: soft button */
+                        --pc-shadow-outline-btn: inset 0 0 0 1px #D6D0CA;    /* new: outline button line */ --pc-color-primary-soft:#FFF4EF;
                         --pc-gradient-destructive: linear-gradient(180deg,#E36323,#DF5A18); --pc-color-destructive-solid:#C4380C;
   /* confidence */      --pc-color-conf-auto:#0B7A55; --pc-color-conf-ok:#1F5FAE; --pc-color-conf-doubt:#7A5200;
                         --pc-color-conf-doubt-bg:#FFE27A; --pc-color-conf-doubt-line:#A86A00;           /* line: new */
@@ -565,13 +591,19 @@ footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--pc-color-bord
                         --pc-font-tamil:"Noto Sans Tamil","Latha","Tamil Sangam MN",sans-serif;
                         --pc-font-mono:Menlo,"JetBrains Mono",monospace;
                         --pc-font-code:Menlo,"JetBrains Mono",monospace;   /* repo tokens.css says "Mendel": fix */
+                        --pc-font-button:"Suisse Intl Trial","Suisse Intl","Helvetica Neue",Helvetica,Arial,sans-serif; /* new */
+  /* buttons (new) */   --pc-btn-h:36px; --pc-btn-pad-x:16px; --pc-btn-sm-h:30px; --pc-btn-sm-pad-x:12px; --pc-btn-icon:16px;
+                        --pc-fs-btn:15px; --pc-fs-btn-sm:13.5px;   /* weight 500 */
   /* layout (new) */    --pc-topbar-h:52px; --pc-scan-w:580px; --pc-text-w:506px; --pc-rail-w:280px;
-  /* radius */          --pc-radius-word:3px; --pc-radius-sm:6px; --pc-radius-control:8px; --pc-radius-panel:10px;
+  /* radius */          --pc-radius-word:3px; --pc-radius-sm:6px; --pc-radius-control:8px; --pc-radius-btn:10px; --pc-radius-btn-sm:8px; /* new */ --pc-radius-panel:10px;
   /* elevation */       --pc-hairline: 1px solid #E6E2DE;
                         --pc-shadow-sm: 0 1px 2px #1E1A180F;        /* the ONLY shadow: popup, toast, toggle thumb */
   /* doubt text fill */ --pc-color-conf-doubt-soft:#FFF1B8;       /* new */
   /* motion */          --pc-motion-fast:100ms; --pc-motion-base:160ms; --pc-motion-slow:200ms;
+                        --pc-motion-press:90ms; --pc-motion-release:220ms; --pc-motion-color:150ms; --pc-motion-hover:240ms; --pc-motion-toggle:260ms; /* new */
                         --pc-ease-out: cubic-bezier(.23,1,.32,1);
+                        --pc-ease-spring: cubic-bezier(.34,1.36,.64,1); --pc-ease-in-out: cubic-bezier(.65,0,.35,1); /* new */
+                        --pc-scale-press:.96; --pc-scale-press-sm:.97; /* new */
 }</pre>
 </section>
 
@@ -599,6 +631,17 @@ footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--pc-color-bord
     <li><div><b>Unblock HEAVY OCR</b><p>Resend the Baidu SMS code, or switch to the fallback (Novita paddleocr-vl or precomputed pages).</p></div></li>
     <li><div><b>H6: ui-integration</b><p>Flip <code>USE_MOCK=false</code>, then H8.5 freeze + tag <code>demo-v1</code>.</p></div></li>
   </ol>
+</section>
+
+<!-- ======================= 10 CHANGELOG ======================= -->
+<section>
+  <div class="sec-h"><span class="sec-n">10</span><h2 class="h2">Changelog</h2></div>
+  <table class="spec">
+    <tr><th>Date</th><th>Change</th></tr>
+    <tr><td>Sep 23, 2026 (v2.2)</td><td>Buttons synced to the shipped system (buttons-motion.html, editor re-skin): labels Suisse Intl 500 15px (was 700 16px), 13.5px small (was 14px). Radius 10, small 8 (was 9). Unified solid / soft / outline / ghost family. Solid adds press #9C2706 on top of hover #B32E08 and disabled #ECAB97; soft #E7E4E0 / #DEDAD5 / #D3CEC8; outline is an inset 1px #D6D0CA line. Motion tokens added: press 90ms, release 220ms spring, color 150ms, hover label swap 240ms spring, toggle 260ms spring, press scale .96 (.97 small). Button tokens added to 08.</td></tr>
+    <tr><td>Sep 23, 2026 (v2.1)</td><td>Buttons from the user's reference: 36px, radius 9, bold 16px, disabled #ECAB97, Suisse-only button stack (never Satoshi).</td></tr>
+    <tr><td>Sep 23, 2026 (v2)</td><td>Tamil body 15px, flat elevation (hairline + one faint shadow), Suisse Intl UI font.</td></tr>
+  </table>
 </section>
 
 <footer>Pink Cloud · correction editor spec · built Sep 23, 2026 from repo muffedd/Pinkcloud---TamilOCR (color-system v2, layout plan, schema) and today's component files. Self-contained: embedded CSS, no JS, no CDNs. Fonts expected in ./fonts/.</footer>

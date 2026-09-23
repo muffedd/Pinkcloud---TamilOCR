@@ -27,7 +27,10 @@ Brand
   --pc-color-primary-gradient-end: #FA683D
   --pc-gradient-primary: linear-gradient(180deg, #F94612, #FA683D)   /* only for bold labels of 19px or more */
   --pc-color-primary-solid: #D93A0B      /* compact buttons: white text 4.6:1 */
-  --pc-color-primary-active: #B32E08     /* hover of solid, pressed */
+  --pc-color-primary-active: #B32E08     /* hover of solid */
+  --pc-color-primary-press: #9C2706      /* pressed solid (new) */
+  --pc-color-primary-disabled: #ECAB97   /* disabled solid button bg, white text (new) */
+  --pc-color-soft: #E7E4E0  --pc-color-soft-hover: #DEDAD5  --pc-color-soft-press: #D3CEC8   /* soft button (new) */
   --pc-color-primary-soft: #FFF4EF
   --pc-color-primary-soft-border: #FFC9B3
   --pc-gradient-destructive: linear-gradient(180deg, #E36323, #DF5A18)
@@ -64,14 +67,22 @@ Heatmap
 Spacing (8px scale)
   --pc-space-1: 4px  --pc-space-2: 8px  --pc-space-3: 12px  --pc-space-4: 16px  --pc-space-6: 24px  --pc-space-8: 32px  --pc-space-12: 48px
 Radius
-  --pc-radius-word: 3px  --pc-radius-sm: 6px  --pc-radius-pill-state: 9px  --pc-radius-control: 8px  --pc-radius-panel: 10px  --pc-radius-full: 999px
+  --pc-radius-word: 3px  --pc-radius-sm: 6px  --pc-radius-pill-state: 9px  --pc-radius-control: 8px  --pc-radius-btn: 10px  --pc-radius-btn-sm: 8px  --pc-radius-panel: 10px  --pc-radius-full: 999px
 Elevation (the whole set - remove shadow-btn, shadow-panel, shadow-pop, shadow-toggle-track and shadow-toggle-thumb if they exist)
   --pc-hairline: 1px solid #E6E2DE          panes, popup, outline button, Precomputed pill
   --pc-shadow-sm: 0 1px 2px #1E1A180F       ONLY on: fix popup, toast, toggle thumb
+  --pc-shadow-outline-btn: inset 0 0 0 1px #D6D0CA   outline button line (an inset line, not a drop shadow)
+Buttons
+  --pc-btn-h: 36px  --pc-btn-pad-x: 16px  --pc-btn-sm-h: 30px  --pc-btn-sm-pad-x: 12px  --pc-btn-icon: 16px
+  --pc-fs-btn: 15px  --pc-fs-btn-sm: 13.5px   (weight 500)
 Motion
   --pc-motion-fast: 100ms  --pc-motion-base: 160ms  --pc-motion-slow: 200ms
+  --pc-motion-press: 90ms  --pc-motion-release: 220ms  --pc-motion-color: 150ms  --pc-motion-hover: 240ms  --pc-motion-toggle: 260ms
   --pc-ease-out: cubic-bezier(.23,1,.32,1)
-  Highlights and provenance flips are instant. Animate only: button press (transform scale(.97), 100ms), toggle thumb slide (160ms), popup enter (opacity 0 + scale(.96) -> 1, 160ms, transform-origin at the active word), toast enter (opacity + translateY(6px), 200ms). All use --pc-ease-out. Respect prefers-reduced-motion (no transforms).
+  --pc-ease-spring: cubic-bezier(.34,1.36,.64,1)
+  --pc-ease-in-out: cubic-bezier(.65,0,.35,1)
+  --pc-scale-press: .96  --pc-scale-press-sm: .97
+  Highlights and provenance flips are instant. Animate only: button hover (fill color 150ms ease-out + label swap 240ms spring), button press (scale(.96), .97 on small, + press color, 90ms ease-out; release springs back 220ms), toggle thumb slide (260ms spring), popup enter (opacity 0 + scale(.96) -> 1, 160ms ease-out, transform-origin at the active word), toast enter (opacity + translateY(6px), 200ms ease-out). Respect prefers-reduced-motion (no transforms, no label swap; keep color changes).
 Layout
   --pc-topbar-h: 52px  --pc-scan-w: 580px  --pc-text-w: 506px  --pc-rail-w: 280px
 
@@ -83,13 +94,14 @@ Stacks
   --pc-font-sans: "Suisse Intl Trial", "Suisse Intl", "Satoshi", -apple-system, system-ui, sans-serif
   --pc-font-tamil: "Noto Sans Tamil", "Latha", "Tamil Sangam MN", sans-serif
   --pc-font-mono: Menlo, "JetBrains Mono", monospace
+  --pc-font-button: "Suisse Intl Trial", "Suisse Intl", "Helvetica Neue", Helvetica, Arial, sans-serif   (buttons only; the user rejected Satoshi in buttons)
   --pc-font-code: Menlo, "JetBrains Mono", monospace   (the repo tokens.css says "Mendel" here - that is wrong, replace it)
 Roles (font / weight / size / line-height / tracking)
   .tamil-editor   Noto Sans Tamil 400, 15px / 1.8, 0           text pane words
   .tamil-h        Noto Sans Tamil 600, 16px / 1.5, 0           popup preview word
   .tamil-row      Noto Sans Tamil 500, 13px / 1.5, 0           queue rows
   .pane-title     Suisse Intl 700, 13px / 1, 0.01em                pane headers
-  .button         Suisse Intl 700, 14px / 20px, 0.01em             Export, Accept, Reject
+  .button         Suisse Intl 500, 15px / 1, 0 (13.5px in .btn--sm)  Export, Accept, Reject. Uses --pc-font-button, never Satoshi
   .small          Suisse Intl 500, 12-13px / 1.45, 0.01em          metadata, legend, toast
   .eyebrow        Suisse Intl 700, 11px / 1, 0.10em, uppercase     "FIX WORD"
   .h3             Suisse Intl 700, 20px / 1.25, -0.01em            empty states
@@ -151,12 +163,24 @@ No modals. No drawers. Transient UI is only the fix popup and the toast.
 4. COMPONENTS (ui.css)
 ----------------------------------------------------------------
 4.1 Buttons
-  .btn: inline-flex, gap 8px, height 34px, padding 0 16px, radius 8px, border 0, .button type, white text. Flat: no shadow, no gradient, no inset highlight. transition: transform 100ms --pc-ease-out, background-color 100ms.
-  .btn--solid (Export, Accept): bg --pc-color-primary-solid, no shadow. Hover bg #B32E08. Pressed (:active): transform scale(.97). Disabled: opacity 0.4, no pointer events. :focus-visible: 2px solid #F94612 outline, 2px offset.
-  Export label: "Export" only, no icon.
-  .btn--sm: height 30px, padding 0 12px, 13px text, radius 8px.
-  .btn--outline (Reject): bg surface, text-primary, border --pc-hairline, no shadow. Hover bg --pc-color-bg-hover.
-  .btn--ghost: transparent, text-secondary.
+  One family, one motion (same as design system/components/buttons-motion.html). Flat: no drop shadow, no gradient, no inset highlight, no border.
+  .btn: inline-flex, center aligned, gap 8px, height 36px, padding 0 16px, radius 10px (--pc-radius-btn), border 0, .button type (Suisse Intl 500 15px, no letter-spacing), overflow hidden. Drive colors with local vars --btn-bg / --btn-bg-hover / --btn-bg-press / --btn-fg so every variant shares the same rules.
+    Rest transition: transform 220ms --pc-ease-spring, background-color and color 150ms --pc-ease-out.
+    Hover (only inside @media (hover: hover) and (pointer: fine)): bg -> --btn-bg-hover.
+    Pressed (:active): transform scale(.96) + bg -> --btn-bg-press, transition 90ms --pc-ease-out. On release it springs back (the rest transition).
+    :focus-visible: 2px solid #F94612 outline, 2px offset.
+    Label swap (hover motion): wrap the label as <span class="lb"><span>Export</span><span aria-hidden="true">Export</span></span>. .lb is inline-grid, both spans in grid-area 1/1, transform transition 240ms --pc-ease-spring. The twin starts translateX(calc(100% + 16px + 2px)); on hover the first slides to translateX(calc(-100% - 18px)) and the twin to 0.
+  .btn--solid (Export, Accept), white text:
+      default  bg #D93A0B (--pc-color-primary-solid)
+      hover    bg #B32E08 (--pc-color-primary-active)
+      press    bg #9C2706 (--pc-color-primary-press)
+      disabled bg #ECAB97 (--pc-color-primary-disabled), text stays #FFFFFF, cursor not-allowed, pointer-events none, no transform, no opacity. Use the real disabled attribute.
+  .btn--soft: bg #E7E4E0, hover #DEDAD5, press #D3CEC8, text-primary. Disabled: bg --pc-color-bg-hover, text-disabled.
+  .btn--outline (Reject): transparent bg, text-primary, box-shadow --pc-shadow-outline-btn (inset 1px #D6D0CA line). Hover bg --pc-color-bg-hover, press bg #E7E4E0.
+  .btn--ghost: transparent, text-secondary. Hover bg --pc-color-bg-hover, press bg #E7E4E0.
+  .btn--sm: height 30px, padding 0 12px, 13.5px text, radius 8px (--pc-radius-btn-sm), press scale(.97). Same colors and states.
+  Export label: "Export" only, no icon, wrapped for the label swap.
+  prefers-reduced-motion: no scale, no label swap (hide the twin); keep the color change.
   Use --pc-gradient-primary only for bold labels of 19px or more (Start OCR on page 1, Download PDF on page 3). It is never used on the editor page.
 
 4.2 State pill (OCR and repair job status, page badges)
@@ -175,7 +199,7 @@ No modals. No drawers. Transient UI is only the fix popup and the toast.
 4.3 Segmented toggle (Auto/Review, Plain/Heatmap, Lens) - flat
   Track: inline-grid, 2 equal columns, height 36px, padding 3px, radius 8px, bg --pc-color-bg-hover (#F1EEEB), no shadow, no inset.
   Option: Suisse Intl 500 13px, text-secondary, padding 0 14px.
-  Active option (thumb): text-primary, flat bg #FFFFFF, radius 6px, box-shadow --pc-shadow-sm, no border, no gradient, no text-shadow. The thumb slides 160ms --pc-ease-out.
+  Active option (thumb): text-primary, flat bg #FFFFFF, radius 6px, box-shadow --pc-shadow-sm, no border, no gradient, no text-shadow. The thumb slides 260ms --pc-ease-spring (--pc-motion-toggle).
   Small size (pane headers): height 28px, padding 2px, 12px text, padding 0 10px.
   Build it as a radio group: arrow keys move, and it must work with the keyboard.
 
@@ -278,3 +302,10 @@ Rules for rendering:
 - Keep all key actions above y = 640 on a 1366 x 768 screen.
 - Work on branch slice/ui-editor-core. Run scripts/smoke.sh before you finish, if it exists.
 - Finish by adding 4 lines to the end of docs/handoff.md: what works, how to test, files touched, known gaps.
+
+----------------------------------------------------------------
+CHANGELOG
+----------------------------------------------------------------
+- Sep 23, 2026 (v2.2): buttons synced to the shipped system (buttons-motion.html + editor re-skin). Labels Suisse Intl 500 15px (was 700 16px), small 13.5px (was 14px). Radius 10, small 8 (was 9). One solid / soft / outline / ghost family; solid adds press #9C2706; soft #E7E4E0 / #DEDAD5 / #D3CEC8; outline is an inset 1px #D6D0CA line. New motion tokens: press 90ms, release 220ms spring, color 150ms, hover label swap 240ms spring, toggle thumb 260ms spring, press scale .96 (.97 small). Button size tokens added.
+- Sep 23, 2026 (v2.1): buttons from the user's reference (36px, radius 9, bold 16px, disabled #ECAB97, Suisse-only button stack).
+- Sep 23, 2026 (v2): Tamil body 15px, flat elevation, Suisse Intl UI font.
