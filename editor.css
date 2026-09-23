@@ -1,0 +1,392 @@
+/* Pink Cloud correction editor — page layout only.
+   Components live in ui.css; values come only from tokens.css. */
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--pc-color-bg-canvas);
+  color: var(--pc-color-text-primary);
+  font-family: var(--pc-font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* ---------- App frame: 52px top bar + 3 fixed panes ---------- */
+.app {
+  display: grid;
+  grid-template-rows: var(--pc-topbar-h) 1fr;
+  height: 100vh;
+  min-width: calc(var(--pc-scan-w) + var(--pc-text-w) + var(--pc-rail-w));
+}
+
+.panes {
+  display: grid;
+  grid-template-columns: var(--pc-scan-w) var(--pc-text-w) var(--pc-rail-w);
+  justify-content: center;
+  min-height: 0;
+}
+
+.pane {
+  display: grid;
+  grid-template-rows: var(--pc-pane-head-h) 1fr auto;
+  min-height: 0;
+  min-width: 0;
+  background: var(--pc-color-bg-surface);
+}
+
+.pane + .pane {
+  border-left: 1px solid var(--pc-color-border-subtle);
+}
+
+/* ---------- Pane headers (all 3 panes) ---------- */
+.pane-head {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-gap-10);
+  height: var(--pc-pane-head-h);
+  padding: 0 var(--pc-space-3) 0 14px;
+  background: var(--pc-color-bg-subtle);
+  border-bottom: 1px solid var(--pc-color-border-subtle);
+}
+
+.pane-head .spacer {
+  flex: 1;
+}
+
+/* ---------- Top bar ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-3);
+  height: var(--pc-topbar-h);
+  padding: 0 var(--pc-space-4);
+  background: var(--pc-color-bg-surface);
+  border-bottom: 1px solid var(--pc-color-border-subtle);
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pc-space-2);
+  font-family: var(--pc-font-sans);
+  font-weight: 700;
+  font-size: var(--pc-fs-wordmark);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--pc-color-primary-solid);
+  white-space: nowrap;
+}
+
+.logo-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--pc-logo-tile);
+  height: var(--pc-logo-tile);
+  border-radius: var(--pc-logo-radius);
+  background: var(--pc-gradient-primary);
+  box-shadow: var(--pc-shadow-logo);
+}
+
+.logo-tile svg {
+  width: 14px;
+  height: 14px;
+  color: var(--pc-color-on-primary);
+}
+
+.page-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-2);
+}
+
+.topbar .spacer {
+  flex: 1;
+}
+
+.offline-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pc-space-2);
+  font-family: var(--pc-font-sans);
+  font-weight: 500;
+  font-size: var(--pc-fs-seg);
+  line-height: 1.45;
+  color: var(--pc-color-text-secondary);
+  white-space: nowrap;
+}
+
+.offline-badge .pdot {
+  width: var(--pc-offline-dot);
+  height: var(--pc-offline-dot);
+  border-radius: 50%;
+  background: var(--pc-color-success);
+  flex: none;
+}
+
+/* ---------- Scan pane ---------- */
+.scan-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--pc-color-scan-viewer-bg);
+}
+
+.viewer {
+  position: relative;
+  padding: var(--pc-viewer-pad);
+}
+
+.paper {
+  position: relative;
+  width: 100%;
+  border-radius: var(--pc-radius-box);
+  background: linear-gradient(180deg, var(--pc-color-paper-top), var(--pc-color-paper-bottom));
+  box-shadow: var(--pc-shadow-scan);
+  overflow: hidden;
+}
+
+.paper-line {
+  position: absolute;
+  overflow: hidden;
+  font-family: var(--pc-font-tamil);
+  font-weight: 400;
+  font-size: 18px;
+  line-height: 1.7;
+  letter-spacing: 0;
+  color: var(--pc-color-text-primary);
+  white-space: nowrap;
+}
+
+.scan-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.box {
+  position: absolute;
+  border-radius: var(--pc-radius-box);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.box-region {
+  border: 1px dashed var(--pc-color-scan-region-stroke);
+  visibility: hidden;
+}
+
+.box-region.show {
+  visibility: visible;
+}
+
+.box-auto {
+  border: 1px solid var(--pc-color-scan-auto-stroke);
+  background: var(--pc-color-scan-auto-fill);
+}
+
+.box-doubt {
+  border: 1.5px solid var(--pc-color-scan-doubt-stroke);
+  background: var(--pc-color-scan-doubt-fill);
+}
+
+.box-doubt.hide-fill {
+  background: transparent;
+}
+
+.box-heat {
+  border: 1px solid var(--pc-color-heat-edge);
+}
+
+.box-heat.heat-auto { background: var(--pc-heat-auto); border-color: transparent; }
+.box-heat.heat-ok { background: var(--pc-heat-ok); border-color: transparent; }
+.box-heat.heat-doubt { background: var(--pc-heat-doubt); }
+
+.box-hover {
+  border: 1.5px solid var(--pc-color-scan-hover-stroke);
+  background: var(--pc-color-scan-hover-fill);
+}
+
+.box-active {
+  border: 2px solid var(--pc-color-scan-active-stroke);
+  background: var(--pc-color-scan-active-fill);
+}
+
+.heat-legend {
+  position: absolute;
+  left: var(--pc-space-3);
+  bottom: var(--pc-space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-2);
+  padding: var(--pc-space-1) var(--pc-space-2);
+  border-radius: var(--pc-radius-sm);
+  background: var(--pc-color-bg-surface);
+  box-shadow: var(--pc-shadow-panel);
+  font-family: var(--pc-font-sans);
+  font-weight: 500;
+  font-size: var(--pc-fs-small);
+  color: var(--pc-color-text-secondary);
+}
+
+.heat-legend[hidden] {
+  display: none;
+}
+
+.heat-legend i {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  font-style: normal;
+}
+
+.heat-legend .h-auto { background: var(--pc-color-conf-auto); }
+.heat-legend .h-ok { background: var(--pc-color-conf-ok); }
+.heat-legend .h-doubt { background: var(--pc-color-conf-doubt); }
+
+/* ---------- Text pane ---------- */
+.text-scroll {
+  position: relative;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--pc-color-bg-surface);
+}
+
+.text-body {
+  position: relative;
+  padding: var(--pc-text-pad);
+  color: var(--pc-color-text-primary);
+}
+
+.tline {
+  display: grid;
+  grid-template-columns: var(--pc-gutter-w) 1fr;
+  gap: var(--pc-space-2);
+  margin-bottom: var(--pc-space-4);
+}
+
+.tline:last-child {
+  margin-bottom: 0;
+}
+
+.lid {
+  padding-top: 0.55em;
+  font-family: var(--pc-font-mono);
+  font-weight: 400;
+  font-size: var(--pc-fs-code);
+  line-height: 1.45;
+  color: var(--pc-color-text-disabled);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.twords {
+  min-width: 0;
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-gap-14);
+  flex-wrap: wrap;
+  padding: var(--pc-legend-pad);
+  background: var(--pc-color-bg-subtle);
+  border-top: 1px solid var(--pc-color-border-subtle);
+  font-family: var(--pc-font-sans);
+  font-weight: 500;
+  font-size: var(--pc-fs-small);
+  line-height: 1.45;
+  color: var(--pc-color-text-secondary);
+}
+
+/* ---------- Review rail ---------- */
+.pane-rail {
+  grid-template-rows: var(--pc-pane-head-h) auto minmax(0, 1fr) auto auto;
+}
+
+.legend .w {
+  cursor: default;
+}
+
+.rail-sub {
+  padding: var(--pc-rail-sub-pad);
+  border-bottom: 1px solid var(--pc-color-border-subtle);
+  background: var(--pc-color-bg-surface);
+}
+
+.rail-sub p {
+  margin-bottom: var(--pc-space-2);
+  font-family: var(--pc-font-sans);
+  font-weight: 500;
+  font-size: var(--pc-fs-sub);
+  line-height: 1.45;
+  color: var(--pc-color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.queue {
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--pc-color-bg-surface);
+}
+
+.queue-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--pc-space-2);
+  padding: var(--pc-space-8) var(--pc-space-4);
+  text-align: center;
+}
+
+.queue-empty[hidden] {
+  display: none;
+}
+
+.empty-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--pc-color-success-bg);
+  color: var(--pc-color-success);
+}
+
+.empty-check svg {
+  width: 18px;
+  height: 18px;
+}
+
+.queue-empty p {
+  font-family: var(--pc-font-sans);
+  font-weight: 500;
+  font-size: var(--pc-fs-empty);
+  line-height: 1.45;
+  color: var(--pc-color-text-secondary);
+}
+
+.rail-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-gap-10);
+  padding: var(--pc-rail-foot-pad);
+  background: var(--pc-color-bg-subtle);
+  border-top: 1px solid var(--pc-color-border-subtle);
+  font-family: var(--pc-font-sans);
+  font-weight: 500;
+  font-size: var(--pc-fs-small);
+  line-height: 1.45;
+  color: var(--pc-color-text-secondary);
+}
+
+.rail-foot .hint {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pc-space-1);
+  white-space: nowrap;
+}

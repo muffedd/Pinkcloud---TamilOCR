@@ -1,0 +1,222 @@
+/* Pink Cloud design tokens — single source of truth.
+   No other file may hard-code a color, size, radius, shadow or duration. */
+
+:root {
+  /* ---------- Brand ---------- */
+  --pc-color-primary: #F94612;
+  --pc-color-primary-gradient-end: #FA683D;
+  --pc-gradient-primary: linear-gradient(180deg, #F94612, #FA683D);
+  --pc-color-primary-solid: #D93A0B;
+  --pc-color-primary-active: #B32E08;
+  --pc-color-primary-soft: #FFF4EF;
+  --pc-color-primary-soft-border: #FFC9B3;
+  --pc-gradient-destructive: linear-gradient(180deg, #E36323, #DF5A18);
+  --pc-color-destructive-solid: #C4380C;
+  --pc-color-focus-ring: #F94612;
+  --pc-color-on-primary: #FFFFFF;
+  --pc-color-button-outline: #0000001A;
+
+  /* ---------- Neutrals ---------- */
+  --pc-color-bg-canvas: #FDFCFB;
+  --pc-color-bg-surface: #FFFFFF;
+  --pc-color-bg-subtle: #F8F6F4;
+  --pc-color-bg-hover: #F1EEEB;
+  --pc-color-border-subtle: #E6E2DE;
+  --pc-color-border: #D2CCC6;
+  --pc-color-border-strong: #ADA69F;
+  --pc-color-text-primary: #1E1A18;
+  --pc-color-text-secondary: #655E58;
+  --pc-color-text-disabled: #8A827B;
+  --pc-color-inverse: #312C29;
+
+  /* ---------- Confidence ---------- */
+  --pc-color-conf-auto: #0B7A55;
+  --pc-color-conf-auto-bg: #DDF3EA;
+  --pc-color-conf-ok: #1F5FAE;
+  --pc-color-conf-ok-bg: #E3EDFA;
+  --pc-color-conf-doubt: #7A5200;
+  --pc-color-conf-doubt-bg: #FFE27A;
+  --pc-color-conf-doubt-line: #A86A00;
+  --pc-conf-auto-min: 0.90;
+  --pc-conf-ok-min: 0.75;
+
+  /* ---------- Provenance ---------- */
+  --pc-color-prov-raw: #9A948F;
+  --pc-color-prov-rule: #1A4E96;
+  --pc-color-prov-swap: #006D63;
+  --pc-color-prov-llm: #8A5A2B;
+  --pc-color-prov-human: #D93A0B;
+
+  /* ---------- Semantic ---------- */
+  --pc-color-success: #17754A;
+  --pc-color-success-bg: #E6F4EC;
+  --pc-color-warning: #8F5200;
+  --pc-color-warning-bg: #FFF3D6;
+  --pc-color-error: #BE123C;
+  --pc-color-error-bg: #FDECEF;
+  --pc-color-info: #1F5FAE;
+  --pc-color-info-bg: #E7F0FB;
+  --pc-color-toast-check: #7FD4A8;
+
+  /* ---------- Scan boxes ---------- */
+  --pc-color-scan-viewer-bg: #312C29;
+  --pc-color-scan-region-stroke: #7F7A76;
+  --pc-color-scan-auto-stroke: #0B7A55;
+  --pc-color-scan-auto-fill: #0B7A551A;
+  --pc-color-scan-doubt-stroke: #A86A00;
+  --pc-color-scan-doubt-fill: #FFD23D4D;
+  --pc-color-scan-hover-stroke: #1F5FAE;
+  --pc-color-scan-hover-fill: #1F5FAE1F;
+  --pc-color-scan-active-stroke: #D93A0B;
+  --pc-color-scan-active-fill: #F9461224;
+  --pc-color-paper-top: #F1E6D1;
+  --pc-color-paper-bottom: #EADCC2;
+
+  /* ---------- Heatmap ---------- */
+  --pc-heat-auto: #0B7A5514;
+  --pc-heat-ok: #1F5FAE29;
+  --pc-heat-doubt: #FFD23D66;
+  --pc-color-heat-edge: #A86A0066;
+
+  /* ---------- Toggle ---------- */
+  --pc-color-toggle-track: #ECECEC;
+  --pc-gradient-toggle-thumb: linear-gradient(180deg, #FFFFFF, #F3F3F3);
+  --pc-color-toggle-thumb-border: #FFFFFF;
+  --pc-shadow-toggle-text: 0 1px 0 #E1E1E1B3;
+
+  /* ---------- Input ---------- */
+  --pc-shadow-input: 0 0 0 3px #F9461226;
+
+  /* ---------- Spacing (8px scale) ---------- */
+  --pc-space-1: 4px;
+  --pc-space-2: 8px;
+  --pc-space-3: 12px;
+  --pc-space-4: 16px;
+  --pc-space-6: 24px;
+  --pc-space-8: 32px;
+  --pc-space-12: 48px;
+
+  /* ---------- Gaps (off-scale micro gaps) ---------- */
+  --pc-gap-6: 6px;
+  --pc-gap-9: 9px;
+  --pc-gap-10: 10px;
+  --pc-gap-14: 14px;
+  --pc-pop-arrow: 12px;
+  --pc-color-row-divider: #F1EEEB;
+
+  /* ---------- Radius ---------- */
+  --pc-radius-word: 3px;
+  --pc-radius-box: 2px;
+  --pc-radius-bar: 2px;
+  --pc-radius-chip: 5px;
+  --pc-radius-sm: 6px;
+  --pc-radius-input: 8px;
+  --pc-radius-pill-state: 9px;
+  --pc-radius-panel: 10px;
+  --pc-radius-btn: 11px;
+  --pc-radius-pop: 12px;
+  --pc-radius-full: 999px;
+
+  /* ---------- Shadows ---------- */
+  --pc-shadow-btn: inset 0 1px 0 #FFFFFF54, 0 3px 4px -1px #FC6010F2, 0 0 0 1px #B32E08;
+  --pc-shadow-panel: 0 1px 2px #1018280D;
+  --pc-shadow-pop: 0 12px 24px -6px #1E1A1829, 0 2px 6px #1E1A1814;
+  --pc-shadow-toggle-track: inset 0 2px 3px #0000000D;
+  --pc-shadow-toggle-thumb: 0 3px 7px -2px #B3B3B3;
+  --pc-shadow-logo: inset 0 1px 0 #FFFFFF54;
+  --pc-shadow-badge-current: 0 0 0 2px #1E1A18;
+  --pc-shadow-kbd: 0 0 0 1px #D2CCC6, 0 1px 0 #D2CCC6;
+  --pc-shadow-outline-btn: 0 0 0 1px #0000001A, 0 1px 2px #1018280D;
+  --pc-shadow-pill: 0 1px 2px #1018280D;
+  --pc-shadow-scan: 0 8px 24px #0000004D;
+
+  /* ---------- Motion (only scrolling + toggle thumb animate) ---------- */
+  --pc-motion-fast: 100ms;
+  --pc-motion-base: 160ms;
+  --pc-motion-slow: 240ms;
+  --pc-toast-duration: 2400ms;
+
+  /* ---------- Layout ---------- */
+  --pc-topbar-h: 52px;
+  --pc-scan-w: 580px;
+  --pc-text-w: 506px;
+  --pc-rail-w: 280px;
+  --pc-pane-head-h: 44px;
+  --pc-viewer-pad: 22px 30px;
+  --pc-text-pad: 24px 28px;
+  --pc-legend-pad: 10px 14px;
+  --pc-rail-sub-pad: 14px 14px 10px;
+  --pc-rail-row-pad: 8px 14px 8px 10px;
+  --pc-rail-foot-pad: 10px 14px;
+  --pc-popup-w: 300px;
+  --pc-popup-pad: 14px;
+  --pc-toast-bottom: 60px;
+  --pc-toast-pad: 10px 14px;
+  --pc-gutter-w: 30px;
+  --pc-progress-h: 6px;
+  --pc-rail-bar-w: 4px;
+  --pc-rail-bar-h: 30px;
+  --pc-chip-pad: 4px 6px;
+  --pc-kbd-min: 22px;
+  --pc-kbd-pad: 0 6px;
+  --pc-box-pad: 3px;
+  --pc-logo-tile: 22px;
+  --pc-logo-radius: 7px;
+  --pc-offline-dot: 7px;
+  --pc-pill-dot: 7px;
+  --pc-pill-icon: 18px;
+  --pc-pill-bar-dot: 6px;
+  --pc-pill-bar-icon: 14px;
+  --pc-prov-dot: 6px;
+
+  /* ---------- Buttons / pills / toggles / inputs ---------- */
+  --pc-btn-h: 36px;
+  --pc-btn-pad: 0 16px;
+  --pc-btn-icon: 16px;
+  --pc-btn-sm-h: 30px;
+  --pc-btn-sm-pad: 0 12px;
+  --pc-pill-h: 34px;
+  --pc-pill-pad: 0 12px;
+  --pc-pill-bar-h: 26px;
+  --pc-pill-bar-pad: 0 9px;
+  --pc-seg-h: 36px;
+  --pc-seg-pad: 3px;
+  --pc-seg-opt-pad: 0 14px;
+  --pc-seg-sm-h: 28px;
+  --pc-seg-sm-pad: 2px;
+  --pc-seg-sm-opt-pad: 0 10px;
+  --pc-input-h: 36px;
+  --pc-prov-chip-h: 22px;
+  --pc-prov-chip-pad: 0 8px;
+  --pc-warn-pill-h: 22px;
+  --pc-warn-pill-pad: 0 8px;
+
+  /* ---------- Type sizes ---------- */
+  --pc-fs-wordmark: 20px;
+  --pc-fs-pane-title: 13px;
+  --pc-fs-sub: 12px;
+  --pc-fs-btn: 14px;
+  --pc-fs-btn-sm: 13px;
+  --pc-fs-small: 12px;
+  --pc-fs-toast: 13px;
+  --pc-fs-eyebrow: 11px;
+  --pc-fs-h3: 20px;
+  --pc-fs-code: 11px;
+  --pc-fs-code-chip: 12px;
+  --pc-fs-tamil-editor: 20px;
+  --pc-fs-tamil-h: 24px;
+  --pc-fs-tamil-row: 16px;
+  --pc-fs-tanglish: 14px;
+  --pc-fs-evidence: 12px;
+  --pc-fs-badge-bar: 13px;
+  --pc-fs-seg: 13px;
+  --pc-fs-seg-sm: 12px;
+  --pc-fs-badge-full: 15px;
+  --pc-fs-warn: 12px;
+  --pc-fs-empty: 13px;
+
+  /* ---------- Font stacks ---------- */
+  --pc-font-sans: "Satoshi", -apple-system, "Inter", system-ui, sans-serif;
+  --pc-font-tamil: "Noto Sans Tamil", "Latha", "Tamil Sangam MN", sans-serif;
+  --pc-font-mono: Menlo, "JetBrains Mono", monospace;
+}
