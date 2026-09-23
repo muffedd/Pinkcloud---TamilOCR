@@ -88,3 +88,45 @@ def test_export_endpoints(client, job_id):
 def test_unknown_job_404(client):
     for path in ("receipt", "export.pdf", "export.txt"):
         assert client.get(f"/jobs/{'f' * 32}/{path}").status_code == 404
+
+
+def test_tamil_filename_export_no_500(client):
+    """Non-ASCII upload names must not crash the latin-1 download headers."""
+    img = np.full((400, 600, 3), 235, np.uint8)
+    ok, buf = cv2.imencode(".png", img)
+    r = client.post("/jobs", files={"file": ("தமிழ்.png", buf.tobytes(), "image/png")})
+    assert r.status_code == 200
+    jid = r.json()["job_id"]
+    for path in ("export.txt", "export.pdf"):
+        resp = client.get(f"/jobs/{jid}/{path}")
+        assert resp.status_code == 200
+        cd = resp.headers["content-disposition"]
+        assert 'filename="pinkcloud.' in cd and "filename*=UTF-8''" in cd
+
+
+def test_saved_corrections_applied_to_exports(client):
+    import json
+    import pypdfium2 as pdfium
+    img = np.full((600, 1200, 3), 240, np.uint8)
+    ok, buf = cv2.imencode(".png", img)
+    jid = client.post("/jobs", files={"file": ("c.png", buf.tobytes(), "image/png")}).json()["job_id"]
+    raw, fixed = "வாழறிவன்", TAMIL_WORD
+    page = _page([{"id": "L1", "seq": 1, "body": "கற்றதனால் ஆய " + raw,
+                   "bbox": [100, 100, 1000, 80], "confidence": 0.9}])
+    db.set_result(jid, "done", json.dumps({"pages": [page]}, ensure_ascii=False))
+    cpath = storage.UPLOAD_ROOT / jid / "corrections.json"
+
+    cpath.write_text("{not json", encoding="utf-8")  # malformed -> raw OCR
+    assert raw in client.get(f"/jobs/{jid}/export.txt").text
+
+    cpath.write_text(json.dumps({"corrections": [
+        {"page": 1, "line": "L1", "word": 3, "before": raw, "after": fixed},
+        {"page": 1, "line": "L1", "word": 1, "before": "stale", "after": "X"},  # skipped
+    ]}, ensure_ascii=False), encoding="utf-8")
+    txt = client.get(f"/jobs/{jid}/export.txt").text
+    assert fixed in txt and raw not in txt and "கற்றதனால்" in txt
+    pdf = pdfium.PdfDocument(client.get(f"/jobs/{jid}/export.pdf").content)
+    layer = pdf[0].get_textpage().get_text_range()
+    assert fixed in layer and raw not in layer
+    rc = client.get(f"/jobs/{jid}/receipt").json()
+    assert rc["corrections"]["total"] == 1 and rc["corrections"]["by_tier"] == {"human": 1}
