@@ -166,6 +166,85 @@ function pageImageUrl(jobId, page) {
   return SCAN_IMAGE(jobId, page);
 }
 
+/* ---------------- AI fix + learned-fix dictionary (V4, proposed) ----------------
+   Shapes: schema/ai-fix-contract.md.
+
+   POST /jobs/{job_id}/suggest  {page, line, word, before, context}
+     -> {candidates: [{text, score?, source: "llm"}]}   (503 = AI unavailable)
+   The backend route is not built yet, so suggestWord() answers from a local
+   stub. Flip to the real endpoint with ONE line: */
+var AI_SUGGEST_LIVE = false;
+var SUGGEST = function (id) { return API_BASE + "/jobs/" + encodeURIComponent(id) + "/suggest"; };
+
+function realSuggest(jobId, req) {
+  return fetch(SUGGEST(jobId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req)
+  })
+    .catch(function () { throw ApiError("Backend unreachable (POST suggest)", "down"); })
+    .then(function (res) {
+      if (!res.ok) throw httpError("POST suggest -> " + res.status, res.status);
+      return res.json();
+    });
+}
+
+/* Stub: known demo words map to their reading; otherwise stray vowel signs /
+   viramas at the start of a word and edge punctuation are dropped. No
+   change -> no candidates. ?aifail=1 makes it answer 503 (degradation test). */
+var MOCK_AI = { "வாழறிவன்": "வாலறிவன்", "ழுதல": "முதல", "மென்றோள்": "மென்தோள்" };
+function stubSuggest(jobId, req) {
+  return new Promise(function (resolve, reject) {
+    setTimeout(function () {
+      if (QS.get("aifail") === "1") { reject(httpError("POST suggest -> 503", 503)); return; }
+      var before = String(req.before || "");
+      var text = MOCK_AI[before] ||
+        before.replace(/^[\u0BBE-\u0BCD\u0BD7]+/, "").replace(/^[^\u0B80-\u0BFFA-Za-z0-9]+|[^\u0B80-\u0BFFA-Za-z0-9]+$/g, "");
+      resolve({ candidates: text && text !== before ? [{ text: text, score: 0.88, source: "llm" }] : [] });
+    }, 900);
+  });
+}
+
+function suggestWord(jobId, req) {
+  return AI_SUGGEST_LIVE && jobId && !USE_MOCK ? realSuggest(jobId, req) : stubSuggest(jobId, req);
+}
+
+/* GET /dictionary -> learned OCR word -> fix pairs, across jobs. Accepts
+   {entries: {before: after}} or {entries: [{before, after}]}; returns a plain
+   {before: after} map. Throws ApiError (.status on HTTP errors). */
+var DICTIONARY = API_BASE + "/dictionary";
+function getDictionary() {
+  return fetch(DICTIONARY, { cache: "no-store" })
+    .catch(function () { throw ApiError("Backend unreachable (GET /dictionary)", "down"); })
+    .then(function (res) {
+      if (!res.ok) throw httpError("GET /dictionary -> " + res.status, res.status);
+      return res.json();
+    })
+    .then(function (body) {
+      var e = body && (body.entries || body.dictionary || body);
+      var out = {};
+      if (Array.isArray(e)) {
+        e.forEach(function (x) { if (x && x.before && x.after) out[String(x.before)] = String(x.after); });
+      } else if (e && typeof e === "object") {
+        Object.keys(e).forEach(function (k) { if (typeof e[k] === "string" && e[k]) out[k] = e[k]; });
+      }
+      return out;
+    });
+}
+
+/* POST /dictionary/skip {job_id, page, line, word, before, after}: the
+   reviewer undid a learned fix here. Fire-and-forget: never throws. */
+function skipDictionary(entry) {
+  try {
+    return fetch(DICTIONARY + "/skip", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(entry),
+      keepalive: true
+    }).catch(function () { return null; });
+  } catch (e) { return Promise.resolve(null); }
+}
+
 /* Mock path, untouched: the Kural demo page from schema/doc_demo.json.
    In live mode the editor loads a whole job via getJob() instead; getPage(n)
    only exists for the demo. */
@@ -191,5 +270,8 @@ window.PC_API = {
   getCorrections: getCorrections,
   saveCorrections: saveCorrections,
   listJobs: listJobs,
-  searchJobs: searchJobs
+  searchJobs: searchJobs,
+  suggestWord: suggestWord,
+  getDictionary: getDictionary,
+  skipDictionary: skipDictionary
 };

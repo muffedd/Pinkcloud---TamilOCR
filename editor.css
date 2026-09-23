@@ -950,3 +950,35 @@ span.sn-item { cursor: default; }
    min-width: auto, so an intrinsic child could push the track wider). */
 .pane-rail { grid-template-columns: minmax(0, 1fr); }
 .exp-actions .btn[hidden] { display: none; }
+
+/* ---------- AI fix (V4) + learned fixes ----------
+   AI uses the LLM provenance hue (--pc-color-prov-llm); the learned-fix
+   chip uses the brand primary, same as the auto-applied word outline. */
+.pop-actions .pop-ai { margin-right: auto; padding-left: var(--pc-space-2); }
+.pop-ai svg { color: var(--pc-color-prov-llm); }
+.pop-ai[aria-busy="true"] { color: var(--pc-color-text-disabled); cursor: progress; }
+.pop-ai[aria-busy="true"] svg { animation: pc-ai-pulse var(--pc-motion-pulse) var(--pc-ease-in-out) infinite; }
+.qs-src--ai { color: var(--pc-color-prov-llm); font-weight: 500; }
+.prov-chip.pv-learned .pdot { background: var(--pc-color-primary); }
+.pop-prov { margin: calc(-1 * var(--pc-space-1)) 0 var(--pc-space-2); }
+
+/* Loading shimmer on the word while an AI reading is out. background-image
+   only, so the band fill (background-color) stays visible underneath. */
+/* Selector matches .lens-conf .w.is-doubt's weight (its background
+   shorthand would otherwise reset the image); editor.css loads last. */
+.lens-conf .w.is-ai-loading,
+.lens-prov .w.is-ai-loading {
+  background-image: linear-gradient(90deg,
+    transparent 20%, var(--pc-color-scan-active-fill) 40%,
+    var(--pc-color-primary-soft-border) 50%, var(--pc-color-scan-active-fill) 60%, transparent 80%);
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  border-radius: var(--pc-radius-word);
+  animation: pc-ai-shimmer var(--pc-motion-spin) linear infinite;
+}
+@keyframes pc-ai-shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+@keyframes pc-ai-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) {
+  .lens-conf .w.is-ai-loading, .lens-prov .w.is-ai-loading { animation: none; background-image: none; background-color: var(--pc-color-primary-soft); }
+  .pop-ai[aria-busy="true"] svg { animation: none; }
+}

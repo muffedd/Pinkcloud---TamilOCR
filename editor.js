@@ -22,6 +22,8 @@ var BOX_PAD = 3;
 var ICONS = {
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg>',
   wrench: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
+  sparkle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9z"/><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>',
+  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.5"/></svg>',
   checkCircle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16.5 9"/></svg>'
 };
 
@@ -43,8 +45,14 @@ var S = {
   saveMode: "unknown",   /* "unknown" | "server" | "local" */
   saveError: false,      /* last server save/load failed with a real error (500 etc.) */
   corrDirty: false,      /* correction map changed since the last successful sync */
-  dictCount: 0           /* fixes auto-applied to this page from the dictionary */
+  dictCount: 0,          /* fixes auto-applied to this page from the dictionary */
+  aiBusy: {}             /* word key -> true while an AI fix request is out */
 };
+
+/* Provenance label for a fix the dictionary applied (the flywheel). */
+var LEARNED_LABEL = "learned from your earlier fixes";
+/* AI fix is session-scoped off after one failure: no dead buttons, one toast. */
+var SS_AI_OFF = "pc.aioff";
 
 /* Bands on the text-quality proxy scale. The Sarvam engine gives no per-line
    recognition confidence (line.confidence is a layout-block score), so the
@@ -453,10 +461,37 @@ function applySavedCorrections(list) {
 /* The learning layer: every accepted fix teaches one OCR word -> correction
    pair, reused across jobs. */
 function dictLoad() {
+  var local = {};
   try {
     var v = JSON.parse(lsGet(LS_DICT) || "{}");
-    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
-  } catch (e) { return {}; }
+    if (v && typeof v === "object" && !Array.isArray(v)) local = v;
+  } catch (e) { /* unreadable cache: start empty */ }
+  /* GET /dictionary entries (when the route answered) win over the local
+     cache; local-only pairs (learned offline) still apply. */
+  if (!S.serverDict) return local;
+  var out = {};
+  Object.keys(local).forEach(function (k) { out[k] = local[k]; });
+  Object.keys(S.serverDict).forEach(function (k) { out[k] = S.serverDict[k]; });
+  return out;
+}
+
+/* Live mode: try GET /dictionary once on open. 404 (route not deployed),
+   network failure or any error -> the localStorage pc.fixdict alone, with no
+   message (same behaviour as before the route existed). Never holds the page
+   for more than DICT_WAIT_MS. */
+var DICT_WAIT_MS = 2500;
+function loadServerDict(done) {
+  S.serverDict = null;
+  if (window.PC_API.USE_MOCK || !window.PC_API.getDictionary) { done(); return; }
+  var settled = false;
+  var finish = function () { if (!settled) { settled = true; done(); } };
+  var t = setTimeout(finish, DICT_WAIT_MS);
+  window.PC_API.getDictionary().then(function (map) {
+    if (!settled) S.serverDict = map;
+  }).catch(function () { /* silent local fallback */ }).then(function () {
+    clearTimeout(t);
+    finish();
+  });
 }
 
 function dictAdd(orig, after) {
@@ -516,8 +551,10 @@ function applyDictionary() {
 function bootstrapCorrections(done) {
   var applyLocal = function (serverList) {
     applySavedCorrections(serverList || savedCorrectionsLocal());
-    applyDictionary();
-    done();
+    loadServerDict(function () {
+      applyDictionary();
+      done();
+    });
   };
   if (window.PC_API.USE_MOCK || !S.jobId) { applyLocal(null); return; }
   window.PC_API.getCorrections(S.jobId).then(function (body) {
@@ -575,7 +612,8 @@ function refreshWordEl(w) {
   w.el.className = "w tamil-editor is-" + w.bin + " pv-" + w.prov +
     (w.fixed ? " is-fixed" : "") +
     (w.key === S.activeKey ? " is-active" : "") +
-    (w.key === S.hoverKey ? " is-hover" : "");
+    (w.key === S.hoverKey ? " is-hover" : "") +
+    (S.aiBusy[w.key] ? " is-ai-loading" : "");
   if (w.el.textContent !== w.text) w.el.textContent = w.text;
   styleAutoEl(w);
 }
@@ -587,7 +625,7 @@ function styleAutoEl(w) {
   if (w.autoApplied) {
     w.el.style.outline = "1px solid var(--pc-color-primary)";
     w.el.style.outlineOffset = "1px";
-    w.el.title = "Auto-applied from a past correction - click again to review or undo";
+    w.el.title = "Learned from your earlier fixes - click again to review or undo";
   } else {
     w.el.style.outline = "";
     w.el.style.outlineOffset = "";
@@ -939,7 +977,7 @@ function renderQueue() {
     var meta = document.createElement("span");
     meta.className = "qmeta";
     meta.textContent = "p" + w.page + " · " + w.lineId + " · w" + w.idx +
-      (w.autoApplied ? " · auto" : (w.prov !== "raw" ? " · " + w.prov : "")) +
+      (w.autoApplied ? " · learned" : (w.prov !== "raw" ? " · " + w.prov : "")) +
       (!w.fixed && w.sugg.length ? " · " + w.sugg.length + (w.sugg.length === 1 ? " suggestion" : " suggestions") : "");
     mid.appendChild(word);
     mid.appendChild(meta);
@@ -1004,8 +1042,12 @@ function suggButton(w, c, i) {
   b.appendChild(t);
   if (c.source || typeof c.score === "number") {
     var src = document.createElement("span");
-    src.className = "qs-src";
-    src.textContent = (c.source || "") + (typeof c.score === "number" ? (c.source ? " " : "") + c.score.toFixed(2) : "");
+    var isAi = c.source === "llm";
+    src.className = "qs-src" + (isAi ? " qs-src--ai" : "");
+    /* LLM candidates carry a plain "AI" label (no score: it is not a
+       recognition probability). */
+    src.textContent = isAi ? "AI"
+      : (c.source || "") + (typeof c.score === "number" ? (c.source ? " " : "") + c.score.toFixed(2) : "");
     b.appendChild(src);
   }
   b.title = "Use " + c.text + " (" + (i + 1) + ")";
@@ -1179,6 +1221,7 @@ function setConn(state) {
   var LABEL = { offline: "Offline", checking: "Checking…", connected: "Connected" };
   badge.setAttribute("data-state", state);
   text.textContent = LABEL[state] || "Offline";
+  if (state !== "connected") hideAiButton(); /* AI fix never shows offline */
   badge.title = state === "offline" && !window.PC_API.USE_MOCK
     ? "No response from " + (window.PC_API.API_BASE || location.origin) + "/health"
     : "";
@@ -1213,14 +1256,23 @@ function openPopup() {
   var spacer = document.createElement("span");
   spacer.className = "spacer";
   var chip = document.createElement("span");
-  chip.className = "prov-chip pv-" + w.prov;
+  chip.className = "prov-chip pv-" + (w.autoApplied ? "learned" : w.prov);
   var dot = document.createElement("i");
   dot.className = "pdot";
   chip.appendChild(dot);
-  chip.appendChild(document.createTextNode(w.tier ? w.prov + " · " + w.tier : w.prov));
+  chip.appendChild(document.createTextNode(w.autoApplied ? LEARNED_LABEL
+    : (w.tier ? w.prov + " · " + w.tier : w.prov)));
   head.appendChild(title);
   head.appendChild(spacer);
-  head.appendChild(chip);
+  /* The learned label is too long for the head row: it gets its own line. */
+  var provRow = null;
+  if (w.autoApplied) {
+    provRow = document.createElement("div");
+    provRow.className = "pop-prov";
+    provRow.appendChild(chip);
+  } else {
+    head.appendChild(chip);
+  }
 
   var input = document.createElement("input");
   input.className = "tanglish";
@@ -1235,7 +1287,7 @@ function openPopup() {
   var evidence = document.createElement("div");
   evidence.className = "pop-evidence";
   evidence.textContent = w.autoApplied
-    ? "OCR read " + w.orig + " · auto-applied from a past correction"
+    ? "OCR read " + w.orig + " · applied automatically, Undo restores it"
     : "OCR read " + w.orig + " · " + (w.evidence || "no correction on file");
 
   var actions = document.createElement("div");
@@ -1258,6 +1310,16 @@ function openPopup() {
   acceptKbd.textContent = "↵";
   accept.appendChild(acceptLabel);
   accept.appendChild(acceptKbd);
+  if (aiFixAvailable(w)) {
+    var ai = document.createElement("button");
+    ai.type = "button";
+    ai.className = "btn btn--ghost btn--sm pop-ai";
+    ai.innerHTML = ICONS.sparkle + "<span>AI fix</span>";
+    ai.title = "Ask AI for a reading of this word";
+    if (S.aiBusy[w.key]) { ai.disabled = true; ai.setAttribute("aria-busy", "true"); ai.lastChild.textContent = "Reading…"; }
+    ai.addEventListener("click", function () { requestAiFix(w); });
+    actions.appendChild(ai);
+  }
   actions.appendChild(reject);
   if (w.autoApplied) {
     var undo = document.createElement("button");
@@ -1271,6 +1333,7 @@ function openPopup() {
 
   el.pop.appendChild(arrow);
   el.pop.appendChild(head);
+  if (provRow) el.pop.appendChild(provRow);
   el.pop.appendChild(input);
   el.pop.appendChild(preview);
   if (w.sugg.length) {
@@ -1337,6 +1400,64 @@ function closePopup() {
   S.popupKey = null;
 }
 
+/* ---------------- AI fix (V4) ----------------
+   Doubt words only, and only while the connection badge says Connected and
+   AI has not failed this session. Anything else: no button at all. */
+function aiOff() { try { return window.sessionStorage.getItem(SS_AI_OFF) === "1"; } catch (e) { return !!S.aiOffMem; } }
+function setAiOff() {
+  S.aiOffMem = true;
+  try { window.sessionStorage.setItem(SS_AI_OFF, "1"); } catch (e) { /* private mode: memory only */ }
+}
+function aiFixAvailable(w) {
+  if (!w || w.fixed || w.bin !== "doubt" || !window.PC_API.suggestWord) return false;
+  if (aiOff()) return false;
+  var badge = $("connBadge");
+  return !!badge && badge.getAttribute("data-state") === "connected";
+}
+
+/* Drop the AI button from an open popup (badge went offline / AI failed). */
+function hideAiButton() {
+  var b = el.pop && el.pop.querySelector(".pop-ai");
+  if (b) b.remove();
+}
+
+function requestAiFix(w) {
+  if (!aiFixAvailable(w) || S.aiBusy[w.key]) return;
+  S.aiBusy[w.key] = true;
+  refreshWordEl(w);
+  if (S.popupKey === w.key) openPopup(); /* re-render: button shows busy */
+  var line = S.lines.filter(function (l) { return l.id === w.lineId; })[0];
+  window.PC_API.suggestWord(S.jobId, {
+    page: w.page, line: w.lineId, word: w.idx, before: w.orig,
+    context: line ? line.body : ""
+  }).then(function (res) {
+    var got = ((res && res.candidates) || []).filter(function (c) {
+      return c && String(c.text || "").trim() && String(c.text).trim() !== w.orig;
+    });
+    delete S.aiBusy[w.key];
+    refreshWordEl(w);
+    if (!got.length) {
+      toast("AI found no better reading for " + w.orig, "info");
+      if (S.popupKey === w.key) openPopup();
+      return;
+    }
+    /* Best AI candidate becomes candidate 1; existing ones follow, deduped. */
+    var text = String(got[0].text).trim();
+    var rest = w.sugg.filter(function (c) { return c.text !== text; });
+    w.sugg = [{ text: text, score: typeof got[0].score === "number" ? got[0].score : null, source: "llm" }]
+      .concat(rest).slice(0, MAX_SUGG);
+    w.after = text;
+    renderQueue();
+    if (S.popupKey === w.key) openPopup();
+  }).catch(function () {
+    delete S.aiBusy[w.key];
+    refreshWordEl(w);
+    setAiOff();
+    hideAiButton();
+    toast("AI unavailable", "info");
+  });
+}
+
 function doAccept() {
   var w = S.byKey[S.popupKey];
   if (!w) { closePopup(); return; }
@@ -1397,6 +1518,7 @@ function doUndoAuto() {
   closePopup();
   if (!w || !w.autoApplied) return;
   var prev = w.autoPrev || {};
+  var undone = w.text;
   w.text = w.orig;
   w.after = prev.after || "";
   w.target = !!prev.target;
@@ -1414,6 +1536,12 @@ function doUndoAuto() {
     scheduleSave();
   }
   skipAdd(w.key);
+  /* Tell the shared dictionary too (fire-and-forget; the local skip list
+     above stays the fallback). */
+  if (!window.PC_API.USE_MOCK && S.jobId && window.PC_API.skipDictionary) {
+    window.PC_API.skipDictionary({ job_id: S.jobId, page: w.page, line: w.lineId, word: w.idx,
+      before: w.orig, after: undone });
+  }
   if (S.dictCount > 0) S.dictCount--;
   retext();
   refreshWordEl(w);
@@ -1421,7 +1549,7 @@ function doUndoAuto() {
   renderQueue();
   renderCounts();
   renderBadges();
-  toast("Auto-fix undone · " + w.orig + " restored");
+  toast("Learned fix undone · " + w.orig + " restored");
   if (w.el) w.el.focus();
 }
 
@@ -1429,8 +1557,8 @@ function doUndoAuto() {
 
 var toastTimer = null;
 
-function toast(msg) {
-  el.toast.innerHTML = ICONS.check + "<span></span>";
+function toast(msg, icon) {
+  el.toast.innerHTML = (ICONS[icon] || ICONS.check) + "<span></span>";
   el.toast.querySelector("span").textContent = msg;
   el.toast.classList.add("show");
   if (toastTimer) clearTimeout(toastTimer);
