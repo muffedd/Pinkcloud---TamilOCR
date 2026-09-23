@@ -1,0 +1,785 @@
+/* ============================================================================
+   PINK CLOUD — ui.css
+   Consolidated component library. ONE import: design tokens live in tokens.css.
+
+   Usage:
+     <link rel="stylesheet" href="./tokens.css">
+     <link rel="stylesheet" href="./ui.css">
+   (or just ui.css — it imports tokens.css itself)
+
+   Rules of this file:
+   - EVERY color comes from a --pc-* token (tokens.css). No hardcoded colors.
+     Alpha variants are derived with color-mix() from those same tokens.
+   - Geometry/typography component defaults are the --ui-* vars defined below.
+   - Canonical class names are prefixed/descriptive (e.g. .btn--primary).
+     The original component-file names (.solid, .danger, .gs-toggle, .pc-btn…)
+     are kept working as aliases — see the "Alias map" comment at the bottom.
+
+   Contents:
+     1.  Component defaults (--ui-* geometry + font stacks)
+     2.  Buttons (.btn) — primary / destructive / success / soft / outline /
+         ghost, pill + icon shapes, sizes, state classes
+     3.  Hero brand button (.btn-hero — the "Shop" pill)
+     4.  Button groups (.btn-group) — segmented, split, stepper
+     5.  Count, avatar, kbd chip
+     6.  Processing-state pills (.pill) — 5 states × dot/icon × tinted/outline
+     7.  Panel / card
+     8.  Toast
+     9.  Key-hint chip
+     10. Toggle (.toggle — the "Get Started" pill switch)
+     11. State classes + reduced motion
+     12. Alias map (source-file class names → canonical)
+   ========================================================================== */
+
+@import url("./tokens.css");
+
+/* ---------- 1. Component defaults --------------------------------------- */
+:root {
+  /* font stacks (files served from ./fonts/, declared in styles.css) */
+  --ui-font-sans: "Satoshi", "Noto Sans Tamil", -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --ui-font-mono: Menlo, ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Cascadia Code", monospace;
+
+  /* button geometry */
+  --ui-btn-h: 32px;            /* default control height            */
+  --ui-btn-px: 12px;           /* horizontal padding                */
+  --ui-btn-px-icon: 10px;      /* padding on the side with an icon  */
+  --ui-btn-gap: 6px;           /* icon ↔ label gap                  */
+  --ui-btn-radius: 6px;
+  --ui-btn-fs: 13px;           /* label font size                   */
+  --ui-icon: 16px;             /* inline svg size inside .btn       */
+
+  /* hero (shop) button geometry — measured 1:1 from the reference   */
+  --ui-hero-h: 106px;          /* half-scale default; 212px = spec  */
+  --ui-hero-px-l: 40px;
+  --ui-hero-px-r: 36px;
+  --ui-hero-gap: 22.5px;
+  --ui-hero-fs: 33.25px;
+  --ui-hero-icon-w: 44px;
+  --ui-hero-icon-h: 48px;
+
+  /* status pill geometry */
+  --ui-pill-h: 34px;
+  --ui-pill-px: 12px;
+  --ui-pill-gap: 9px;
+  --ui-pill-radius: 9px;
+  --ui-pill-fs: 15px;
+  --ui-pill-dot: 7px;
+  --ui-pill-icon: 18px;
+
+  /* panel / toast geometry */
+  --ui-panel-radius: 12px;
+  --ui-panel-pad: 16px;
+  --ui-toast-radius: 10px;
+
+  /* toggle geometry (from the annotated Get Started spec) */
+  --ui-toggle-w: 288px;
+  --ui-toggle-h: 86px;
+  --ui-toggle-pad: 6px;
+  --ui-toggle-knob-w: 207px;
+  --ui-toggle-stroke: 2px;
+  --ui-toggle-label-fs: 29px;
+  --ui-toggle-arrow-w: 32px;
+  --ui-toggle-arrow-cx: 246px; /* arrow center from the left edge   */
+  --ui-toggle-speed: 280ms;
+}
+
+/* ---------- 2. Buttons ----------------------------------------------------
+   Base:   .btn
+   Fills:  .btn--primary (orange gradient) · .btn--destructive (deep orange)
+           .btn--success (green) · .btn--soft (neutral fill)
+           .btn--outline (bordered) · .btn--ghost (transparent)
+   Shapes: .btn--pill · .btn--icon (square) · .btn--icon-round · .btn--sm
+   Icons:  .btn--icon-l (tighter left pad) · .btn--icon-r (tighter right pad)
+   States: :hover/:active/:disabled/:focus-visible or pin with
+           .is-hover / .is-pressed / .is-disabled / .is-focused
+   ------------------------------------------------------------------------ */
+.btn {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ui-btn-gap);
+  height: var(--ui-btn-h);
+  padding: 0 var(--ui-btn-px);
+  border-radius: var(--ui-btn-radius);
+  font: 500 var(--ui-btn-fs)/1 var(--ui-font-sans);
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+  color: var(--pc-color-text-primary);
+  transition: box-shadow 0.12s ease, background 0.12s ease;
+}
+.btn svg {
+  width: var(--ui-icon);
+  height: var(--ui-icon);
+  flex: none;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.btn--icon-l { padding-left: var(--ui-btn-px-icon); }
+.btn--icon-r { padding-right: var(--ui-btn-px-icon); }
+.btn:focus-visible,
+.btn.is-focused { outline: 2px solid var(--pc-color-focus-ring); outline-offset: 2px; }
+.btn[disabled],
+.btn.is-disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+
+/* -- 2a. Solid fills -------------------------------------------------------
+   Solid buttons share one shadow recipe: top inner highlight, 1px colored
+   edge, soft colored drop. The edge uses the "solid" token of each hue. -- */
+.btn--primary {
+  background: linear-gradient(180deg, var(--pc-color-primary) 0%, var(--pc-color-primary-gradient-end) 100%);
+  color: var(--pc-color-on-primary);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in srgb, var(--pc-color-on-primary) 33%, transparent),
+    0 0 0 1px var(--pc-color-primary-solid),
+    0 3px 4px -1px color-mix(in srgb, var(--pc-color-primary) 45%, transparent);
+}
+.btn--primary:hover,
+.btn--primary.is-hover {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--pc-color-primary), var(--pc-color-on-primary) 8%) 0%,
+    color-mix(in srgb, var(--pc-color-primary-gradient-end), var(--pc-color-on-primary) 12%) 100%);
+}
+.btn--primary:active,
+.btn--primary.is-pressed {
+  background: linear-gradient(180deg, var(--pc-color-primary-gradient-end) 0%, var(--pc-color-primary) 100%);
+}
+
+.btn--destructive {
+  background: linear-gradient(180deg, var(--pc-color-destructive) 0%, var(--pc-color-destructive-end) 100%);
+  color: var(--pc-color-on-primary);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in srgb, var(--pc-color-on-primary) 33%, transparent),
+    0 0 0 1px var(--pc-color-destructive-solid),
+    0 3px 4px -1px color-mix(in srgb, var(--pc-color-destructive) 45%, transparent);
+}
+.btn--destructive:hover,
+.btn--destructive.is-hover {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--pc-color-destructive), var(--pc-color-on-primary) 8%) 0%,
+    color-mix(in srgb, var(--pc-color-destructive-end), var(--pc-color-on-primary) 12%) 100%);
+}
+.btn--destructive:active,
+.btn--destructive.is-pressed {
+  background: linear-gradient(180deg, var(--pc-color-destructive-end) 0%, var(--pc-color-destructive) 100%);
+}
+
+.btn--success {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--pc-color-success), var(--pc-color-on-primary) 10%) 0%,
+    var(--pc-color-success) 100%);
+  color: var(--pc-color-on-primary);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in srgb, var(--pc-color-on-primary) 33%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--pc-color-success), var(--pc-color-neutral-900) 18%),
+    0 3px 4px -1px color-mix(in srgb, var(--pc-color-success) 45%, transparent);
+}
+
+/* -- 2b. Quiet fills ------------------------------------------------------- */
+.btn--soft {                        /* neutral fill, secondary actions   */
+  background: var(--pc-color-bg-subtle);
+  color: var(--pc-color-text-primary);
+}
+.btn--soft:hover,
+.btn--soft.is-hover { background: var(--pc-color-bg-hover); }
+.btn--soft svg { color: var(--pc-color-text-secondary); }
+
+.btn--outline {
+  background: var(--pc-color-bg-surface);
+  border: 1px solid var(--pc-color-border-subtle);
+  box-shadow: 0 1px 2px 0 color-mix(in srgb, var(--pc-color-neutral-900) 6%, transparent);
+}
+.btn--outline:hover,
+.btn--outline.is-hover { background: var(--pc-color-bg-subtle); }
+
+.btn--ghost {
+  background: transparent;
+  color: var(--pc-color-text-primary);
+}
+.btn--ghost:hover,
+.btn--ghost.is-hover { background: var(--pc-color-bg-subtle); }
+
+/* -- 2c. Shapes ------------------------------------------------------------ */
+.btn--pill { border-radius: 999px; }
+.btn--icon { width: var(--ui-btn-h); padding: 0; }          /* square  */
+.btn--icon-round { width: var(--ui-btn-h); padding: 0; border-radius: 999px; }
+.btn--sm { height: 28px; }
+.btn--sm.btn--icon,
+.btn--sm.btn--icon-round { width: 28px; height: 28px; }
+
+/* ---------- 3. Hero brand button ------------------------------------------
+   The big "Shop" pill. Anchor or button:
+     <a class="btn-hero" href="/shop">
+       <svg class="btn-hero__icon">…</svg>
+       <span class="btn-hero__label">Shop</span>
+     </a>
+   .btn-hero--destructive swaps the gradient. --ui-hero-* vars rescale it.
+   ------------------------------------------------------------------------ */
+.btn-hero {
+  --_hero-from: var(--pc-color-primary);
+  --_hero-to: var(--pc-color-primary-gradient-end);
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ui-hero-gap);
+  height: var(--ui-hero-h);
+  padding: 0 var(--ui-hero-px-r) 0 var(--ui-hero-px-l);
+  border: 1px solid color-mix(in srgb, var(--pc-color-on-primary) 10%, transparent);
+  border-radius: 9999px;
+  background: linear-gradient(180deg, var(--_hero-from) 0%, var(--_hero-to) 100%) border-box;
+  box-shadow: var(--pc-shadow-button-inner), var(--pc-shadow-button-drop);
+  color: var(--pc-color-on-primary);
+  font-family: var(--ui-font-sans);
+  font-size: var(--ui-hero-fs);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: box-shadow 140ms ease, transform 140ms ease, background 140ms ease;
+}
+.btn-hero__icon { flex: none; width: var(--ui-hero-icon-w); height: var(--ui-hero-icon-h); display: block; }
+.btn-hero__label { display: block; transform: translateY(-2px); }
+.btn-hero:hover,
+.btn-hero.is-hover {
+  --_hero-from: color-mix(in srgb, var(--pc-color-primary), var(--pc-color-on-primary) 8%);
+  --_hero-to: color-mix(in srgb, var(--pc-color-primary-gradient-end), var(--pc-color-on-primary) 12%);
+  transform: translateY(-2px);
+}
+.btn-hero:active,
+.btn-hero.is-pressed {
+  --_hero-from: var(--pc-color-primary-gradient-end);
+  --_hero-to: var(--pc-color-primary);
+  transform: translateY(2px);
+}
+.btn-hero:focus-visible {
+  outline: 4px solid color-mix(in srgb, var(--pc-color-focus-ring) 35%, transparent);
+  outline-offset: 6px;
+}
+.btn-hero--destructive {
+  --_hero-from: var(--pc-color-destructive);
+  --_hero-to: var(--pc-color-destructive-end);
+}
+
+/* ---------- 4. Button groups ----------------------------------------------
+   Wrap sibling .btn items:
+     <div class="btn-group btn-group--outline" role="group">…</div>
+   Treatments: --outline (bordered bar) · --soft (neutral bar)
+               --solid (brand bar, for split buttons)
+   Layouts:    --seg-wide / --seg-sm / --seg-icon (segmented control widths)
+   Split:      put .btn--tint on the icon half, .btn--caret on a caret half.
+   Stepper:    .btn-group--stepper with a .stepper__val readout in the middle.
+   ------------------------------------------------------------------------ */
+.btn-group { display: inline-flex; height: var(--ui-btn-h); border-radius: var(--ui-btn-radius); overflow: hidden; }
+.btn-group > .btn { border-radius: 0; box-shadow: none; }
+
+.btn-group--outline {
+  padding: 0; gap: 0;
+  border: 1px solid var(--pc-color-border-subtle);
+  background: var(--pc-color-bg-surface);
+  box-shadow: 0 1px 2px 0 color-mix(in srgb, var(--pc-color-neutral-900) 6%, transparent);
+}
+.btn-group--outline > .btn { height: calc(var(--ui-btn-h) - 2px); border: 0; background: transparent; }
+.btn-group--outline > .btn + .btn { border-left: 1px solid var(--pc-color-border-subtle); }
+
+.btn-group--soft { background: var(--pc-color-bg-subtle); gap: 0; padding: 0; }
+.btn-group--soft > .btn { width: 27px; padding: 0; background: transparent; }
+.btn-group--soft > .btn + .btn { border-left: 1px solid var(--pc-color-bg-canvas); }
+.btn-group--soft > .btn svg { color: var(--pc-color-text-primary); }
+
+.btn-group--solid {
+  background: linear-gradient(180deg, var(--pc-color-primary) 0%, var(--pc-color-primary-gradient-end) 100%);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in srgb, var(--pc-color-on-primary) 33%, transparent),
+    0 0 0 1px var(--pc-color-primary-solid),
+    0 3px 4px -1px color-mix(in srgb, var(--pc-color-primary) 45%, transparent);
+  gap: 0; padding: 0;
+}
+.btn-group--solid > .btn { background: transparent; color: var(--pc-color-on-primary); }
+.btn-group--solid > .btn + .btn { border-left: 1px solid color-mix(in srgb, var(--pc-color-neutral-900) 14%, transparent); }
+.btn-group--solid > .btn--tint { background: color-mix(in srgb, var(--pc-color-on-primary) 16%, transparent); }
+.btn-group--solid > .btn--tint svg { color: color-mix(in srgb, var(--pc-color-on-primary) 62%, transparent); }
+.btn-group--solid > .btn--caret { width: 27px; padding: 0; }
+
+.btn-group--seg-wide > .btn { width: 73px; padding: 0; }
+.btn-group--seg-sm > .btn { padding: 0 11px; }
+.btn-group--seg-icon { height: 28px; }
+.btn-group--seg-icon > .btn { width: 26px; height: 26px; padding: 0; }
+.btn-group--stepper > .btn { width: 27px; padding: 0; }
+.stepper__val { width: 38px; font-variant-numeric: tabular-nums; }
+
+/* ---------- 5. Count, avatar, kbd chip ------------------------------------ */
+.count {                                  /* inline numeric badge ("729") */
+  font-weight: 500;
+  font-size: 10px;
+  color: var(--pc-color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.btn--primary .count,
+.btn-group--solid .count { color: color-mix(in srgb, var(--pc-color-on-primary) 62%, transparent); }
+.btn-group--outline > .btn.count-seg { width: 30px; padding: 0; }
+
+.avatar {                                 /* 24px identity circle         */
+  width: 24px; height: 24px;
+  border-radius: 999px;
+  background: var(--pc-color-neutral-300);
+  color: var(--pc-color-neutral-600);
+  display: inline-grid; place-items: center;
+  overflow: hidden; flex: none;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pc-color-on-primary) 35%, transparent);
+}
+.avatar svg { width: 24px; height: 24px; stroke: none; fill: currentColor; }
+.btn--avatar { padding-left: 4px; padding-right: var(--ui-btn-px); } /* pill w/ avatar */
+
+.kbd {                                    /* keyboard shortcut chip "⌘C"  */
+  font: 500 9px/1 var(--ui-font-mono);
+  color: var(--pc-color-text-secondary);
+  background: var(--pc-color-bg-surface);
+  border: 1px solid var(--pc-color-border-subtle);
+  border-radius: 4px;
+  height: 18px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  letter-spacing: 0.02em;
+}
+
+/* ---------- 6. Processing-state pills --------------------------------------
+   Structure:
+     <span class="pill pill--tinted pill--processing">
+       <span class="pill__dot"></span>Processing</span>
+   or swap the dot for:
+       <span class="pill__icon"><svg …></svg></span>
+   States:     --default · --processing · --success · --warning · --error
+   Treatments: --tinted (soft bg) · --outline (bordered)
+   ------------------------------------------------------------------------ */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ui-pill-gap);
+  height: var(--ui-pill-h);
+  padding: 0 var(--ui-pill-px);
+  border-radius: var(--ui-pill-radius);
+  font-family: var(--ui-font-sans);
+  font-size: var(--ui-pill-fs);
+  font-weight: 500;
+  line-height: 1;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.pill__dot {
+  width: var(--ui-pill-dot);
+  height: var(--ui-pill-dot);
+  border-radius: 50%;
+  flex: none;
+  background: currentColor;
+}
+.pill__icon {
+  width: var(--ui-pill-icon);
+  height: var(--ui-pill-icon);
+  flex: none;
+  display: inline-flex;
+  color: currentColor;
+  background: transparent;
+}
+.pill__icon svg { width: var(--ui-pill-icon); height: var(--ui-pill-icon); display: block; }
+
+/* tinted (soft background) */
+.pill--tinted { box-shadow: 0 1px 2px color-mix(in srgb, var(--pc-color-neutral-900) 5%, transparent); }
+.pill--tinted.pill--default    { background: var(--pc-color-bg-subtle);        color: var(--pc-color-text-secondary); }
+.pill--tinted.pill--processing { background: var(--pc-color-info-bg);          color: var(--pc-color-info); }
+.pill--tinted.pill--success    { background: var(--pc-color-success-bg);       color: var(--pc-color-success); }
+.pill--tinted.pill--warning    { background: var(--pc-color-warning-bg);       color: var(--pc-color-warning); }
+.pill--tinted.pill--error      { background: var(--pc-color-error-bg);         color: var(--pc-color-error); }
+
+/* outline */
+.pill--outline {
+  background: var(--pc-color-bg-surface);
+  border-color: var(--pc-color-border-subtle);
+  color: var(--pc-color-text-primary);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--pc-color-neutral-900) 5%, transparent);
+}
+.pill--outline.pill--default    .pill__dot,
+.pill--outline.pill--default    .pill__icon { color: var(--pc-color-text-secondary); }
+.pill--outline.pill--processing .pill__dot,
+.pill--outline.pill--processing .pill__icon { color: var(--pc-color-info); }
+.pill--outline.pill--success    .pill__dot,
+.pill--outline.pill--success    .pill__icon { color: var(--pc-color-success); }
+.pill--outline.pill--warning    .pill__dot,
+.pill--outline.pill--warning    .pill__icon { color: var(--pc-color-warning); }
+.pill--outline.pill--error      .pill__dot,
+.pill--outline.pill--error      .pill__icon { color: var(--pc-color-error); }
+/* tinted dots/icons just take currentColor; outline treatment recolors them
+   explicitly above so the label can stay neutral. */
+.pill--outline .pill__dot { background: currentColor; }
+
+/* ---------- 7. Panel / card ------------------------------------------------
+   .panel = generic surface section; .card = same shell, padded for content. */
+.panel,
+.card {
+  background: var(--pc-color-bg-surface);
+  border: 1px solid var(--pc-color-border-subtle);
+  border-radius: var(--ui-panel-radius);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--pc-color-neutral-900) 5%, transparent);
+}
+.card { padding: var(--ui-panel-pad); }
+.panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ui-btn-gap);
+  padding: 12px var(--ui-panel-pad);
+  border-bottom: 1px solid var(--pc-color-border-subtle);
+}
+.panel__title { font: 600 14px/1.3 var(--ui-font-sans); color: var(--pc-color-text-primary); }
+.panel__body { padding: var(--ui-panel-pad); }
+
+/* ---------- 8. Toast --------------------------------------------------------
+     <div class="toast toast--success" role="status">
+       <span class="toast__icon"><svg …></svg></span>
+       <span class="toast__message">Saved.</span>
+       <button class="btn btn--ghost btn--sm toast__action">Undo</button>
+     </div>
+   Variants: --success · --warning · --error · --info (default neutral).  -- */
+.toast {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ui-pill-gap);
+  padding: 10px 14px;
+  border-radius: var(--ui-toast-radius);
+  background: var(--pc-color-bg-surface);
+  border: 1px solid var(--pc-color-border-subtle);
+  border-left-width: 3px;
+  box-shadow: var(--pc-shadow-button-drop);
+  font: 500 var(--ui-btn-fs)/1.4 var(--ui-font-sans);
+  color: var(--pc-color-text-primary);
+}
+.toast__icon { width: var(--ui-icon); height: var(--ui-icon); flex: none; display: inline-flex; }
+.toast__icon svg { width: var(--ui-icon); height: var(--ui-icon); }
+.toast__action { margin-left: var(--ui-btn-gap); }
+.toast--success { border-left-color: var(--pc-color-success); }
+.toast--success .toast__icon { color: var(--pc-color-success); }
+.toast--warning { border-left-color: var(--pc-color-warning); }
+.toast--warning .toast__icon { color: var(--pc-color-warning); }
+.toast--error   { border-left-color: var(--pc-color-error); }
+.toast--error   .toast__icon { color: var(--pc-color-error); }
+.toast--info    { border-left-color: var(--pc-color-info); }
+.toast--info    .toast__icon { color: var(--pc-color-info); }
+
+/* ---------- 9. Key-hint chip ------------------------------------------------
+   Inline "press J for next error" hint: mono text on a neutral chip.
+     <span class="key-hint">Next error <kbd class="kbd">J</kbd></span>  -- */
+.key-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--ui-font-mono);
+  font-size: 12px;
+  background: var(--pc-color-bg-subtle);
+  color: var(--pc-color-text-secondary);
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--pc-color-border-subtle);
+  white-space: nowrap;
+}
+
+/* ---------- 10. Toggle ------------------------------------------------------
+   The "Get Started" pill switch. Two usage patterns:
+
+   Static (state pinned by class):
+     <span class="toggle" role="img" aria-label="Get Started">
+       <span class="toggle__knob"></span>
+       <span class="toggle__label">Get Started</span>
+       <svg class="toggle__arrow" viewBox="0 0 35 14">…</svg>
+     </span>
+   add .is-on for the arrow-side state.
+
+   CSS-only interactive (checkbox + label, no JS):
+     <input class="toggle-input" type="checkbox" id="gs">
+     <label class="toggle" for="gs">…same children…</label>
+   ------------------------------------------------------------------------ */
+.toggle {
+  position: relative;
+  display: inline-block;
+  width: var(--ui-toggle-w);
+  height: var(--ui-toggle-h);
+  border-radius: 999px;
+  background: var(--pc-color-neutral-100);
+  box-shadow: inset 0 2px 3px 0 color-mix(in srgb, var(--pc-color-neutral-900) 5%, transparent);
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  vertical-align: middle;
+}
+.toggle__knob {
+  position: absolute;
+  top: var(--ui-toggle-pad);
+  left: var(--ui-toggle-pad);
+  width: var(--ui-toggle-knob-w);
+  height: calc(var(--ui-toggle-h) - 2 * var(--ui-toggle-pad));
+  border-radius: 999px;
+  border: var(--ui-toggle-stroke) solid var(--pc-color-neutral-0);
+  background: linear-gradient(180deg, var(--pc-color-neutral-0) 0%, var(--pc-color-neutral-50) 100%) padding-box;
+  box-shadow: 0 3px 7px -2px color-mix(in srgb, var(--pc-color-neutral-500) 70%, transparent);
+  transition: left var(--ui-toggle-speed) cubic-bezier(0.3, 0.7, 0.2, 1),
+              width var(--ui-toggle-speed) cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+.toggle__label {
+  position: absolute;
+  top: 0;
+  left: var(--ui-toggle-pad);
+  width: var(--ui-toggle-knob-w);
+  height: var(--ui-toggle-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--ui-font-sans);
+  font-weight: 500;
+  font-size: var(--ui-toggle-label-fs);
+  letter-spacing: -0.01em;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--pc-color-text-primary);
+  text-shadow:
+    0 1px 0 color-mix(in srgb, var(--pc-color-neutral-0) 70%, transparent),
+    0 1px 1px color-mix(in srgb, var(--pc-color-neutral-900) 18%, transparent);
+  padding-bottom: 1px;
+}
+.toggle__arrow {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--ui-toggle-arrow-cx) - var(--ui-toggle-arrow-w) / 2);
+  width: var(--ui-toggle-arrow-w);
+  height: 14px;
+  margin-top: -6px;
+  color: var(--pc-color-text-primary);
+}
+.toggle__arrow path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* on state: knob collapses to a circle under the arrow */
+.toggle.is-on .toggle__knob,
+.toggle-input:checked + .toggle .toggle__knob {
+  left: calc(var(--ui-toggle-w) - var(--ui-toggle-pad) - (var(--ui-toggle-h) - 2 * var(--ui-toggle-pad)));
+  width: calc(var(--ui-toggle-h) - 2 * var(--ui-toggle-pad));
+}
+.toggle.is-on .toggle__label,
+.toggle-input:checked + .toggle .toggle__label {
+  width: calc(var(--ui-toggle-w) - 2 * var(--ui-toggle-pad) - (var(--ui-toggle-h) - 2 * var(--ui-toggle-pad)));
+}
+.toggle-input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.toggle-input:focus-visible + .toggle { outline: 2px solid var(--pc-color-focus-ring); outline-offset: 4px; }
+
+/* ---------- 11. State classes + reduced motion ---------------------------- */
+.is-disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .toggle__knob { transition: none; }
+  .btn, .btn-hero { transition: none; }
+}
+
+/* ---------- 12. Alias map ---------------------------------------------------
+   Original component-file class names keep working; both names are valid,
+   the canonical one is preferred in new markup.
+
+     .solid / .danger / .success            → .btn--primary / --destructive / --success
+     .secondary                             → .btn--soft
+     .outline / .ghost / .pill              → .btn--outline / --ghost / --pill
+     .sq / .round / .sq.sm                  → .btn--icon / --icon-round / --sm
+     .avatar-pill                           → .btn--avatar
+     .group / .group.outline / .secondary / .solid
+                                            → .btn-group + --outline / --soft / --solid
+     .seg-wide / .seg-sm / .seg-icon        → .btn-group--seg-*
+     .stepper .val                          → .stepper__val
+     .caret / .tint                         → .btn--caret / .btn--tint
+     .pc-btn                                → .btn-hero
+     .gs-toggle / .gs-knob / .gs-label / .gs-arrow / .is-arrow
+                                            → .toggle / .toggle__knob / .toggle__label /
+                                              .toggle__arrow / .is-on
+     .chip (shop specs)                     → .key-hint
+   ------------------------------------------------------------------------ */
+.btn.solid { /* alias of .btn--primary */
+  background: linear-gradient(180deg, var(--pc-color-primary) 0%, var(--pc-color-primary-gradient-end) 100%);
+  color: var(--pc-color-on-primary);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in srgb, var(--pc-color-on-primary) 33%, transparent),
+    0 0 0 1px var(--pc-color-primary-solid),
+    0 3px 4px -1px color-mix(in srgb, var(--pc-color-primary) 45%, transparent);
+}
+.btn.danger { /* alias of .btn--destructive */
+  background: linear-gradient(180deg, var(--pc-color-destructive) 0%, var(--pc-color-destructive-end) 100%);
+  color: var(--pc-color-on-primary);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in srgb, var(--pc-color-on-primary) 33%, transparent),
+    0 0 0 1px var(--pc-color-destructive-solid),
+    0 3px 4px -1px color-mix(in srgb, var(--pc-color-destructive) 45%, transparent);
+}
+.btn.success { /* alias of .btn--success */
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--pc-color-success), var(--pc-color-on-primary) 10%) 0%,
+    var(--pc-color-success) 100%);
+  color: var(--pc-color-on-primary);
+}
+.btn.secondary { background: var(--pc-color-bg-subtle); color: var(--pc-color-text-primary); }
+.btn.secondary svg { color: var(--pc-color-text-secondary); }
+.btn.outline {
+  background: var(--pc-color-bg-surface);
+  border: 1px solid var(--pc-color-border-subtle);
+  box-shadow: 0 1px 2px 0 color-mix(in srgb, var(--pc-color-neutral-900) 6%, transparent);
+}
+.btn.ghost { background: transparent; }
+.btn.pill { border-radius: 999px; }
+.btn.sq { width: var(--ui-btn-h); padding: 0; }
+.btn.round { border-radius: 999px; }
+.btn.sq.sm { width: 28px; height: 28px; }
+.btn.avatar-pill { padding-left: 4px; padding-right: var(--ui-btn-px); }
+
+.group { display: inline-flex; height: var(--ui-btn-h); border-radius: var(--ui-btn-radius); overflow: hidden; }
+.group > .btn { border-radius: 0; box-shadow: none; }
+.group.outline {
+  padding: 0; gap: 0;
+  border: 1px solid var(--pc-color-border-subtle);
+  background: var(--pc-color-bg-surface);
+  box-shadow: 0 1px 2px 0 color-mix(in srgb, var(--pc-color-neutral-900) 6%, transparent);
+}
+.group.outline > .btn { height: calc(var(--ui-btn-h) - 2px); border: 0; background: transparent; }
+.group.outline > .btn + .btn { border-left: 1px solid var(--pc-color-border-subtle); }
+.group.secondary { background: var(--pc-color-bg-subtle); gap: 0; padding: 0; }
+.group.secondary > .btn { width: 27px; padding: 0; background: transparent; }
+.group.secondary > .btn + .btn { border-left: 1px solid var(--pc-color-bg-canvas); }
+.group.solid {
+  background: linear-gradient(180deg, var(--pc-color-primary) 0%, var(--pc-color-primary-gradient-end) 100%);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in srgb, var(--pc-color-on-primary) 33%, transparent),
+    0 0 0 1px var(--pc-color-primary-solid),
+    0 3px 4px -1px color-mix(in srgb, var(--pc-color-primary) 45%, transparent);
+  gap: 0; padding: 0;
+}
+.group.solid > .btn { background: transparent; color: var(--pc-color-on-primary); }
+.group.solid > .btn + .btn { border-left: 1px solid color-mix(in srgb, var(--pc-color-neutral-900) 14%, transparent); }
+.group.solid > .btn.tint { background: color-mix(in srgb, var(--pc-color-on-primary) 16%, transparent); }
+.group.solid > .btn.caret,
+.btn.caret { width: 27px; padding: 0; }
+.seg-wide > .btn { width: 73px; padding: 0; }
+.seg-sm > .btn { padding: 0 11px; }
+.seg-icon { height: 28px; }
+.seg-icon > .btn { width: 26px; height: 26px; padding: 0; }
+.stepper > .btn { width: 27px; padding: 0; }
+.stepper > .btn.val { width: 38px; font-variant-numeric: tabular-nums; }
+.solid .count { color: color-mix(in srgb, var(--pc-color-on-primary) 62%, transparent); }
+
+/* shop hero aliases */
+.pc-btn { /* alias of .btn-hero */
+  --_hero-from: var(--pc-color-primary);
+  --_hero-to: var(--pc-color-primary-gradient-end);
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ui-hero-gap);
+  height: var(--ui-hero-h);
+  padding: 0 var(--ui-hero-px-r) 0 var(--ui-hero-px-l);
+  border: 1px solid color-mix(in srgb, var(--pc-color-on-primary) 10%, transparent);
+  border-radius: 9999px;
+  background: linear-gradient(180deg, var(--_hero-from) 0%, var(--_hero-to) 100%) border-box;
+  box-shadow: var(--pc-shadow-button-inner), var(--pc-shadow-button-drop);
+  color: var(--pc-color-on-primary);
+  font-family: var(--ui-font-sans);
+  font-size: var(--ui-hero-fs);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+}
+.pc-btn__icon { flex: none; width: var(--ui-hero-icon-w); height: var(--ui-hero-icon-h); display: block; }
+.pc-btn__label { display: block; transform: translateY(-2px); }
+.pc-btn--destructive { --_hero-from: var(--pc-color-destructive); --_hero-to: var(--pc-color-destructive-end); }
+
+/* toggle aliases (get-started file) */
+.gs-toggle {
+  position: relative;
+  display: inline-block;
+  width: var(--ui-toggle-w);
+  height: var(--ui-toggle-h);
+  border-radius: 999px;
+  background: var(--pc-color-neutral-100);
+  box-shadow: inset 0 2px 3px 0 color-mix(in srgb, var(--pc-color-neutral-900) 5%, transparent);
+  cursor: pointer;
+  user-select: none;
+  vertical-align: middle;
+}
+.gs-knob {
+  position: absolute;
+  top: var(--ui-toggle-pad);
+  left: var(--ui-toggle-pad);
+  width: var(--ui-toggle-knob-w);
+  height: calc(var(--ui-toggle-h) - 2 * var(--ui-toggle-pad));
+  border-radius: 999px;
+  border: var(--ui-toggle-stroke) solid var(--pc-color-neutral-0);
+  background: linear-gradient(180deg, var(--pc-color-neutral-0) 0%, var(--pc-color-neutral-50) 100%) padding-box;
+  box-shadow: 0 3px 7px -2px color-mix(in srgb, var(--pc-color-neutral-500) 70%, transparent);
+  transition: left var(--ui-toggle-speed) cubic-bezier(0.3, 0.7, 0.2, 1),
+              width var(--ui-toggle-speed) cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+.gs-label {
+  position: absolute;
+  top: 0;
+  left: var(--ui-toggle-pad);
+  width: var(--ui-toggle-knob-w);
+  height: var(--ui-toggle-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--ui-font-sans);
+  font-weight: 500;
+  font-size: var(--ui-toggle-label-fs);
+  letter-spacing: -0.01em;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--pc-color-text-primary);
+  padding-bottom: 1px;
+}
+.gs-arrow {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--ui-toggle-arrow-cx) - var(--ui-toggle-arrow-w) / 2);
+  width: var(--ui-toggle-arrow-w);
+  height: 14px;
+  margin-top: -6px;
+  color: var(--pc-color-text-primary);
+}
+.gs-arrow path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.gs-toggle.is-arrow .gs-knob,
+.gs-input:checked + .gs-toggle .gs-knob {
+  left: calc(var(--ui-toggle-w) - var(--ui-toggle-pad) - (var(--ui-toggle-h) - 2 * var(--ui-toggle-pad)));
+  width: calc(var(--ui-toggle-h) - 2 * var(--ui-toggle-pad));
+}
+.gs-toggle.is-arrow .gs-label,
+.gs-input:checked + .gs-toggle .gs-label {
+  width: calc(var(--ui-toggle-w) - 2 * var(--ui-toggle-pad) - (var(--ui-toggle-h) - 2 * var(--ui-toggle-pad)));
+}
+.gs-input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.gs-input:focus-visible + .gs-toggle { outline: 2px solid var(--pc-color-focus-ring); outline-offset: 4px; }
+
+.chip { /* alias of .key-hint (shop spec chips) */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--ui-font-mono);
+  font-size: 12px;
+  background: var(--pc-color-bg-subtle);
+  color: var(--pc-color-text-secondary);
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--pc-color-border-subtle);
+  white-space: nowrap;
+}
