@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="./upload.css">
 <link rel="stylesheet" href="./intro.css">
 <link rel="stylesheet" href="./sidebar.css">
+<link rel="stylesheet" href="./loader.css">
 </head>
 <body>
 <!-- Landing intro (design-drafts/pinkcloud-intro.html), once per session,
@@ -61,6 +62,9 @@
   </div>
 </div>
 
+<!-- OCR processing overlay (shader D, design-drafts/pink-cloud-loading-shader-D.html).
+     upload.js drives it: page image, real progress, hides when the batch is done. -->
+<script src="./loader.js"></script>
 <script src="./upload.js"></script>
 </body>
 </html>

@@ -550,7 +550,9 @@
       }
       renderActs(p);
     }
+    if (p.status === 'processing' && !p.procStart) p.procStart = performance.now();
     refreshFooter();
+    syncLoader();
   }
 
   function iconButton(a, label, svg) {
@@ -658,6 +660,8 @@
     if (!p) return;
     if (p.xhr && p.status === 'uploading') { try { p.xhr.abort(); } catch (e) { /* already done */ } }
     state.pages.delete(key);
+    loaderState.batch.delete(key);
+    syncLoader();
     state.queue = state.queue.filter((k) => k !== key);
     const i = order.indexOf(key);
     if (i >= 0) order.splice(i, 1);
@@ -711,6 +715,62 @@
     while (el.notices.children.length > 3) el.notices.firstElementChild.remove();
   }
 
+  /* --- processing overlay (loader.js, shader D): runs while any file in the
+     current batch is queued/uploading/reading, shows the page being read and
+     the batch progress, finishes and fades out when the batch settles.
+     Progress per file: upload 0-35% (real XHR bytes), reading 35-97%
+     (the backend reports no OCR progress, so this part eases with time unless
+     GET /jobs returns a numeric progress), done/error 100%. Hide or Esc
+     dismisses it for the rest of the batch; ?loader=0 turns it off. --- */
+  const LOADER = window.PCLoader && !window.PCLoader.disabled ? window.PCLoader : null;
+  const IMG_TYPES = /^image\/(png|jpe?g|webp|gif|bmp)$/i;
+  const loaderState = { batch: new Set(), dismissed: false, imgKey: null, timer: 0 };
+  if (LOADER) LOADER.onDismiss = () => { loaderState.dismissed = true; };
+  function isBusy(s) { return s === 'queued' || s === 'uploading' || s === 'processing'; }
+  function loaderImageFor(p) {
+    if (p.loaderImg) return p.loaderImg;
+    if (MOCK) return SAMPLE_URL;              // mock files carry placeholder bytes: show the sample page
+    return p.file && IMG_TYPES.test(p.file.type || '') ? p.file : null; // PDF/TIFF: built-in sample page
+  }
+  function fileProgress(p, now) {
+    if (p.status === 'done' || p.status === 'error') return 1;
+    if (p.status === 'uploading') return 0.35 * Math.min(1, (p.progress || 0) / 100);
+    if (p.status === 'processing') {
+      if (typeof p.ocrProgress === 'number') return 0.35 + 0.62 * Math.min(1, p.ocrProgress / 100);
+      const el = (now - (p.procStart || now)) / 1000;
+      return 0.35 + 0.62 * (1 - Math.exp(-el / 6));
+    }
+    return 0;
+  }
+  function syncLoader() {
+    if (!LOADER) return;
+    const now = performance.now();
+    order.forEach((k) => { const q = state.pages.get(k); if (q && isBusy(q.status)) loaderState.batch.add(k); });
+    const pages = [...loaderState.batch].map((k) => state.pages.get(k)).filter(Boolean);
+    const busy = pages.filter((q) => isBusy(q.status));
+    if (!pages.length) { if (LOADER.isOpen()) LOADER.hide(); return; }
+    if (!busy.length) {                       // batch settled
+      const failed = pages.filter((q) => q.status === 'error').length;
+      loaderState.batch.clear(); loaderState.imgKey = null; loaderState.dismissed = false;
+      clearInterval(loaderState.timer); loaderState.timer = 0;
+      if (LOADER.isOpen()) {
+        if (failed === pages.length) { LOADER.setLabel(null, failed === 1 ? 'Could not read this file' : 'Could not read these files'); LOADER.done('Stopped'); }
+        else { LOADER.setLabel(null, failed ? failed + ' of ' + pages.length + ' files need a look' : ''); LOADER.done(pages.length > 1 ? 'All pages read' : 'Page read'); }
+      }
+      return;
+    }
+    if (loaderState.dismissed) return;
+    if (!LOADER.isOpen()) LOADER.show();
+    if (!loaderState.timer) loaderState.timer = setInterval(syncLoader, 250); // reading phase eases between polls
+    const cur = busy.find((q) => q.status === 'processing') || busy.find((q) => q.status === 'uploading') || busy[0];
+    if (cur.key !== loaderState.imgKey) { loaderState.imgKey = cur.key; LOADER.setImage(loaderImageFor(cur)); }
+    const prog = pages.reduce((a, q) => a + fileProgress(q, now), 0) / pages.length;
+    LOADER.setProgress(prog);
+    const pos = pages.indexOf(cur) + 1;
+    LOADER.setLabel(cur.status === 'uploading' ? 'Uploading page' : (cur.status === 'processing' ? 'Reading page' : 'Waiting'),
+      pages.length > 1 ? cur.name + ' - file ' + pos + ' of ' + pages.length : cur.name);
+  }
+
   /* --- runner: POST /jobs per file (LIVE_PARALLEL at once), then poll GET /jobs/{id} --- */
   let healthGate = null; // live: one /health check per idle->busy transition
   function enqueue(keys) {
@@ -751,6 +811,7 @@
         const z = await unzipImages(p.file);
         if (!state.pages.has(key)) return;
         zipFiles = z.files;
+        if (zipFiles && zipFiles[0]) p.loaderImg = zipFiles[0]; // overlay shows the first page
         const extra = [];
         if (z.skipped) extra.push(z.skipped + (z.skipped === 1 ? ' non-image file' : ' non-image files') + ' skipped');
         if (z.locked) extra.push(z.locked + ' password-protected skipped');
@@ -767,6 +828,7 @@
       for (let i = 0; i < POLL_MAX; i++) {
         if (!state.pages.has(key)) return; // removed meanwhile
         const pg = await pollPage(job_id);
+        if (pg.status === 'processing' && typeof pg.progress === 'number' && pg.progress < 100) p.ocrProgress = pg.progress;
         applyPage(key, pg);
         if (pg.status === 'done' || pg.status === 'error') return;
         await wait(MOCK ? 120 : POLL_MS);

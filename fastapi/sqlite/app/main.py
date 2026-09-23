@@ -738,8 +738,8 @@ UI_ROOT = Path(__file__).resolve().parents[3]
 # Root-level UI assets the pages load.
 UI_FILES = {
     "index.html", "editor.html", "export.html", "library.html",
-    "api.js", "upload.js", "editor.js", "translit.js", "export.js", "library.js", "nav-back.js", "intro.js",
-    "tokens.css", "ui.css", "upload.css", "editor.css", "export.css", "library.css", "intro.css", "sidebar.css",
+    "api.js", "upload.js", "editor.js", "translit.js", "export.js", "library.js", "nav-back.js", "intro.js", "loader.js",
+    "tokens.css", "ui.css", "upload.css", "editor.css", "export.css", "library.css", "intro.css", "sidebar.css", "loader.css",
     "demo.mp4",  # watch-demo modal on index.html + editor.html
 }
 
