@@ -126,7 +126,7 @@ The output contract is in [`schema/schema.json`](schema/schema.json), the endpoi
 | --- | --- |
 | `index.html`, `upload.js`, `upload.css` | Upload screen and stepper |
 | `sidebar.css` | Upload page sidebar: Pink Cloud chip, Documents (opens the Library, keeps `?mock` / `?api`), Scans (soon). Page content sits in one inset panel; the sidebar hides below 900px |
-| `intro.js`, `intro.css` | Landing intro on `index.html` (from `design-drafts/pinkcloud-intro.html`): plays once per browser session, click/Esc/Skip jumps to the slide-up, skipped for reduced motion. `?intro=0` off, `?intro=1` replay |
+| `intro.js`, `intro.css` | Landing intro on `index.html` (from `design-drafts/pinkcloud-intro.html`): plays once per browser session, click/Esc/Skip jumps to the slide-up, skipped for reduced motion. Variants: `logo` (default, the `logo@2x.svg` cloud mark + "Pinkcloud" wordmark in dot-matrix), `pinkcloud` (bolt + "Pink Cloud"), `omni` (bolt + "Omni"). `?intro=0` off, `?intro=1` replay, `?intro=<variant>` plays and remembers that variant in the browser; any `?intro=` shows a variant picker on the sheet. Preview: `design-drafts/intro-variants.html` |
 | `library.html`, `library.js`, `library.css` | Library: job list (`GET /jobs`) and text search (`GET /search`, `?q=` kept in the URL); a hit opens `editor.html?job=<id>&page=<n>` |
 | `export.html`, `export.js`, `export.css` | Export page: receipt card, PDF/TXT downloads |
 | `nav-back.js` | Back button on Library and Export: returns to the previous Pink Cloud page, else to Upload (Library) or the job's editor (Export) |

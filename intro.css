@@ -34,3 +34,12 @@ html.pc-intro-on,
 html.pc-intro-on body {
   overflow: hidden;
 }
+
+/* variant picker, only shown when ?intro=... is in the URL */
+.pc-intro-pick {
+  position: absolute;
+  left: var(--pc-intro-skip-inset);
+  bottom: var(--pc-intro-skip-inset);
+  display: flex;
+  gap: var(--pc-space-1);
+}
