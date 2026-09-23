@@ -97,6 +97,7 @@ body.ex-body {
 /* ---------- Main column: single centered 880px column (layout plan page 3) ---------- */
 .ex-main { min-width: 0; padding: var(--pc-space-8) var(--pc-space-6) var(--pc-space-12); }
 .ex-col { max-width: 880px; margin: 0 auto; }
+.ex-col > .pc-back { margin-bottom: var(--pc-space-4); }
 .ex-state { display: flex; flex-direction: column; gap: var(--pc-space-6); }
 .ex-state[hidden] { display: none; }
 .ex-muted { color: var(--pc-color-text-secondary); }
@@ -116,6 +117,12 @@ body.ex-body {
 .ex-dl .btn { margin-top: auto; text-decoration: none; }
 .ex-dl .small { margin-bottom: var(--pc-space-4); }
 .ex-dl-title { font-weight: 700; font-size: var(--pc-fs-btn); line-height: 1.25; }
+/* More formats: full-width card under PDF + TXT */
+.ex-more { grid-column: 1 / -1; }
+.ex-more .small { margin-bottom: var(--pc-space-2); }
+.ex-more-row { display: flex; flex-wrap: wrap; gap: var(--pc-space-2); margin-top: auto; }
+.ex-more .ex-more-row .btn { margin-top: 0; }
+.ex-more-err { margin: var(--pc-space-2) 0 0; color: var(--pc-color-error); }
 
 /* Receipt: key-value grid + full hash */
 .ex-receipt { padding: var(--pc-space-6); display: flex; flex-direction: column; gap: var(--pc-space-4); }

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pink Cloud - intro variants</title>
+<!--
+  Preview of the live landing intro (../intro.js) with all its variants:
+    ?intro=logo       logo@2x.svg mark + "Pinkcloud" wordmark in dot-matrix (default)
+    ?intro=pinkcloud  bolt + "Pink Cloud"
+    ?intro=omni       bolt + "Omni" (the original draft, pinkcloud-intro.html)
+  The picker on the sheet flips between them; &t=2.5 freezes a frame.
+  Same code as index.html, so what you see here is what ships.
+-->
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="../ui.css">
+<link rel="stylesheet" href="../intro.css">
+</head>
+<body>
+<script>if (!new URLSearchParams(location.search).has("intro")) { history.replaceState(null, "", "?intro=logo"); }</script>
+<script src="../intro.js"></script>
+<main style="padding: var(--pc-space-6); font-family: var(--pc-font-sans);">
+  <h1>Intro variants</h1>
+  <p><a class="btn btn--soft btn--sm" href="?intro=logo">Logo</a>
+     <a class="btn btn--soft btn--sm" href="?intro=pinkcloud">Pink Cloud</a>
+     <a class="btn btn--soft btn--sm" href="?intro=omni">Omni</a></p>
+</main>
+</body>
+</html>

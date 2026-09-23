@@ -1,0 +1,36 @@
+/* Upload page sidebar (index.html). Slim rail on the page background,
+   workspace chip on top, nav items, page content in one inset panel.
+   Tokens only (tokens.css --pc-sidenav-*, logo, radius, hairline). */
+body:has(#upload-root.up-active) { background: var(--pc-sidenav-bg); }
+.pc-side { position: fixed; inset: 0 auto 0 0; width: var(--pc-sidenav-w); z-index: 3;
+  padding: var(--pc-space-3) var(--pc-sidenav-pad);
+  display: flex; flex-direction: column; gap: var(--pc-space-4);
+  font-family: var(--pc-font-sans); color: var(--pc-color-text-primary); -webkit-font-smoothing: antialiased; }
+.pc-chip { display: flex; align-items: center; gap: var(--pc-space-2); width: 100%; height: 36px;
+  padding: 0 var(--pc-space-2); border-radius: var(--pc-radius-btn);
+  background: var(--pc-color-bg-hover); font: 500 14px/1 var(--pc-font-sans); }
+.pc-chip .logo-tile { display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: var(--pc-logo-tile); height: var(--pc-logo-tile); border-radius: var(--pc-logo-radius);
+  background: var(--pc-gradient-primary); }
+.pc-chip .logo-tile svg { width: 14px; height: 14px; color: var(--pc-color-on-primary); }
+.pc-chip-name { flex: 1; }
+.pc-nav { display: flex; flex-direction: column; gap: 2px; }
+.pc-nav-item { display: flex; align-items: center; gap: var(--pc-space-2); height: var(--pc-sidenav-item-h);
+  padding: var(--pc-sidenav-item-pad); border-radius: var(--pc-radius-sm);
+  font-size: 14px; color: var(--pc-color-text-secondary); text-decoration: none;
+  transition: background-color var(--pc-motion-color) var(--pc-ease-out), color var(--pc-motion-color) var(--pc-ease-out); }
+a.pc-nav-item:hover { background: var(--pc-color-bg-hover); color: var(--pc-color-text-primary); }
+a.pc-nav-item:focus-visible { outline: none; box-shadow: var(--pc-shadow-input); }
+.pc-nav-item[aria-current="page"] { background: var(--pc-sidenav-active-bg); color: var(--pc-sidenav-active-fg); }
+.pc-nav-item.is-soon { color: var(--pc-color-text-disabled); cursor: default; }
+.pc-nav-item svg { flex: none; width: 16px; height: 16px; }
+.pc-soon { margin-left: auto; font-size: 11px; color: var(--pc-color-text-disabled); }
+/* page content sits in one inset panel */
+#upload-root.up-active { margin: var(--pc-space-3) var(--pc-space-3) var(--pc-space-3) var(--pc-sidenav-w);
+  min-height: calc(100vh - 2 * var(--pc-space-3)); border: var(--pc-hairline); border-radius: var(--pc-radius-panel);
+  background: var(--pc-color-bg-canvas); }
+#upload-root .up-page { width: 100%; padding-top: 44px; }
+@media (max-width: 900px) {
+  .pc-side { display: none; }
+  #upload-root.up-active { margin: 0; border: 0; border-radius: 0; }
+}

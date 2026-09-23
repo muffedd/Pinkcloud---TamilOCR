@@ -312,9 +312,12 @@ def test_page_result_matches_frozen_contract():
     assert set(page) <= {"page", "profile", "quality", "lines", "text",
                          "preprocessed", "words", "corrections", "verdicts",
                          "needs_review", "processing_ms", "specimen",
+                         "suggestions",
                          "chapter", "work", "manuscript_id", "script",
                          "material", "license", "doi"}
-    assert set(page["lines"][0]) == {"id", "seq", "body", "bbox", "confidence"}
+    # slice 2 added per-line needs_review (additive; schema.json updated)
+    assert set(page["lines"][0]) == {"id", "seq", "body", "bbox", "confidence",
+                                     "needs_review"}
 
 
 # --------------------------------------------------------------------------

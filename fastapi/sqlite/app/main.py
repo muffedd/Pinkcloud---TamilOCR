@@ -29,10 +29,11 @@ from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
 from . import db, storage
-from .ocr import engine_status, ocr_page, _get_engine
+from .ocr import engine_status, failed_page_lines, ocr_page, _get_engine
 from .pdfutil import load_pages, probe_decode, to_gray
 from .router import choose_profile, compute_scores
-from .schema_out import build_job_result, build_page_result, parse_job_result
+from .schema_out import (build_job_result, build_page_result, enrich_page,
+                         parse_job_result)
 
 # Both a supported content type AND a supported extension are required;
 # a mismatch on EITHER side is rejected with 400 before any job exists.
@@ -47,7 +48,44 @@ ALLOWED_TYPES = {
 # Multi-image jobs (repeated `files` field): images only, one page each.
 MAX_FILES_PER_JOB = 100
 
+# Upload caps (demo-safe). Every page is rendered into RAM at ~200 DPI, so
+# both the bytes and the PDF page count are bounded BEFORE any job exists.
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024   # one upload (or all `files` together)
+MAX_PDF_PAGES = 25
+# Multipart framing overhead allowed on top of MAX_UPLOAD_BYTES when the
+# request's Content-Length is checked up front.
+_MULTIPART_SLACK_BYTES = 1024 * 1024
+
 app = FastAPI(title="Pink Cloud", version="0.2.0")
+
+
+def _too_large_detail() -> str:
+    return f"upload too large: at most {MAX_UPLOAD_BYTES // (1024 * 1024)} MB per job"
+
+
+@app.middleware("http")
+async def _cap_upload_body(request, call_next):
+    """413 an oversized POST /jobs from its Content-Length, before the
+    multipart body is parsed. Uploads without a Content-Length are still
+    capped after reading (see _read_capped)."""
+    if request.method == "POST" and request.url.path.rstrip("/") == "/jobs":
+        try:
+            length = int(request.headers.get("content-length") or 0)
+        except ValueError:
+            length = 0
+        if length > MAX_UPLOAD_BYTES + _MULTIPART_SLACK_BYTES:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=413,
+                                content={"detail": _too_large_detail()})
+    return await call_next(request)
+
+
+def _read_capped(f: UploadFile, budget: int) -> bytes:
+    """Read one upload, 413 if it exceeds the remaining byte budget."""
+    data = f.file.read(budget + 1)
+    if len(data) > budget:
+        raise HTTPException(status_code=413, detail=_too_large_detail())
+    return data
 
 
 @app.on_event("startup")
@@ -85,7 +123,15 @@ def _pipeline(job_id: str, master: Path | list[Path]) -> list[dict]:
         profile, scores = choose_profile(scores)
 
         # (6) OCR fast pass (clearly-marked stub lines if paddle missing).
-        ocr_lines, ocr_ms = ocr_page(img)
+        #     A failure on ONE page (Sarvam + paddle fallback, or paddle
+        #     alone) must not sink the job: that page gets a marked stub
+        #     line (-> needs_review) and the other pages still run.
+        try:
+            ocr_lines, ocr_ms = ocr_page(img)
+        except Exception as exc:
+            logging.getLogger("pinkcloud.job").exception(
+                "job %s: OCR failed on page %d", job_id, page_number)
+            ocr_lines, ocr_ms = failed_page_lines(img, exc), 0.0
 
         # (7) Freeze the contract JSON for this page.
         page_ms = (time.perf_counter() - t_page) * 1000.0
@@ -154,6 +200,7 @@ def _read_multi(files: list[UploadFile]) -> list[tuple[str, bytes]]:
             status_code=400,
             detail=f"too many files: at most {MAX_FILES_PER_JOB} images per job")
     uploads: list[tuple[str, bytes]] = []
+    budget = MAX_UPLOAD_BYTES  # shared by all images of the job
     for i, f in enumerate(files, start=1):
         name = f.filename or f"upload-{i}"
         ctype = (f.content_type or "").lower()
@@ -164,7 +211,8 @@ def _read_multi(files: list[UploadFile]) -> list[tuple[str, bytes]]:
                 status_code=400,
                 detail=f"file {i} ({name}): unsupported type for multi-image "
                        "jobs: use jpg, jpeg, png, tiff or webp")
-        data = f.file.read()
+        data = _read_capped(f, budget)
+        budget -= len(data)
         try:
             probe_decode(ext, data)
         except Exception:
@@ -214,15 +262,20 @@ def create_job(file: UploadFile | None = File(None),
             detail="unsupported file type: use pdf, jpg, jpeg, png, tiff or webp",
         )
 
-    data = file.file.read()
+    data = _read_capped(file, MAX_UPLOAD_BYTES)
 
     # Corrupt uploads are rejected here — not stored as jobs that fail later.
     try:
-        probe_decode(ext, data)
+        page_count = probe_decode(ext, data)
     except Exception:
         raise HTTPException(
             status_code=422,
             detail="file could not be decoded (corrupt or empty document)",
+        )
+    if ext == ".pdf" and page_count > MAX_PDF_PAGES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"PDF has {page_count} pages: at most {MAX_PDF_PAGES} pages per job",
         )
 
     job_id = uuid.uuid4().hex  # also the folder name under uploads/
@@ -237,18 +290,27 @@ def create_job(file: UploadFile | None = File(None),
 
 @app.get("/jobs/{job_id}")
 def get_job(job_id: str):
-    """Return status + result JSON for one job."""
+    """Return status + result JSON for one job.
+
+    Every line carries confidence plus a per-line needs_review flag (the
+    receipt's human-review rule). enrich_page() back-fills the flag on jobs
+    stored before it existed, so old and new jobs answer in the same shape;
+    suggestions[] passes through untouched whenever the repair module put it
+    in the stored JSON."""
     job = db.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
 
+    result = parse_job_result(job["result_json"])
+    if result and isinstance(result.get("pages"), list):
+        result["pages"] = [enrich_page(p) for p in result["pages"]]
     return {
         "job_id": job["id"],
         "filename": job["filename"],
         "sha256": job["sha256"],
         "status": job["status"],
         "created_at": job["created_at"],
-        "result": parse_job_result(job["result_json"]),
+        "result": result,
     }
 
 
@@ -269,6 +331,12 @@ def _job_summary(job: dict) -> dict:
         "page_count": len(pages) if done else None,
         "pages_needing_review": (
             sum(1 for p in pages if p.get("needs_review")) if done else None
+        ),
+        # Saved reviewer fixes that still apply to the current OCR text
+        # (stale ones whose before-word no longer matches are not counted).
+        "corrections_count": (
+            _export.count_applicable_corrections(job["id"], pages)
+            if done else None
         ),
         "error": (result or {}).get("error") if job["status"] == "error" else None,
         "result_url": f"/jobs/{job['id']}",
@@ -298,8 +366,10 @@ def search(q: str = Query(..., min_length=1, max_length=200),
 
     q is matched as whole-word tokens (implicit AND). Results carry the
     job + page + line refs and a snippet with hits wrapped in <mark>.
-    Only 'done' jobs are searched; raw stored OCR text is indexed
-    (reviewer corrections are not)."""
+    Only 'done' jobs are searched. The index holds the FINAL line text:
+    saved reviewer corrections are folded in when the job finishes and the
+    index is refreshed on every corrections PUT, so searching a corrected
+    word hits the corrected page."""
     if not q.strip():
         raise HTTPException(status_code=400, detail="empty search query")
     if not db.fts_available():
@@ -487,6 +557,10 @@ def get_corrections(job_id: str):
         logging.getLogger("pinkcloud.corrections").exception(
             "unreadable corrections for job %s", job_id)
         raise HTTPException(status_code=500, detail="corrections unreadable")
+    if not isinstance(doc, dict):  # valid JSON, but not the object we write
+        logging.getLogger("pinkcloud.corrections").error(
+            "corrections for job %s are not a JSON object", job_id)
+        raise HTTPException(status_code=500, detail="corrections unreadable")
     return {
         "job_id": job_id,
         "corrections": doc.get("corrections", []),
@@ -528,6 +602,10 @@ def put_corrections(job_id: str, body: CorrectionsDoc):
             except OSError:
                 pass
             raise
+        # Corrections are the S2 save path: the FTS index holds FINAL
+        # (corrected) line text, so refresh this job's rows with the new
+        # map. A no-op for unfinished jobs and FTS-less builds.
+        db.reindex_job(job_id)
     return {"job_id": job_id, **doc}
 
 
@@ -660,8 +738,8 @@ UI_ROOT = Path(__file__).resolve().parents[3]
 # Root-level UI assets the pages load.
 UI_FILES = {
     "index.html", "editor.html", "export.html", "library.html",
-    "api.js", "upload.js", "editor.js", "translit.js", "export.js", "library.js",
-    "tokens.css", "ui.css", "upload.css", "editor.css", "export.css", "library.css",
+    "api.js", "upload.js", "editor.js", "translit.js", "export.js", "library.js", "nav-back.js", "intro.js",
+    "tokens.css", "ui.css", "upload.css", "editor.css", "export.css", "library.css", "intro.css", "sidebar.css",
     "demo.mp4",  # watch-demo modal on index.html + editor.html
 }
 

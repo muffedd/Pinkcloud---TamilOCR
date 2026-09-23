@@ -265,7 +265,12 @@ function storageId() {
 
 /* Full-map payload, sorted into reading order (page, line, word). */
 function corrPayload() {
-  var list = Object.keys(S.corrections).map(function (k) { return S.corrections[k]; });
+  /* PUT /corrections REPLACES the job's whole map, but this editor only holds
+     one page. Carry the other pages' saved entries through untouched, so a
+     save on page 2 never wipes page 1's fixes (and page 1's fixes never land
+     on page 2's words: keys are page-scoped). */
+  var list = (S.otherCorr || []).slice().concat(
+    Object.keys(S.corrections).map(function (k) { return S.corrections[k]; }));
   list.sort(function (a, b) {
     return a.page - b.page || String(a.line).localeCompare(String(b.line)) || a.word - b.word;
   });
@@ -351,11 +356,19 @@ function retext() {
 
 /* Reapply corrections from a previous session (server list or local fallback). */
 function applySavedCorrections(list) {
+  S.otherCorr = [];
   if (!list || !list.length) return;
   var touched = false;
+  var here = S.page ? Number(S.page.page) : null;
   list.forEach(function (c) {
+    if (Number(c.page) !== here) { S.otherCorr.push(c); return; } /* another page's fix: keep, don't apply */
     var w = S.byKey["p" + c.page + ":" + c.line + ":w" + c.word];
     if (!w) return;
+    /* Same rule as export.apply_corrections: `before` must be the RAW OCR
+       word. A stale entry (before != this word's OCR text) is skipped, never
+       applied - so the editor shows what export/search/count use, and the
+       next save drops it instead of rewriting it with a fresh before. */
+    if (c.before != null && String(c.before) !== w.orig) return;
     w.text = c.after;
     w.prov = "human";
     w.target = false;
@@ -1044,8 +1057,45 @@ function renderBadges() {
   });
   el.pageBadges.appendChild(b);
   el.scanSub.textContent = "page " + S.page.page + " of " + (S.pageCount || 1) + " · " + S.page.profile + " · " + state;
-  var open = state === "clean" || state === "repaired" || state === "precomputed" || state === "ready";
-  el.exportBtn.disabled = !open;
+  /* Export is always reachable once a page is loaded, whatever the page
+     state (was: only clean/repaired/precomputed, which left Sarvam and stub
+     pages - state "queued" - with a dead button). The export dialog handles
+     unsaved / local-only / failed-save cases. */
+  el.exportBtn.disabled = false;
+  renderPager();
+}
+
+/* Page switcher: one page per load (editor.html?job=..&page=N), so a page's
+   text, words and queue are built only from that page. Saves pending fixes
+   before leaving. Live multi-page jobs only. */
+function gotoPage(n) {
+  if (!S.jobId || n < 1 || n > S.pageCount || n === Number(S.page.page)) return;
+  var q = new URLSearchParams(location.search);
+  q.set("job", S.jobId);
+  q.set("page", String(n));
+  var go = function () { location.href = "./editor.html?" + q.toString(); };
+  flushSave().then(go, go);
+}
+
+function renderPager() {
+  var old = el.pageBadges.querySelector(".page-pager");
+  if (old) old.remove();
+  if (!S.jobId || !(S.pageCount > 1)) return;
+  var cur = Number(S.page.page);
+  var wrap = document.createElement("span");
+  wrap.className = "page-pager";
+  [["prev", -1, "Previous page", "M10 3.5 5.5 8l4.5 4.5"], ["next", 1, "Next page", "M6 3.5 10.5 8 6 12.5"]].forEach(function (d) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "btn btn--soft btn--sm btn--icon";
+    b.setAttribute("aria-label", d[2] + " (" + (cur + d[1]) + " of " + S.pageCount + ")");
+    b.title = d[2];
+    b.disabled = cur + d[1] < 1 || cur + d[1] > S.pageCount;
+    b.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + d[3] + '"/></svg>';
+    b.addEventListener("click", function () { gotoPage(cur + d[1]); });
+    wrap.appendChild(b);
+  });
+  el.pageBadges.appendChild(wrap);
 }
 
 /* ---------------- connection badge (display only) ----------------
@@ -1483,7 +1533,7 @@ function exportPageUrl() {
   return "./export.html?" + q;
 }
 
-function fixCount() { return Object.keys(S.corrections).length; }
+function fixCount() { return corrPayload().corrections.length; } /* whole job, all pages */
 
 function plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
 
@@ -1548,7 +1598,16 @@ function renderExport(busy) {
 }
 
 function openExport() {
-  if (!S.page || el.exportBtn.disabled) return;
+  if (!S.page) {
+    /* Live job that didn't load here (still processing, failed, bad page):
+       the export page has its own pending / error states. */
+    if (JOB_ID && !window.PC_API.USE_MOCK) {
+      var q = "job=" + encodeURIComponent(JOB_ID);
+      if (window.PC_API.API_BASE) q += "&api=" + encodeURIComponent(window.PC_API.API_BASE);
+      window.location.href = "./export.html?" + q;
+    }
+    return;
+  }
   closePopup();
   exp.lastFocus = document.activeElement;
   S.exportOpen = true;
@@ -1717,6 +1776,8 @@ function init() {
 
   el.pageBadges = $("pageBadges");
   el.exportBtn = $("exportBtn");
+  /* Live job: Export works from the start, even before (or without) a loaded page. */
+  if (JOB_ID && !window.PC_API.USE_MOCK) el.exportBtn.disabled = false;
   el.scanSub = $("scanSub");
   el.scanScroll = $("scanScroll");
   el.paper = $("paper");

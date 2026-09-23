@@ -103,6 +103,9 @@ body {
   align-items: center;
   gap: var(--pc-space-2);
 }
+/* prev / next page (editor.js renderPager) - one page per load */
+.page-pager { display: inline-flex; align-items: center; gap: var(--pc-space-1); }
+
 
 .topbar .spacer {
   flex: 1;

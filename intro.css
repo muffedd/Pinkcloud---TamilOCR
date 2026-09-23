@@ -1,0 +1,45 @@
+/* Pink Cloud - landing intro overlay (intro.js). Values from tokens.css. */
+.pc-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--pc-color-bg-canvas);
+  border-radius: 0 0 var(--pc-intro-sheet-radius) var(--pc-intro-sheet-radius);
+  box-shadow: var(--pc-intro-sheet-shadow);
+  overflow: hidden;
+  will-change: transform;
+  cursor: pointer;
+}
+
+.pc-intro canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.pc-intro-skip {
+  position: absolute;
+  right: var(--pc-intro-skip-inset);
+  bottom: var(--pc-intro-skip-inset);
+}
+
+.pc-intro-skip .kbd {
+  margin-left: var(--pc-space-1);
+  background: transparent;
+}
+
+/* while the intro owns the screen the page below must not scroll */
+html.pc-intro-on,
+html.pc-intro-on body {
+  overflow: hidden;
+}
+
+/* variant picker, only shown when ?intro=... is in the URL */
+.pc-intro-pick {
+  position: absolute;
+  left: var(--pc-intro-skip-inset);
+  bottom: var(--pc-intro-skip-inset);
+  display: flex;
+  gap: var(--pc-space-1);
+}

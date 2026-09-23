@@ -8,6 +8,8 @@ Base URL when run locally (see `fastapi/sqlite/RUN.md`): `http://127.0.0.1:8000`
 | GET | `/health` | Liveness + OCR engine state |
 | POST | `/jobs` | Upload a document, process it, get a `job_id` |
 | GET | `/jobs/{job_id}` | Job status, hash, and page results |
+| GET | `/jobs` | Job list (newest first, paginated) |
+| GET | `/search?q=` | Full-text search over the FINAL (corrections-applied) line text of done jobs |
 | GET | `/docs` | Auto-generated Swagger UI (FastAPI) |
 
 ## Processing is synchronous
@@ -137,6 +139,7 @@ Each `lines[]` item:
 | `body` | string | Recognized Tamil line text |
 | `bbox` | `[x, y, w, h]` | Pixels on the 1600px-capped image; draw directly on the frontend |
 | `confidence` | number | 0-1; the UI colors each line by this |
+| `needs_review` | bool | Per-line review flag: confidence < 0.5, `[stub]` body, or a `HEAVY` page (same rule the receipt counts by). Back-filled on read for jobs stored before this field existed |
 
 Also emitted by the current backend:
 
@@ -146,7 +149,10 @@ Also emitted by the current backend:
 | `processing_ms` | int | Wall-clock ms for this page |
 
 Allowed by the schema but **not emitted yet**: `preprocessed`, `words[]`, `corrections[]`,
-`verdicts[]`, CICT identity fields (`specimen`, `chapter`, `work`, `manuscript_id`, `script`,
+`verdicts[]`, `suggestions[]` (page-level review candidates, shape per
+`schema/suggestions-contract.md`; passed through untouched when the HEAVY repair
+fix-list/dictionary module emits them, absent until then), CICT identity fields
+(`specimen`, `chapter`, `work`, `manuscript_id`, `script`,
 `material`, `license`, `doi`), extra `quality` keys (`damage_flags`, `ink_density`,
 `estimated_lines`, `quality_score`) and extra line keys (`kural`, `margin`, `numeral`,
 `end_char`). Clients should tolerate them appearing later.
@@ -156,6 +162,43 @@ Allowed by the schema but **not emitted yet**: `preprocessed`, `words[]`, `corre
 With `ocr_engine: "stub"`, each page gets placeholder lines whose `body` starts with `[stub]` and
 `confidence` is `0.0` - same shape, so the frontend can be built against it. Such pages
 always have `needs_review: true`.
+
+## GET /jobs
+
+Newest-first job list for the Library page. `?limit=` (1-200, default 50) and `?offset=`
+paginate; `total` is the full job count.
+
+```json
+{"total": 1, "limit": 50, "offset": 0, "jobs": [
+  {"job_id": "af3c...", "filename": "scan.jpg", "sha256": "2f1a...", "status": "done",
+   "created_at": "...", "page_count": 1, "pages_needing_review": 0,
+   "corrections_count": 2, "error": null,
+   "result_url": "/jobs/af3c...", "receipt_url": "/jobs/af3c.../receipt"}
+]}
+```
+
+`page_count`, `pages_needing_review`, `corrections_count` and `receipt_url` are `null`
+until the job is `done`. `corrections_count` counts only saved corrections that STILL
+APPLY to the current OCR word (same still-applies rule as export): stale entries whose
+`before` no longer matches are not counted, and duplicates of the same word count once.
+
+## GET /search
+
+`?q=` (required), `?limit=` (1-100, default 20), `?offset=`. Whole-word tokens, implicit AND,
+over the FINAL line text of `done` jobs: saved corrections are folded in when a job finishes
+and the index refreshes on every `PUT /jobs/{id}/corrections`, so a corrected word (e.g.
+`வாலறிவன்` after fixing `வாழறிவன்`) hits the corrected page, and the corrected-away word
+stops hitting it. FTS5 `unicode61` tokenizer - Tamil letters tokenize as word characters.
+
+```json
+{"query": "வாலறிவன்", "total": 1, "limit": 20, "offset": 0, "results": [
+  {"job_id": "af3c...", "filename": "scan.jpg", "page": 1, "line": "L3",
+   "snippet": "...பயனென்கொல் <mark>வாலறிவன</mark>்", "score": -1.23}
+]}
+```
+
+Results are bm25-ranked (lower `score` = better); hits are wrapped in `<mark>`.
+Empty `q` → `400`; FTS unavailable in this SQLite build → `503`.
 
 ## Swagger
 

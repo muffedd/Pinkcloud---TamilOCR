@@ -59,9 +59,15 @@
   const POLL_MAX = 600; // depth cap ≈ 4 min per job
   const LIVE_PARALLEL = 2; // OCR runs inside POST: keep the server load small
 
-  const ACCEPT_EXT = ['.pdf', '.jpg', '.jpeg', '.png', '.tif', '.tiff'];
-  const ACCEPT_MIME = ['application/pdf', 'image/jpeg', 'image/png', 'image/tiff'];
-  const ACCEPT_ATTR = '.pdf,.jpg,.jpeg,.png,.tif,.tiff';
+  const ACCEPT_EXT = ['.pdf', '.jpg', '.jpeg', '.png', '.tif', '.tiff', '.zip'];
+  const ACCEPT_MIME = ['application/pdf', 'image/jpeg', 'image/png', 'image/tiff',
+    'application/zip', 'application/x-zip-compressed'];
+  const ACCEPT_ATTR = '.pdf,.jpg,.jpeg,.png,.tif,.tiff,.zip';
+  /* ZIP of page images -> ONE job, one page per image (POST /jobs with a
+     repeated `files` field). Same image types + limit as the backend's
+     multi-image path (main.py _read_multi / MAX_FILES_PER_JOB). */
+  const ZIP_IMG_EXT = ['.jpg', '.jpeg', '.png', '.tif', '.tiff', '.webp'];
+  const ZIP_MAX_IMAGES = 100;
 
   /* Copy of schema/doc_demo.json — last resort only (no fetch, no
      inline #doc). The live source is schema/doc_demo.json. */
@@ -146,7 +152,65 @@
     constructor(message, kind) { super(message); this.kind = kind; } // kind: 'down' | 'http'
   }
   const MIME_BY_EXT = { '.pdf': 'application/pdf', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-    '.png': 'image/png', '.tif': 'image/tiff', '.tiff': 'image/tiff' };
+    '.png': 'image/png', '.tif': 'image/tiff', '.tiff': 'image/tiff', '.webp': 'image/webp' };
+
+  function isZip(file) {
+    return /\.zip$/i.test(file.name || '') || file.type === 'application/zip' || file.type === 'application/x-zip-compressed';
+  }
+
+  /* Minimal ZIP reader, no library: central directory -> entries; stored
+     (method 0) or deflate (method 8, via the browser's DecompressionStream).
+     No ZIP64, no encryption: those entries are reported, never guessed. */
+  async function unzipImages(file) {
+    const buf = new Uint8Array(await file.arrayBuffer());
+    const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    let eocd = -1;
+    for (let i = buf.length - 22; i >= Math.max(0, buf.length - 22 - 65535); i--) {
+      if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd < 0) throw new ApiError('Not a readable ZIP file', 'http');
+    const count = dv.getUint16(eocd + 10, true);
+    let off = dv.getUint32(eocd + 16, true);
+    if (off === 0xffffffff) throw new ApiError('ZIP64 archives are not supported: re-zip without ZIP64', 'http');
+    const utf8 = new TextDecoder('utf-8');
+    const cp437 = new TextDecoder('latin1');
+    const images = [];
+    let skipped = 0, locked = 0;
+    for (let n = 0; n < count; n++) {
+      if (off + 46 > buf.length || dv.getUint32(off, true) !== 0x02014b50) throw new ApiError('ZIP directory is damaged', 'http');
+      const flags = dv.getUint16(off + 8, true);
+      const method = dv.getUint16(off + 10, true);
+      const csize = dv.getUint32(off + 20, true);
+      const nlen = dv.getUint16(off + 28, true), xlen = dv.getUint16(off + 30, true), clen = dv.getUint16(off + 32, true);
+      const lho = dv.getUint32(off + 42, true);
+      const raw = buf.subarray(off + 46, off + 46 + nlen);
+      const path = (flags & 0x800 ? utf8 : cp437).decode(raw);
+      off += 46 + nlen + xlen + clen;
+      const base = path.split('/').pop();
+      if (!base || path.endsWith('/') || path.startsWith('__MACOSX/') || base.startsWith('.')) continue; // folders, macOS junk
+      const ext = (base.match(/\.[^.]+$/) || [''])[0].toLowerCase();
+      if (!ZIP_IMG_EXT.includes(ext)) { skipped++; continue; }
+      if (flags & 1) { locked++; continue; }
+      if (csize === 0xffffffff) throw new ApiError('ZIP64 archives are not supported: re-zip without ZIP64', 'http');
+      const dataAt = lho + 30 + dv.getUint16(lho + 26, true) + dv.getUint16(lho + 28, true);
+      const comp = buf.subarray(dataAt, dataAt + csize);
+      let bytes;
+      if (method === 0) bytes = comp;
+      else if (method === 8 && typeof DecompressionStream === 'function') {
+        const stream = new Blob([comp]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+        bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+      } else throw new ApiError(base + ': unsupported ZIP compression (use a standard ZIP)', 'http');
+      images.push({ path, file: new File([bytes], base, { type: MIME_BY_EXT[ext] }) });
+    }
+    /* Page order = file name order, numbers compared as numbers (p2 < p10). */
+    images.sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true, sensitivity: 'base' }));
+    if (!images.length) {
+      throw new ApiError('No page images in this ZIP' + (locked ? ' (password-protected entries skipped)' : '') +
+        '. Use JPG, PNG, TIFF or WEBP; put PDFs in on their own', 'http');
+    }
+    if (images.length > ZIP_MAX_IMAGES) throw new ApiError('Too many images in this ZIP: at most ' + ZIP_MAX_IMAGES + ' per job', 'http');
+    return { files: images.map((x) => x.file), skipped, locked };
+  }
   function detailText(body) {
     if (!body || body.detail == null) return '';
     if (typeof body.detail === 'string') return body.detail;
@@ -168,7 +232,8 @@
   function realStartPage(file, opts) {
     return new Promise((resolve, reject) => {
       const fd = new FormData();
-      fd.append('file', withMime(file), file.name);
+      if (opts.files) opts.files.forEach((f) => fd.append('files', f, f.name)); // ZIP: one job, page per image
+      else fd.append('file', withMime(file), file.name);
       const xhr = new XMLHttpRequest();
       xhr.open('POST', POST_JOBS);
       xhr.responseType = 'text';
@@ -293,16 +358,14 @@
     const page = h('div', 'up-page');
     root.appendChild(page);
 
-    /* stepper: the app's real flow; this screen is step 3 */
+    /* stepper: the web flow as the user sees it; this screen is step 1 */
     const stepper = h('ol', 'up-stepper');
     stepper.setAttribute('aria-label', 'Progress');
-    ['a', 'b', 'c'].forEach((s) => stepper.appendChild(h('li', 'up-seg ' + s)));
+    stepper.appendChild(h('li', 'up-seg c'));
     [
-      { lbl: 'Scan pages', x: 64, cls: 'is-done', c: '#FB8D69' },
-      { lbl: 'Prepare files', x: 278.5, cls: 'is-done d2', c: '#F94612' },
-      { lbl: 'Upload scans', x: 494, cls: 'is-current', n: 3 },
-      { lbl: 'Tamil OCR', x: 708.5, cls: '', n: 4 },
-      { lbl: 'Review & export PDF', x: 924, cls: '', n: 5 }
+      { lbl: 'Upload scans', x: 64, cls: 'is-current', n: 1 },
+      { lbl: 'Tamil OCR', x: 494, cls: '', n: 2 },
+      { lbl: 'Review & export', x: 924, cls: '', n: 3 }
     ].forEach((s) => {
       const li = h('li', 'up-step ' + s.cls);
       li.style.left = s.x + 'px';
@@ -360,7 +423,7 @@
     idle.appendChild(sample);
     const note = h('div', 'up-note');
     const pasteKey = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘V' : 'Ctrl+V';
-    note.appendChild(document.createTextNode('Supported files: PDF (multi-page), JPG, PNG and TIFF · or paste an image (' + pasteKey + ')'));
+    note.appendChild(document.createTextNode('Supported files: PDF (multi-page), ZIP of page images, JPG, PNG and TIFF · or paste an image (' + pasteKey + ')'));
     note.appendChild(h('br'));
     note.appendChild(h('span', 'ta', 'தமிழ் ஆவணங்களுக்கான OCR'));
     idle.appendChild(note);
@@ -534,7 +597,7 @@
     if (!files.length) return;
     const rejected = files.filter((f) => !isAccepted(f));
     const accepted = files.filter(isAccepted);
-    rejected.slice(0, 3).forEach((f) => addNotice(f.name + ': unsupported type. Use PDF, JPG, PNG or TIFF'));
+    rejected.slice(0, 3).forEach((f) => addNotice(f.name + ': unsupported type. Use PDF, ZIP, JPG, PNG or TIFF'));
     if (rejected.length > 3) addNotice((rejected.length - 3) + ' more files skipped (unsupported type)');
     const keys = accepted.map((f) => addPage(f));
     // Mock only: the last file of a multi-file drop comes back damaged (error-state demo).
@@ -682,7 +745,19 @@
   async function runOne(key) {
     const p = state.pages.get(key);
     try {
+      let zipFiles = null;
+      if (!MOCK && isZip(p.file)) {
+        p.els.pct.textContent = 'Unzipping…';
+        const z = await unzipImages(p.file);
+        if (!state.pages.has(key)) return;
+        zipFiles = z.files;
+        const extra = [];
+        if (z.skipped) extra.push(z.skipped + (z.skipped === 1 ? ' non-image file' : ' non-image files') + ' skipped');
+        if (z.locked) extra.push(z.locked + ' password-protected skipped');
+        if (extra.length) addNotice(p.name + ': ' + extra.join(' · ')); // the row shows the page count when OCR is done
+      }
       const { job_id } = await startPage(p.file, {
+        files: zipFiles,
         fail: p.mockFail, delay: 0,
         onXhr: (xhr) => { p.xhr = xhr; },
         onProgress: (status, progress) => applyPage(key, { status, progress })

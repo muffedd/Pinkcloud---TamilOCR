@@ -43,6 +43,7 @@
 
   <main class="ex-main">
     <div class="ex-col" id="exRoot" aria-live="polite" aria-busy="true">
+      <a class="btn btn--outline btn--sm pc-back" data-back href="./index.html" data-back-fallback="#navReview" title="Go back"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 8H3.5M7 4.5 3.5 8 7 11.5"/></svg><span class="lb"><span>Back</span><span aria-hidden="true">Back</span></span></a>
 
       <!-- Loading -->
       <section class="ex-state" data-state="loading">
@@ -109,6 +110,18 @@
             <p class="small ex-muted">TXT · UTF-8, with a provenance header.</p>
             <a class="btn btn--outline" id="dlTxt" href="#" download><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5V10M5 7l3 3 3-3M3 12.5h10"/></svg><span class="lb"><span>Download TXT</span><span aria-hidden="true">Download TXT</span></span></a>
           </div>
+
+          <div class="card ex-dl ex-more">
+            <p class="ex-dl-title">More formats</p>
+            <p class="small ex-muted">Same corrected text as the TXT, page by page. Word is built on the server. Markdown, CSV and XML are built in your browser from the server's saved copy.</p>
+            <div class="ex-more-row">
+              <a class="btn btn--outline btn--sm" id="dlDocx" href="#" download><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5V10M5 7l3 3 3-3M3 12.5h10"/></svg><span class="lb"><span>DOCX</span><span aria-hidden="true">DOCX</span></span></a>
+              <button type="button" class="btn btn--outline btn--sm" id="dlMd" data-fmt="md"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5V10M5 7l3 3 3-3M3 12.5h10"/></svg><span class="lb"><span>Markdown</span><span aria-hidden="true">Markdown</span></span></button>
+              <button type="button" class="btn btn--outline btn--sm" id="dlCsv" data-fmt="csv"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5V10M5 7l3 3 3-3M3 12.5h10"/></svg><span class="lb"><span>CSV</span><span aria-hidden="true">CSV</span></span></button>
+              <button type="button" class="btn btn--outline btn--sm" id="dlXml" data-fmt="xml"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5V10M5 7l3 3 3-3M3 12.5h10"/></svg><span class="lb"><span>XML</span><span aria-hidden="true">XML</span></span></button>
+            </div>
+            <p class="small ex-muted ex-more-err" id="moreErr" role="status" hidden></p>
+          </div>
         </div>
 
         <div class="card ex-receipt">
@@ -136,5 +149,6 @@
   </main>
 </div>
 <script src="./export.js"></script>
+<script src="./nav-back.js"></script>
 </body>
 </html>

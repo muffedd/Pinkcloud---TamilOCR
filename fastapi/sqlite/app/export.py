@@ -32,6 +32,7 @@ import ctypes
 import io
 import json
 import re
+import logging
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,12 +40,13 @@ from typing import Any
 
 from . import pdfutil as _pdfutil
 from . import storage
-from .schema_out import CONFIDENCE_REVIEW_FLOOR
+from .schema_out import CONFIDENCE_REVIEW_FLOOR, STUB_MARK, line_needs_review
 
 PT_PER_PX = 72.0 / 150.0
 FONT_PATH = Path(__file__).resolve().parents[3] / "fonts" / "noto-sans-tamil.ttf"
-STUB_MARK = "[stub]"
 RECEIPT_VERSION = 1
+
+_log = logging.getLogger("pinkcloud.export")
 
 
 # --------------------------------------------------------------------------
@@ -54,34 +56,56 @@ RECEIPT_VERSION = 1
 CORRECTIONS_FILE = "corrections.json"
 
 
-def load_saved_corrections(job_id: str) -> list[dict]:
+def read_saved_corrections(job_id: str) -> tuple[list[dict], str | None]:
     """Read the job's saved correction map written by the corrections route.
 
     Shape: {"corrections": [{page, line, word, before, after}, ...], ...}.
-    Absent, unreadable or malformed files give [] (export falls back to raw
-    OCR text); malformed entries are skipped individually."""
+    Returns (usable corrections, problem). A missing file is not a problem
+    (no corrections yet). An unreadable / non-JSON / wrongly shaped file, or
+    malformed entries, give a one-line problem string so the receipt can
+    say corrections were NOT (all) applied instead of quietly showing 0."""
     path = storage.UPLOAD_ROOT / job_id / CORRECTIONS_FILE
+    if not path.is_file():
+        return [], None
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:  # missing, unreadable, not JSON
-        return []
+    except Exception as exc:  # unreadable, not JSON
+        _log.warning("corrections for job %s unreadable: %s", job_id, exc)
+        return [], f"saved corrections file is unreadable ({type(exc).__name__})"
     items = doc.get("corrections") if isinstance(doc, dict) else doc
     if not isinstance(items, list):
-        return []
+        _log.warning("corrections for job %s have the wrong shape", job_id)
+        return [], "saved corrections file has the wrong shape"
     out = []
+    skipped = 0
     for c in items:
         try:
             page, word = int(c["page"]), int(c["word"])
             line, after = str(c["line"]), str(c["after"])
         except Exception:
+            skipped += 1
             continue
         before = c.get("before")
         if page < 1 or word < 1 or not after.strip():
+            skipped += 1
             continue
         out.append({"page": page, "line": line, "word": word,
                     "before": None if before is None else str(before),
                     "after": after.strip()})
-    return out
+    problem = (f"{skipped} of {len(items)} saved corrections were malformed and skipped"
+               if skipped else None)
+    return out, problem
+
+
+def load_saved_corrections(job_id: str) -> list[dict]:
+    """Usable saved corrections ([] when none or unreadable); see
+    read_saved_corrections for the problem report."""
+    return read_saved_corrections(job_id)[0]
+
+
+def saved_corrections_error(job_id: str) -> str | None:
+    """Why saved corrections could not be (fully) applied, or None."""
+    return read_saved_corrections(job_id)[1]
 
 
 def apply_corrections(pages: list[dict], corrections: list[dict]) -> list[dict]:
@@ -128,11 +152,29 @@ def apply_corrections(pages: list[dict], corrections: list[dict]) -> list[dict]:
 
 
 def apply_saved_corrections(job_id: str, pages: list[dict]) -> list[dict]:
-    """pages with the job's saved corrections applied (raw pages on any error)."""
+    """pages with the job's saved corrections applied (raw pages on any error;
+    the receipt reports the problem via saved_corrections_error)."""
     try:
         return apply_corrections(pages, load_saved_corrections(job_id))
     except Exception:
+        _log.exception("applying saved corrections failed for job %s", job_id)
         return pages
+
+
+def count_applicable_corrections(job_id: str, pages: list[dict]) -> int:
+    """How many of the job's saved corrections still apply to the CURRENT
+    OCR text - the same still-applies rule as apply_corrections (a stale
+    correction whose `before` no longer matches the word is skipped, and a
+    word already changed by a later correction counts only the winner).
+    Powers GET /jobs' corrections_count, so the Library shows the fixes a
+    reviewer would actually see applied, not the raw corrections-array
+    length. Stored pages never carry tier "human" (the contract tiers are
+    T1/T2), so every "human" entry below came from this application."""
+    applied = apply_saved_corrections(job_id, pages)
+    return sum(
+        1 for p in applied for c in (p.get("corrections") or [])
+        if c.get("tier") == "human"
+    )
 
 
 # --------------------------------------------------------------------------
@@ -141,12 +183,10 @@ def apply_saved_corrections(job_id: str, pages: list[dict]) -> list[dict]:
 
 def _line_needs_human(line: dict, page: dict) -> bool:
     """A line goes to a human if its confidence is under the review floor,
-    it is stub output, or its page was routed HEAVY."""
-    return (
-        float(line.get("confidence", 0.0)) < CONFIDENCE_REVIEW_FLOOR
-        or str(line.get("body", "")).startswith(STUB_MARK)
-        or page.get("profile") == "HEAVY"
-    )
+    it is stub output, or its page was routed HEAVY. The rule itself lives
+    in schema_out.line_needs_review (it is also the per-line needs_review
+    served by GET /jobs/{id}), so receipt counts and API flags agree."""
+    return line_needs_review(line, page.get("profile"))
 
 
 def build_receipt(job: dict, pages: list[dict], reviewer: str | None = None,
@@ -208,6 +248,8 @@ def build_receipt(job: dict, pages: list[dict], reviewer: str | None = None,
                   "human_review": tot["human"]},
         "corrections": {"total": tot["corr"], "by_tier": tiers,
                         "human_verdicts": human_verdicts},
+        # null when fine; else why saved corrections were NOT (all) applied
+        "corrections_error": saved_corrections_error(job["id"]),
         "reviewer": reviewer or None,
         "time": {
             "created_at": job["created_at"],
@@ -223,6 +265,8 @@ def build_receipt(job: dict, pages: list[dict], reviewer: str | None = None,
 def receipt_lines(r: dict) -> list[str]:
     """Human-readable receipt (used in TXT header and the PDF receipt page)."""
     tiers = ", ".join(f"{k}={v}" for k, v in sorted(r["corrections"]["by_tier"].items())) or "none"
+    warn = ([f"WARNING - corrections not fully applied: {r['corrections_error']}"]
+            if r.get("corrections_error") else [])
     return [
         "Pink Cloud processing receipt",
         f"Job: {r['job_id']}",
@@ -232,6 +276,7 @@ def receipt_lines(r: dict) -> list[str]:
         f"Pages: {r['page_count']} (auto {r['pages']['auto']}, human review {r['pages']['human_review']})",
         f"Lines: {r['lines']['total']} (auto {r['lines']['auto']}, human review {r['lines']['human_review']})",
         f"Corrections: {r['corrections']['total']} (tiers: {tiers}; human verdicts {r['corrections']['human_verdicts']})",
+        *warn,
         f"Reviewer: {r['reviewer'] or 'none recorded'}",
         f"Created: {r['time']['created_at']}",
         f"Exported: {r['time']['exported_at']}",
@@ -244,13 +289,22 @@ def receipt_lines(r: dict) -> list[str]:
 # TXT
 # --------------------------------------------------------------------------
 
+def _export_bodies(p: dict) -> list[str]:
+    """Line bodies of one page in reading order, WITHOUT "[stub]" marker
+    lines (same rule as the PDF text layer). The receipt still counts
+    stub pages, so the marker is never hidden from the reviewer."""
+    lines = sorted(p.get("lines") or [], key=lambda l: l.get("seq", 0))
+    bodies = ([str(l.get("body", "")) for l in lines] if lines
+              else (p.get("text") or "").splitlines())
+    return [b for b in bodies if not b.strip().startswith(STUB_MARK)]
+
+
 def build_txt(pages: list[dict], receipt: dict) -> str:
     out = ["# " + l for l in receipt_lines(receipt)]
     for p in pages:
         out.append("")
         out.append(f"=== page {p.get('page')} ===")
-        lines = sorted(p.get("lines") or [], key=lambda l: l.get("seq", 0))
-        out.append("\n".join(l["body"] for l in lines) if lines else p.get("text", ""))
+        out.append("\n".join(_export_bodies(p)))
     return "\n".join(out) + "\n"
 
 
@@ -290,8 +344,7 @@ def build_docx(pages: list[dict], receipt: dict) -> bytes:
     doc.add_heading("Pink Cloud export", level=0)
     for p in pages:
         doc.add_heading(f"Page {p.get('page')}", level=1)
-        lines = sorted(p.get("lines") or [], key=lambda l: l.get("seq", 0))
-        bodies = [l["body"] for l in lines] if lines else (p.get("text") or "").splitlines()
+        bodies = _export_bodies(p)
         if not bodies:
             doc.add_paragraph("(no text)")
         for body in bodies:
@@ -436,7 +489,11 @@ def _build_pdf(master: Path | list[Path], pages: list[dict], receipt: dict,
             y = 800.0
             for k, line in enumerate(receipt_lines(receipt)):
                 size = 16 if k == 0 else 10
-                _add_text(pdf.raw, page.raw, helv, line, size, 50, y, None,
+                # Helvetica has no Tamil glyphs (tofu boxes for a Tamil
+                # filename); non-ASCII lines use the embedded Noto Sans
+                # Tamil, which also covers Latin. ASCII lines unchanged.
+                face = helv if line.isascii() else font
+                _add_text(pdf.raw, page.raw, face, line, size, 50, y, None,
                           invisible=False)
                 y -= 26 if k == 0 else 16
             page.gen_content()

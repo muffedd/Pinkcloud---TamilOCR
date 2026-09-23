@@ -152,6 +152,13 @@
   --pc-ease-out: cubic-bezier(.23, 1, .32, 1);
   --pc-ease-spring: cubic-bezier(.34, 1.36, .64, 1);
   --pc-ease-in-out: cubic-bezier(.65, 0, .35, 1);
+  --pc-ease-bounce: cubic-bezier(.22, 1.9, .36, 1);     /* from design-drafts/icon-motion-*: big overshoot, tiny moves only (1-2px) */
+  --pc-ease-overshoot: cubic-bezier(.34, 1.56, .64, 1); /* from icon-motion: press release springs back past rest */
+  --pc-lift-hover: -1px;
+  --pc-motion-pop: 420ms;    /* icon motion A: state icon / status dot springs in */
+  --pc-motion-draw: 560ms;   /* icon motion B: icon strokes draw on */
+  --pc-motion-spin: 1600ms;  /* icon motion A: stepped spring spinner, one turn */
+  --pc-motion-pulse: 1500ms; /* icon motion A: processing dot pulse */                               /* solid/outline button hover lift */
   --pc-scale-press: .96;
   --pc-scale-press-sm: .97;
   --pc-motion-fast: 100ms;
@@ -221,6 +228,11 @@
   --pc-qs-h: 28px;
   --pc-qs-pad: 0 8px 0 4px;
 
+  /* ---------- Landing intro (intro.js / intro.css, design-drafts/pinkcloud-intro.html) ---------- */
+  --pc-intro-sheet-radius: 28px;           /* bottom corners of the sheet as it slides up */
+  --pc-intro-sheet-shadow: 0 30px 60px #1E1A1814; /* only visible while the sheet leaves */
+  --pc-intro-skip-inset: 16px;
+
   /* ---------- Buttons / pills / toggles / inputs ---------- */
   --pc-btn-h: 36px;
   --pc-btn-pad: 0 16px;
@@ -283,4 +295,75 @@
   --pc-radius-pill: 999px;
   /* kbd chip sitting on a solid button (Accept) */
   --pc-kbd-on-solid-ring: inset 0 0 0 1px #FFFFFF59;
+
+  /* ==========================================================================
+     Sizing scale (generic). Role tokens above (--pc-fs-btn, --pc-btn-h, ...)
+     stay as they are; new work should pick from these steps. Values match
+     sizes already used in the UI, so nothing changes visually.
+     ========================================================================== */
+  /* spacing: fills the gaps in the 4px/8px scale above */
+  --pc-space-0: 0;
+  --pc-space-5: 20px;
+  --pc-space-10: 40px;
+  --pc-space-16: 64px;
+  /* font size */
+  --pc-fs-xs: 11px;
+  --pc-fs-sm: 12px;
+  --pc-fs-base: 13px;
+  --pc-fs-md: 14px;
+  --pc-fs-lg: 15px;
+  --pc-fs-xl: 16px;
+  --pc-fs-2xl: 18px;
+  --pc-fs-3xl: 20px;
+  --pc-fs-4xl: 24px;
+  /* line height */
+  --pc-lh-none: 1;
+  --pc-lh-tight: 1.25;
+  --pc-lh-snug: 1.4;
+  --pc-lh-normal: 1.45;
+  --pc-lh-relaxed: 1.6;
+  --pc-lh-tamil: 1.8;
+  /* font weight */
+  --pc-fw-regular: 400;
+  --pc-fw-medium: 500;
+  --pc-fw-semibold: 600;
+  /* letter spacing */
+  --pc-track-tight: -0.01em;
+  --pc-track-normal: 0;
+  /* icon size */
+  --pc-icon-xs: 12px;
+  --pc-icon-sm: 14px;
+  --pc-icon-md: 16px;
+  --pc-icon-lg: 20px;
+  --pc-icon-xl: 24px;
+  /* control height (buttons, inputs, nav rows) */
+  --pc-control-sm: 30px;
+  --pc-control-md: 36px;
+  --pc-control-lg: 44px;
+  /* radius steps */
+  --pc-radius-xs: 3px;
+  --pc-radius-s: 6px;
+  --pc-radius-m: 8px;
+  --pc-radius-l: 10px;
+  --pc-radius-xl: 16px;
+  /* container width */
+  --pc-container-sm: 640px;
+  --pc-container-md: 920px;   /* = --pc-library-w */
+  --pc-container-lg: 988px;   /* upload card + stepper */
+  --pc-container-xl: 1200px;  /* upload page */
+  /* stacking order */
+  --pc-z-base: 1;
+  --pc-z-raised: 2;
+  --pc-z-sidebar: 3;
+  --pc-z-shell: 40;
+  --pc-z-toast: 55;
+  --pc-z-modal: 60;
+  --pc-z-overlay: 70;
+  --pc-z-intro: 100;
+  /* breakpoints: reference only (CSS can't read custom properties inside
+     @media); keep media queries on these numbers */
+  --pc-bp-sm: 640px;
+  --pc-bp-md: 900px;
+  --pc-bp-lg: 1040px;
+  --pc-bp-xl: 1600px;
 }

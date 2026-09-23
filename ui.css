@@ -171,6 +171,22 @@ h1, h2, h3, h4, h5, h6, p {
     background-color var(--pc-motion-color) var(--pc-ease-out),
     color var(--pc-motion-color) var(--pc-ease-out);
 }
+/* Solid + outline: 1px lift on hover (bounce), press release overshoots back */
+.btn--solid, .btn--outline {
+  transition:
+    transform var(--pc-motion-release) var(--pc-ease-overshoot),
+    background-color var(--pc-motion-color) var(--pc-ease-out),
+    color var(--pc-motion-color) var(--pc-ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .btn--solid:hover, .btn--outline:hover {
+    transform: translateY(var(--pc-lift-hover));
+    transition:
+      transform var(--pc-motion-hover) var(--pc-ease-bounce),
+      background-color var(--pc-motion-color) var(--pc-ease-out),
+      color var(--pc-motion-color) var(--pc-ease-out);
+  }
+}
 .btn svg {
   width: var(--pc-btn-icon);
   height: var(--pc-btn-icon);
@@ -316,12 +332,55 @@ h1, h2, h3, h4, h5, h6, p {
 .pill.is-precomputed .pdot { background: var(--pc-color-warning); }
 
 .spin {
-  animation: pc-spin 900ms linear infinite;
+  animation: pc-spin var(--pc-motion-spin) var(--pc-ease-overshoot) infinite;
 }
 
+/* icon motion A: quarter turns that overshoot and settle */
 @keyframes pc-spin {
-  to { transform: rotate(360deg); }
+  0% { transform: rotate(0); }
+  24% { transform: rotate(105deg); } 38% { transform: rotate(90deg); }
+  55% { transform: rotate(195deg); } 68% { transform: rotate(180deg); }
+  86% { transform: rotate(285deg); } 100% { transform: rotate(360deg); }
 }
+
+/* ---------- Icon motion (design-drafts/icon-motion-a.html + -b.html) ----------
+   A = spring: a state icon or status dot scales in, overshoots, settles.
+   B = draw-on: icon strokes draw themselves when the icon appears.
+   Never used in a sidebar or in the intro. Reduced motion: all off (below). */
+@keyframes pc-pop-in {
+  0% { transform: scale(0); opacity: 0; }
+  55% { transform: scale(1.18); opacity: 1; }
+  78% { transform: scale(.94); }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes pc-draw-on { from { stroke-dashoffset: 60; } to { stroke-dashoffset: 0; } }
+@keyframes pc-dot-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  45% { transform: scale(.55); opacity: .55; }
+}
+/* A: status dots in Library rows and the Export header pop in; processing dots keep pulsing */
+.lib-status .pill__dot, .ex-head .pill__dot { animation: pc-pop-in var(--pc-motion-pop) var(--pc-ease-out) both; }
+.lib-status .pill--processing .pill__dot, .ex-head .pill--processing .pill__dot { animation: pc-pop-in var(--pc-motion-pop) var(--pc-ease-out) both,
+  pc-dot-pulse var(--pc-motion-pulse) var(--pc-ease-overshoot) var(--pc-motion-pop) infinite; }
+.lib-row:nth-child(2) .pill__dot { animation-delay: 50ms; }
+.lib-row:nth-child(3) .pill__dot { animation-delay: 100ms; }
+.lib-row:nth-child(4) .pill__dot { animation-delay: 150ms; }
+.lib-row:nth-child(n+5) .pill__dot { animation-delay: 200ms; }
+/* A: a state card's icon (not found / not ready / failed) pops in */
+.ex-state-icon:not(.spin) { animation: pc-pop-in var(--pc-motion-pop) var(--pc-ease-out) both; }
+/* B: download icons draw on when the export is ready, and on a finished upload row */
+.ex-dl .btn svg path, .ex-dl .btn svg rect, .ex-dl .btn svg circle, .ex-dl .btn svg polyline,
+.up-row[data-status="done"] .up-acts svg path, .up-row[data-status="done"] .up-acts svg circle {
+  stroke-dasharray: 60; stroke-dashoffset: 60;
+  animation: pc-draw-on var(--pc-motion-draw) var(--pc-ease-out) forwards;
+}
+.ex-dl--txt .btn svg * { animation-delay: 80ms; }
+.ex-more .btn:nth-child(1) svg * { animation-delay: 140ms; }
+.ex-more .btn:nth-child(2) svg * { animation-delay: 180ms; }
+.ex-more .btn:nth-child(3) svg * { animation-delay: 220ms; }
+.ex-more .btn:nth-child(4) svg * { animation-delay: 260ms; }
+.up-row[data-status="done"] .up-acts .up-ib:nth-child(2) svg * { animation-delay: 60ms; }
+.up-row[data-status="done"] .up-acts .up-ib:nth-child(3) svg * { animation-delay: 120ms; }
 
 /* ---------- Segmented toggle (radio group) ---------- */
 .seg {
@@ -788,9 +847,11 @@ h1, h2, h3, h4, h5, h6, p {
     transition-property: background-color, color !important;
   }
   .btn:active, .pill:active, .seg-opt:active { transform: none; }
+  .btn--solid:hover, .btn--outline:hover { transform: none; }
   .btn .lb > span + span { display: none; }
   .btn:hover .lb > span:first-child { transform: none; }
   .pop, .toast.show { animation: none; }
+  .spin, .lib-status .pill__dot, .ex-head .pill__dot, .ex-state-icon, .ex-dl .btn svg *, .up-row .up-acts svg * { animation: none !important; stroke-dashoffset: 0 !important; }
 }
 
 /* ==========================================================================
@@ -878,5 +939,12 @@ h1, h2, h3, h4, h5, h6, p {
   top: var(--pc-space-4);
   right: var(--pc-space-4);
   z-index: 41;
+  text-decoration: none;
+}
+
+/* Back button (library.html, export.html; behaviour in nav-back.js).
+   An outline .btn--sm with a left arrow, first thing in the page column. */
+.pc-back {
+  align-self: flex-start;
   text-decoration: none;
 }
