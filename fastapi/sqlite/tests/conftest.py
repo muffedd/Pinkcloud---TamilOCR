@@ -17,6 +17,22 @@ import pytest
 
 os.environ.pop("SARVAM_API_KEY", None)
 
+# Flywheel store: tests must never write into the developer's real
+# flywheel.db (test pairs would show up as live dictionary suggestions in
+# the demo) or, with LIBSQL_URL/LIBSQL_AUTH_TOKEN exported, into the shared
+# Turso database. Drop the Turso env and point the store at a throwaway
+# file before any test module imports the app. test_flywheel.py still
+# redirects to its own tmp paths on top of this.
+for _var in ("LIBSQL_URL", "LIBSQL_AUTH_TOKEN"):
+    os.environ.pop(_var, None)
+
+import tempfile as _tempfile  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
+
+from app import flywheel as _flywheel  # noqa: E402
+
+_flywheel.DB_PATH = _Path(_tempfile.mkdtemp(prefix="pc-flywheel-")) / "flywheel.db"
+
 
 def pytest_configure(config):
     config.addinivalue_line(
