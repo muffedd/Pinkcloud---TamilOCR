@@ -126,7 +126,7 @@ def _run_job(job_id: str, filename: str, data: bytes) -> None:
 
 
 @app.post("/jobs")
-async def create_job(file: UploadFile = File(...)):
+def create_job(file: UploadFile = File(...)):
     """Accept an upload, process it, return the new job id.
 
     Validation happens in order, BEFORE any job row is created:
@@ -145,7 +145,7 @@ async def create_job(file: UploadFile = File(...)):
             detail="unsupported file type: use pdf, jpg, jpeg, png or tiff",
         )
 
-    data = await file.read()
+    data = file.file.read()
 
     # Corrupt uploads are rejected here — not stored as jobs that fail later.
     try:
