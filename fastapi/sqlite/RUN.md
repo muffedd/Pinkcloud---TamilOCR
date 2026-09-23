@@ -4,6 +4,10 @@ Tamil OCR web app backend: upload → hash → route → OCR → frozen contract
 
 ## 1. Install (Windows, CPU only)
 
+Requires **Python 3.11-3.13**: numpy 2.3.5 needs 3.11+, and the optional
+paddlepaddle 3.3.1 has no wheels past 3.13. Check with `python --version`
+(on Windows: `py -3.12 -m venv .venv` picks a specific version).
+
 ```bat
 python -m venv .venv
 .venv\Scripts\activate

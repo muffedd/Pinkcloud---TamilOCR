@@ -2,6 +2,7 @@
 # Pinned for reproducible fresh-venv installs. Exactly ONE OpenCV package
 # (opencv-python-headless): contrib + headless both provide cv2 and conflict.
 fastapi==0.141.1
+starlette==1.7.0   # fastapi only floors starlette (>=0.46.0); pin the tested version so @app.on_event startup keeps working
 uvicorn==0.53.0
 python-multipart==0.0.32
 opencv-python-headless==5.0.0.93
@@ -9,6 +10,7 @@ pypdfium2==5.13.0
 numpy==2.3.5
 pillow==12.3.0
 httpx==0.28.1   # needed by tests (starlette TestClient)
+pytest==9.1.1    # backend test runner
 
 # ---- Optional: real OCR ----------------------------------------------------
 # Install these only if you want actual Tamil OCR instead of the stub result.

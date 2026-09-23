@@ -1,6 +1,9 @@
 /* Pink Cloud correction editor (page 2 of 3).
    Vanilla JS, fully offline. One selection model drives the scan,
-   the text pane and the review queue. */
+   the text pane and the review queue.
+   Accepted fixes are saved back to the backend (schema/corrections-endpoint.md,
+   localStorage fallback until the route ships) and feed a client-side
+   corrections dictionary that auto-applies to future jobs. */
 
 (function () {
 "use strict";
@@ -34,7 +37,10 @@ var S = {
   lens: "conf",
   heat: false,
   popupKey: null,
-  scale: 1
+  scale: 1,
+  corrections: {},       /* word key -> {page, line, word, before, after} */
+  saveMode: "unknown",   /* "unknown" | "server" | "local" */
+  dictCount: 0           /* fixes auto-applied to this page from the dictionary */
 };
 
 var AUTO_MIN = 0.9;
@@ -42,7 +48,19 @@ var OK_MIN = 0.75;
 var MOTION_BASE = 160;
 var TOAST_MS = 2400;
 
+/* Corrections save-back (contract: schema/corrections-endpoint.md). PUT
+   replaces the job's full correction map; while the route is not deployed
+   (404) corrections fall back to localStorage keyed by job id, silently. */
+var CORR_SAVE_MS = 800;
+var LS_CORR = "pc.corrections.";  /* + job id: saved correction list */
+var LS_DICT = "pc.fixdict";       /* global across jobs: OCR word -> accepted correction */
+var LS_SKIPS = "pc.dictskips.";   /* + job id: auto-applied fixes the reviewer undid */
+/* localStorage id for the offline demo (no real job id in mock mode). */
+var MOCK_STORAGE_ID = "demo-kural";
+
 var el = {};
+var saveTimer = null;
+var saveWarned = false;
 
 function $(id) { return document.getElementById(id); }
 
@@ -99,6 +117,8 @@ function buildModel(doc) {
         bbox: bbox,
         approx: true,
         fixed: false,
+        autoApplied: false,  /* text came from the corrections dictionary, not the reviewer */
+        autoPrev: null,      /* pre-auto-apply suggestion state, for undo */
         line: entry,
         el: null,
         boxEl: null,
@@ -133,6 +153,196 @@ function pageState() {
   return "queued";
 }
 
+/* ---------------- corrections: save-back + fix-list dictionary ---------------- */
+
+function lsGet(key) {
+  try { return window.localStorage.getItem(key); } catch (e) { return null; }
+}
+
+function lsSet(key, val) {
+  try { window.localStorage.setItem(key, val); } catch (e) { /* private mode: stay session-only */ }
+}
+
+/* localStorage key owner: the real job id, or the demo id in mock mode. */
+function storageId() {
+  return S.jobId || (window.PC_API.USE_MOCK ? MOCK_STORAGE_ID : null);
+}
+
+function corrUrl(jobId) {
+  return window.PC_API.API_BASE + "/jobs/" + encodeURIComponent(jobId) + "/corrections";
+}
+
+/* Full-map payload, sorted into reading order (page, line, word). */
+function corrPayload() {
+  var list = Object.keys(S.corrections).map(function (k) { return S.corrections[k]; });
+  list.sort(function (a, b) {
+    return a.page - b.page || String(a.line).localeCompare(String(b.line)) || a.word - b.word;
+  });
+  return { corrections: list };
+}
+
+function savedCorrectionsLocal() {
+  var id = storageId();
+  if (!id) return [];
+  try {
+    var v = JSON.parse(lsGet(LS_CORR + id) || "[]");
+    return Array.isArray(v) ? v : [];
+  } catch (e) { return []; }
+}
+
+function saveLocal() {
+  var id = storageId();
+  if (!id) return;
+  lsSet(LS_CORR + id, JSON.stringify(corrPayload().corrections));
+}
+
+/* Debounced save-back: the local copy is written on every change (crash-safe
+   and the export fallback source); the server PUT follows after a quiet
+   moment, unless the route already proved missing this session. */
+function scheduleSave() {
+  saveLocal();
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushSave, CORR_SAVE_MS);
+}
+
+function flushSave() {
+  saveTimer = null;
+  if (window.PC_API.USE_MOCK || !S.jobId) return; /* the demo stays local-only */
+  if (!Object.keys(S.corrections).length) return;
+  if (S.saveMode === "local") return; /* route known missing - local copy is current */
+  fetch(corrUrl(S.jobId), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(corrPayload())
+  }).then(function (res) {
+    if (res.status === 404) {
+      /* Route not deployed yet (the job itself loaded fine): switch to the
+         silent local fallback for the rest of the session. No error. */
+      S.saveMode = "local";
+      return;
+    }
+    if (!res.ok) throw new Error("save failed (" + res.status + ")");
+    S.saveMode = "server";
+  }).catch(function () {
+    /* Network/server trouble: the local copy is already written; say so once. */
+    if (!saveWarned) {
+      saveWarned = true;
+      toast("Corrections saved locally · backend endpoint unreachable");
+    }
+  });
+}
+
+function recordCorrection(w) {
+  S.corrections[w.key] = { page: w.page, line: w.lineId, word: w.idx, before: w.orig, after: w.text };
+  scheduleSave();
+}
+
+/* Rejoin line bodies + page text after any word text change. */
+function retext() {
+  S.lines.forEach(function (l) { l.body = l.words.map(function (x) { return x.text; }).join(" "); });
+  S.page.text = S.lines.map(function (l) { return l.body; }).join("\n");
+}
+
+/* Reapply corrections from a previous session (server list or local fallback). */
+function applySavedCorrections(list) {
+  if (!list || !list.length) return;
+  var touched = false;
+  list.forEach(function (c) {
+    var w = S.byKey["p" + c.page + ":" + c.line + ":w" + c.word];
+    if (!w) return;
+    w.text = c.after;
+    w.prov = "human";
+    w.target = false;
+    w.fixed = true;
+    S.corrections[w.key] = { page: c.page, line: c.line, word: c.word, before: c.before, after: c.after };
+    touched = true;
+  });
+  if (touched) retext();
+}
+
+/* The learning layer: every accepted fix teaches one OCR word -> correction
+   pair, reused across jobs. */
+function dictLoad() {
+  try {
+    var v = JSON.parse(lsGet(LS_DICT) || "{}");
+    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  } catch (e) { return {}; }
+}
+
+function dictAdd(orig, after) {
+  if (!orig || !after || orig === after) return;
+  var d = dictLoad();
+  d[orig] = after;
+  lsSet(LS_DICT, JSON.stringify(d));
+}
+
+function skipsLoad() {
+  var id = storageId();
+  if (!id) return [];
+  try {
+    var v = JSON.parse(lsGet(LS_SKIPS + id) || "[]");
+    return Array.isArray(v) ? v : [];
+  } catch (e) { return []; }
+}
+
+function skipAdd(key) {
+  var id = storageId();
+  if (!id) return;
+  var skips = skipsLoad();
+  if (skips.indexOf(key) === -1) {
+    skips.push(key);
+    lsSet(LS_SKIPS + id, JSON.stringify(skips));
+  }
+}
+
+/* Auto-apply dictionary matches to this page's reviewable words. High-
+   confidence (auto-bin) words stay untouched, and a word the reviewer
+   previously undid is not re-applied. */
+function applyDictionary() {
+  S.dictCount = 0;
+  var dict = dictLoad();
+  var skips = skipsLoad();
+  S.words.forEach(function (w) {
+    var after = dict[w.orig];
+    if (!after || after === w.orig) return;
+    if (w.fixed) return;      /* saved human corrections win over the dictionary */
+    if (w.bin === "auto") return;
+    if (skips.indexOf(w.key) !== -1) return;
+    w.autoPrev = { after: w.after, target: w.target, prov: w.prov, tier: w.tier, evidence: w.evidence };
+    w.text = after;
+    w.after = "";
+    w.target = false;
+    w.fixed = true;
+    w.autoApplied = true;
+    S.dictCount++;
+  });
+  if (S.dictCount) retext();
+}
+
+/* Load this job's corrections, then the dictionary, then render. Live mode
+   asks the backend first; a 404 means the route is not deployed (the job
+   loaded fine), so the local fallback takes over without a sound. */
+function bootstrapCorrections(done) {
+  var applyLocal = function (serverList) {
+    applySavedCorrections(serverList || savedCorrectionsLocal());
+    applyDictionary();
+    done();
+  };
+  if (window.PC_API.USE_MOCK || !S.jobId) { applyLocal(null); return; }
+  fetch(corrUrl(S.jobId), { cache: "no-store" }).then(function (res) {
+    if (res.status === 404) {
+      S.saveMode = "local";
+      applyLocal(null);
+      return;
+    }
+    if (!res.ok) { applyLocal(null); return; }
+    res.json().then(function (body) {
+      S.saveMode = "server";
+      applyLocal((body && body.corrections) || []);
+    }, function () { applyLocal(null); });
+  }).catch(function () { applyLocal(null); });
+}
+
 /* ---------------- scroll (the only animated thing besides the toggle) ---------------- */
 
 function animateScroll(container, target) {
@@ -165,9 +375,26 @@ function scrollToThird(container, node) {
 function refreshWordEl(w) {
   if (!w.el) return;
   w.el.className = "w tamil-editor is-" + w.bin + " pv-" + w.prov +
+    (w.fixed ? " is-fixed" : "") +
     (w.key === S.activeKey ? " is-active" : "") +
     (w.key === S.hoverKey ? " is-hover" : "");
   if (w.el.textContent !== w.text) w.el.textContent = w.text;
+  styleAutoEl(w);
+}
+
+/* Auto-applied fixes get a quiet brand-orange outline so they stay
+   distinguishable from human-accepted fixes in both lenses. outline is
+   used so the hover/active background + box-shadow states still show. */
+function styleAutoEl(w) {
+  if (w.autoApplied) {
+    w.el.style.outline = "1px solid var(--pc-color-primary)";
+    w.el.style.outlineOffset = "1px";
+    w.el.title = "Auto-applied from a past correction - click again to review or undo";
+  } else {
+    w.el.style.outline = "";
+    w.el.style.outlineOffset = "";
+    w.el.title = "";
+  }
 }
 
 function setActive(key) {
@@ -249,7 +476,12 @@ function renderText() {
       s.textContent = w.text;
       w.el = s;
       refreshWordEl(w);
-      s.addEventListener("click", function () { select(w.key, "word"); });
+      s.addEventListener("click", function () {
+        /* Second click on the active word opens the fix popup - the mouse
+           path to review or undo an auto-applied fix. */
+        if (S.activeKey === w.key) openPopup();
+        else select(w.key, "word");
+      });
       s.addEventListener("mouseenter", function () { setHover(w.key); });
       s.addEventListener("mouseleave", function () { setHover(null); });
       words.appendChild(s);
@@ -265,6 +497,9 @@ function renderText() {
 function boxClass(w) {
   if (w.key === S.activeKey) return "box box-active";
   if (w.key === S.hoverKey) return "box box-hover";
+  /* A fixed word is resolved: drop the doubt fill, keep a quiet box so it
+     stays clickable on the scan. */
+  if (w.fixed) return "box box-auto";
   if (w.bin === "doubt") return "box box-doubt";
   if (w.bin === "auto" && S.mode === "review") return "box box-auto";
   return "box";
@@ -275,19 +510,71 @@ function renderScan() {
   if (!paperW) return;
   S.scale = paperW / IMG_W;
   var s = S.scale;
-  el.paper.style.height = Math.round(PAGE_H * s) + "px";
+  el.paper.style.height = Math.round((S.pageH || PAGE_H) * s) + "px";
   el.paper.innerHTML = "";
 
-  /* Placeholder sheet: each line body placed at its bbox. */
+  /* Live mode: draw the real scan behind the boxes when the backend's
+     scan-image route answers (SCAN_IMAGE in api.js - URL still TBD by the
+     backend owner). Probe it once per page; on any failure the placeholder
+     paper below stays, so the editor still works. Mock mode never probes. */
+  if (S.pageImageUrl && !S.imageTried) {
+    S.imageTried = true;
+    var probe = new Image();
+    probe.onload = function () {
+      /* bboxes live in the 1600px-capped space: map the image height into it */
+      S.pageH = probe.naturalWidth ? Math.round(probe.naturalHeight * (IMG_W / probe.naturalWidth)) : PAGE_H;
+      S.imageLoaded = true;
+      renderScan();
+    };
+    probe.onerror = function () {
+      S.imageFailed = true;
+      renderScan();
+    };
+    probe.src = S.pageImageUrl;
+  }
+  if (S.imageLoaded && S.pageImageUrl) {
+    el.paper.style.backgroundImage = "url(\"" + S.pageImageUrl + "\")";
+    el.paper.style.backgroundSize = "100% 100%";
+    el.paper.style.backgroundRepeat = "no-repeat";
+  } else {
+    el.paper.style.backgroundImage = "";
+  }
+
+  /* Placeholder sheet: each line body placed at its bbox. Skipped once the
+     real scan image is on the paper (the text would double-draw). */
+  if (!S.imageLoaded) {
+  /* Each word is drawn inside its own (approximate) word bbox, so the
+     placeholder text lines up with the word boxes drawn on top of it
+     instead of running past them. If a word is wider than its box, the
+     whole line's type is shrunk evenly to fit; nothing is clipped. */
   S.lines.forEach(function (line) {
     var d = document.createElement("div");
     d.className = "paper-line";
     d.style.left = Math.round(line.bbox[0] * s) + "px";
     d.style.top = Math.round(line.bbox[1] * s) + "px";
     d.style.width = Math.round(line.bbox[2] * s) + "px";
-    d.textContent = line.body;
+    d.style.height = Math.round(line.bbox[3] * s) + "px";
+    d.setAttribute("aria-label", line.body);
     el.paper.appendChild(d);
+    var fit = 1;
+    line.words.forEach(function (w) {
+      var span = document.createElement("span");
+      span.className = "paper-word";
+      span.setAttribute("aria-hidden", "true");
+      span.style.left = Math.round((w.bbox[0] - line.bbox[0]) * s) + "px";
+      span.style.width = Math.round(w.bbox[2] * s) + "px";
+      span.textContent = w.text;
+      d.appendChild(span);
+      var room = span.clientWidth;
+      var need = span.scrollWidth;
+      if (room > 0 && need > room) fit = Math.min(fit, room / need);
+    });
+    if (fit < 1) {
+      var fs = parseFloat(getComputedStyle(d).fontSize) || 18;
+      d.style.fontSize = (fs * fit * 0.94).toFixed(2) + "px"; /* small margin: glyph widths do not scale exactly linearly */
+    }
   });
+  }
 
   var layer = document.createElement("div");
   layer.className = "scan-layer";
@@ -330,6 +617,7 @@ function renderScan() {
     b.style.top = Math.round(w.bbox[1] * s - BOX_PAD) + "px";
     b.style.width = Math.round(w.bbox[2] * s + BOX_PAD * 2) + "px";
     b.style.height = Math.round(w.bbox[3] * s + BOX_PAD * 2) + "px";
+    if (w.autoApplied) b.style.borderColor = "var(--pc-color-primary)";
     b.addEventListener("click", function () { select(w.key, "box"); });
     b.addEventListener("mouseenter", function () { setHover(w.key); });
     b.addEventListener("mouseleave", function () { setHover(null); });
@@ -381,7 +669,8 @@ function renderQueue() {
     word.textContent = w.text;
     var meta = document.createElement("span");
     meta.className = "qmeta";
-    meta.textContent = "p" + w.page + " · " + w.lineId + " · w" + w.idx + (w.prov !== "raw" ? " · " + w.prov : "");
+    meta.textContent = "p" + w.page + " · " + w.lineId + " · w" + w.idx +
+      (w.autoApplied ? " · auto" : (w.prov !== "raw" ? " · " + w.prov : ""));
     mid.appendChild(word);
     mid.appendChild(meta);
     var chip = document.createElement("span");
@@ -410,7 +699,8 @@ function renderCounts() {
   var left = total - fixed;
   el.leftPill.textContent = left + " left";
   var scope = S.mode === "auto" ? "doubt words only (Auto)" : "doubt + OK (Review)";
-  el.railSub.textContent = fixed + " of " + total + " fixed · " + scope;
+  el.railSub.textContent = fixed + " of " + total + " fixed · " + scope +
+    (S.dictCount ? " · " + S.dictCount + " auto-applied" : "");
   var pct = total ? Math.round(fixed / total * 100) : 100;
   el.progressFill.style.width = pct + "%";
   el.progressBar.setAttribute("aria-valuenow", String(pct));
@@ -425,8 +715,14 @@ function renderBadges() {
   var b = document.createElement("button");
   b.type = "button";
   b.className = "pill pill--bar is-" + state + " pill--current";
-  b.innerHTML = ICONS.wrench + "<span></span>";
-  b.querySelector("span").textContent = "P" + S.page.page + " · Repaired · " + doubtLeft + " doubt";
+  /* Label and icon follow the real page state (was hardcoded "Repaired"). */
+  var STATE_LABEL = { repaired: "Repaired", clean: "Clean", precomputed: "Precomputed", queued: "Queued" };
+  var icon = state === "repaired" ? ICONS.wrench
+    : state === "clean" ? ICONS.checkCircle
+    : '<i class="pdot" aria-hidden="true"></i>';
+  b.innerHTML = icon + "<span></span>";
+  b.querySelector("span").textContent = "P" + S.page.page + " · " + (STATE_LABEL[state] || state) +
+    " · " + (doubtLeft ? doubtLeft + " doubt" : "no doubt left");
   b.addEventListener("click", function () {
     clearActive();
     el.scanScroll.scrollTop = 0;
@@ -434,9 +730,34 @@ function renderBadges() {
     el.queue.scrollTop = 0;
   });
   el.pageBadges.appendChild(b);
-  el.scanSub.textContent = "page " + S.page.page + " of 1 · " + S.page.profile + " · " + state;
+  el.scanSub.textContent = "page " + S.page.page + " of " + (S.pageCount || 1) + " · " + S.page.profile + " · " + state;
   var open = state === "clean" || state === "repaired" || state === "precomputed";
   el.exportBtn.disabled = !open;
+}
+
+/* ---------------- connection badge (display only) ----------------
+   Mock / unreachable backend -> "Offline" (amber dot). Live mode checks
+   GET /health once, the same probe the upload page uses; a reachable
+   backend -> "Connected" (green dot). Independent of job loading/polling. */
+function setConn(state) {
+  var badge = $("connBadge");
+  var text = $("connText");
+  if (!badge || !text) return;
+  var LABEL = { offline: "Offline", checking: "Checking…", connected: "Connected" };
+  badge.setAttribute("data-state", state);
+  text.textContent = LABEL[state] || "Offline";
+  badge.title = state === "offline" && !window.PC_API.USE_MOCK
+    ? "No response from " + (window.PC_API.API_BASE || location.origin) + "/health"
+    : "";
+}
+
+function probeConn() {
+  if (window.PC_API.USE_MOCK) { setConn("offline"); return; }
+  setConn("checking");
+  fetch((window.PC_API.API_BASE || "") + "/health", { cache: "no-store" })
+    .then(function (res) { return res.ok ? res.json() : null; })
+    .then(function (b) { setConn(b && b.ok ? "connected" : "offline"); })
+    .catch(function () { setConn("offline"); });
 }
 
 /* ---------------- fix popup ---------------- */
@@ -463,7 +784,7 @@ function openPopup() {
   var dot = document.createElement("i");
   dot.className = "pdot";
   chip.appendChild(dot);
-  chip.appendChild(document.createTextNode(w.prov + " · " + (w.tier || "—")));
+  chip.appendChild(document.createTextNode(w.tier ? w.prov + " · " + w.tier : w.prov));
   head.appendChild(title);
   head.appendChild(spacer);
   head.appendChild(chip);
@@ -480,7 +801,9 @@ function openPopup() {
 
   var evidence = document.createElement("div");
   evidence.className = "pop-evidence";
-  evidence.textContent = "OCR read " + w.orig + " · " + (w.evidence || "no correction on file");
+  evidence.textContent = w.autoApplied
+    ? "OCR read " + w.orig + " · auto-applied from a past correction"
+    : "OCR read " + w.orig + " · " + (w.evidence || "no correction on file");
 
   var actions = document.createElement("div");
   actions.className = "pop-actions";
@@ -503,6 +826,14 @@ function openPopup() {
   accept.appendChild(acceptLabel);
   accept.appendChild(acceptKbd);
   actions.appendChild(reject);
+  if (w.autoApplied) {
+    var undo = document.createElement("button");
+    undo.type = "button";
+    undo.className = "btn btn--outline btn--sm";
+    undo.innerHTML = "<span>Undo auto-fix</span>";
+    undo.addEventListener("click", doUndoAuto);
+    actions.appendChild(undo);
+  }
   actions.appendChild(accept);
 
   el.pop.appendChild(arrow);
@@ -529,8 +860,9 @@ function openPopup() {
 function placePopup(w, arrow) {
   el.pop.hidden = false;
   var bodyW = el.textBody.clientWidth;
-  var maxLeft = Math.max(8, bodyW - 300 - 8);
-  var left = w.el.offsetLeft + w.el.offsetWidth / 2 - 150;
+  var popW = el.pop.offsetWidth || 288; /* --pc-popup-w, border-box */
+  var maxLeft = Math.max(8, bodyW - popW - 8);
+  var left = w.el.offsetLeft + w.el.offsetWidth / 2 - popW / 2;
   left = Math.max(8, Math.min(maxLeft, left));
   var popH = el.pop.offsetHeight;
   var viewTop = el.textScroll.scrollTop;
@@ -548,7 +880,7 @@ function placePopup(w, arrow) {
   el.pop.style.left = Math.round(left) + "px";
   el.pop.style.top = Math.round(top) + "px";
   var ax = w.el.offsetLeft + w.el.offsetWidth / 2 - left;
-  ax = Math.max(12, Math.min(300 - 24, ax));
+  ax = Math.max(12, Math.min(popW - 24, ax));
   arrow.style.left = Math.round(ax) + "px";
 }
 
@@ -567,9 +899,15 @@ function doAccept() {
   w.prov = "human";
   w.target = false;
   w.fixed = true;
+  w.autoApplied = false;
+  w.autoPrev = null;
   refreshWordEl(w);
-  w.line.body = w.line.words.map(function (x) { return x.text; }).join(" ");
-  S.page.text = S.lines.map(function (l) { return l.body; }).join("\n");
+  retext();
+  /* Save-back (schema/corrections-endpoint.md): debounced PUT of the full
+     correction map, localStorage fallback until the route ships. The fix
+     also teaches the dictionary so the next scan can auto-apply it. */
+  recordCorrection(w);
+  dictAdd(w.orig, w.text);
   closePopup();
   renderScan();
   renderQueue();
@@ -583,6 +921,34 @@ function doReject() {
   var w = S.byKey[S.popupKey];
   closePopup();
   if (w && w.el) w.el.focus();
+}
+
+/* Revert one auto-applied fix: the OCR text comes back, the word rejoins
+   the queue, and a per-job skip stops the dictionary from re-applying it. */
+function doUndoAuto() {
+  var w = S.byKey[S.popupKey];
+  closePopup();
+  if (!w || !w.autoApplied) return;
+  var prev = w.autoPrev || {};
+  w.text = w.orig;
+  w.after = prev.after || "";
+  w.target = !!prev.target;
+  w.prov = prev.prov || "raw";
+  w.tier = prev.tier || "";
+  w.evidence = prev.evidence || "";
+  w.fixed = false;
+  w.autoApplied = false;
+  w.autoPrev = null;
+  skipAdd(w.key);
+  if (S.dictCount > 0) S.dictCount--;
+  retext();
+  refreshWordEl(w);
+  renderScan();
+  renderQueue();
+  renderCounts();
+  renderBadges();
+  toast("Auto-fix undone · " + w.orig + " restored");
+  if (w.el) w.el.focus();
 }
 
 /* ---------------- toast ---------------- */
@@ -673,16 +1039,101 @@ function wireHotkeys() {
   });
 }
 
+/* ---------------- load states (live mode) ---------------- */
+
+var overlayEl = null;
+
+function hideOverlay() {
+  if (overlayEl && overlayEl.parentNode) overlayEl.parentNode.removeChild(overlayEl);
+  overlayEl = null;
+}
+
+/* Full-pane overlay for loading / processing / fatal states. Covers the
+   panes so the three empty panes never read as a broken editor. */
+function showOverlay(title, detail) {
+  hideOverlay();
+  overlayEl = document.createElement("div");
+  overlayEl.className = "pc-load-overlay";
+  overlayEl.style.position = "absolute";
+  overlayEl.style.inset = "0";
+  overlayEl.style.zIndex = "30";
+  overlayEl.style.display = "flex";
+  overlayEl.style.flexDirection = "column";
+  overlayEl.style.alignItems = "center";
+  overlayEl.style.justifyContent = "center";
+  overlayEl.style.gap = "var(--pc-gap-10)";
+  overlayEl.style.padding = "var(--pc-space-6)";
+  overlayEl.style.textAlign = "center";
+  overlayEl.style.background = "var(--pc-color-bg-canvas)";
+  overlayEl.setAttribute("role", "status");
+  overlayEl.setAttribute("aria-live", "polite");
+  var t = document.createElement("div");
+  t.className = "pc-load-title";
+  t.style.fontWeight = "600";
+  t.style.fontSize = "var(--pc-fs-btn)";
+  t.style.color = "var(--pc-color-text-primary)";
+  t.textContent = title;
+  var d = document.createElement("div");
+  d.className = "pc-load-detail";
+  d.style.color = "var(--pc-color-text-secondary)";
+  d.style.maxWidth = "52ch";
+  d.style.fontSize = "var(--pc-fs-toast)";
+  d.style.lineHeight = "1.5";
+  d.style.overflowWrap = "anywhere";
+  d.textContent = detail;
+  overlayEl.appendChild(t);
+  /* Visually hidden separator: keeps the title and detail from running
+     together in textContent, copied text and screen readers
+     ("Job still processingJob ..."). Out of flow, so the layout is unchanged. */
+  var sep = document.createElement("span");
+  sep.style.position = "absolute";
+  sep.style.width = "1px";
+  sep.style.height = "1px";
+  sep.style.overflow = "hidden";
+  sep.style.clipPath = "inset(50%)";
+  sep.style.whiteSpace = "nowrap";
+  sep.textContent = ". ";
+  overlayEl.appendChild(sep);
+  overlayEl.appendChild(d);
+  var host = document.querySelector(".panes");
+  if (getComputedStyle(host).position === "static") host.style.position = "relative";
+  host.appendChild(overlayEl);
+}
+
+/* Clear, actionable failure: what happened + how to still see the demo. */
+function showFatal(err) {
+  hideOverlay();
+  var hint = window.PC_API.USE_MOCK
+    ? ""
+    : " Start the backend (schema/endpoints.md) or open editor.html?mock=1 for the offline Kural demo.";
+  showOverlay("Could not open this job", err.message + "." + hint);
+  toast("Could not load job · " + err.message);
+}
+
 /* ---------------- boot ---------------- */
 
-function loadPage(doc) {
-  buildModel(doc);
+var BOOT_QS = new URLSearchParams(location.search);
+var JOB_ID = BOOT_QS.get("job");
+var PAGE_NO = parseInt(BOOT_QS.get("page") || "1", 10);
+if (!(PAGE_NO >= 1)) PAGE_NO = 1;
+
+function renderAll() {
   renderText();
   renderScan();
   renderLegend();
   renderQueue();
   renderCounts();
   renderBadges();
+}
+
+function loadPage(doc) {
+  buildModel(doc);
+  bootstrapCorrections(function () {
+    renderAll();
+    if (S.dictCount) {
+      toast(S.dictCount + (S.dictCount === 1 ? " fix" : " fixes") + " auto-applied from past corrections");
+    }
+  });
 }
 
 function init() {
@@ -733,10 +1184,37 @@ function init() {
   });
 
   el.exportBtn.addEventListener("click", function () {
-    if (S.page) toast("Export ready · page " + S.page.page);
+    if (!S.page) return;
+    /* Mock mode: unchanged demo toast. */
+    if (window.PC_API.USE_MOCK || !S.jobId) {
+      toast("Export ready · page " + S.page.page);
+      return;
+    }
+    if (S.saveMode === "local") {
+      /* The corrections route is not deployed, so the backend's export would
+         use raw OCR. Apply the corrections client-side to this page's text
+         and hand it over as a download instead. */
+      var blob = new Blob([S.page.text + "\n"], { type: "text/plain;charset=utf-8" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "pink-cloud-" + S.jobId.slice(0, 8) + "-p" + S.page.page + "-corrected.txt";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      toast("Exported with corrections applied locally");
+      return;
+    }
+    /* Live mode: open the backend's searchable-PDF export for the whole job
+       (GET /jobs/{job_id}/export.pdf, same origin unless ?api= overrides).
+       New tab: the browser shows or downloads the PDF. */
+    window.open(window.PC_API.API_BASE + "/jobs/" + encodeURIComponent(S.jobId) + "/export.pdf",
+      "_blank", "noopener");
   });
 
   wireHotkeys();
+  probeConn();
 
   var raf = 0;
   window.addEventListener("resize", function () {
@@ -747,10 +1225,76 @@ function init() {
     });
   });
 
-  window.PC_API.getPage(1).then(loadPage).catch(function (err) {
-    toast("Could not load page · " + err.message);
-  });
+  bootData();
+}
+
+/* Wraps loadPage with the job context the live mode needs (page count for
+   the header, scan-image URL, the state flags renderScan probes). */
+function loadJob(doc, meta) {
+  S.jobId = meta.jobId || null;
+  S.pageCount = meta.pageCount || 1;
+  S.pageImageUrl = (meta.jobId && window.PC_API.pageImageUrl)
+    ? window.PC_API.pageImageUrl(meta.jobId, doc.page)
+    : null;
+  S.imageTried = false;
+  S.imageLoaded = false;
+  S.imageFailed = false;
+  S.pageH = null;
+  S.corrections = {};
+  S.saveMode = "unknown";
+  S.dictCount = 0;
+  saveWarned = false;
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  loadPage(doc);
+}
+
+/* Live mode: GET /jobs/{job_id}; poll while status is "pending" (POST /jobs
+   is synchronous today, but the contract allows background processing). */
+function pollJob(depth) {
+  window.PC_API.getJob(JOB_ID).then(function (job) {
+    if (job.status === "pending") {
+      if (depth >= window.PC_API.POLL_MAX) {
+        showFatal(new Error("Timed out waiting for job " + JOB_ID + " - still processing on the server"));
+        return;
+      }
+      showOverlay("Job still processing",
+        "Job " + JOB_ID + " is still running on the backend - checking again every " +
+        (window.PC_API.POLL_MS / 1000) + "s.");
+      setTimeout(function () { pollJob(depth + 1); }, window.PC_API.POLL_MS);
+      return;
+    }
+    if (job.status === "error") {
+      showFatal(new Error("Job " + JOB_ID + " failed on the backend: " +
+        ((job.result && job.result.error) || "unknown error")));
+      return;
+    }
+    var pages = job.result && job.result.pages;
+    if (!pages || !pages.length) {
+      showFatal(new Error("Job " + JOB_ID + " returned no pages"));
+      return;
+    }
+    var idx = Math.min(PAGE_NO, pages.length) - 1;
+    hideOverlay();
+    loadJob(pages[idx], { jobId: JOB_ID, pageCount: pages.length });
+  }).catch(showFatal);
+}
+
+function bootData() {
+  if (window.PC_API.USE_MOCK) {
+    /* Demo path, untouched: the Kural page from schema/doc_demo.json. */
+    window.PC_API.getPage(1)
+      .then(function (doc) { loadJob(doc, {}); })
+      .catch(function (err) { toast("Could not load page · " + err.message); });
+    return;
+  }
+  if (!JOB_ID) {
+    showFatal(new Error("No job id in the URL - open editor.html?job=<job_id> after an upload"));
+    return;
+  }
+  showOverlay("Loading job", "GET /jobs/" + JOB_ID + " on " + (window.PC_API.API_BASE || "this origin"));
+  pollJob(0);
 }
 
 document.addEventListener("DOMContentLoaded", init);
 })();
+

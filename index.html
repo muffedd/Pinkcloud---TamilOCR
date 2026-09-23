@@ -6,7 +6,8 @@
 <title>Pink Cloud · Upload</title>
 <!--
   Pink Cloud - product shell, page 1 of 3 (layout plan: upload -> editor -> export).
-  upload.js (data-upload slice) mounts the upload screen into #upload-root.
+  upload.js mounts the upload screen into #upload-root; files upload on add
+  (POST /jobs, poll GET /jobs/{id}) and Next step hands the job ids to the editor.
   The correction editor (page 2) is editor.html. Fonts load from ./fonts/ via ui.css.
 -->
 <link rel="stylesheet" href="./tokens.css">
@@ -15,50 +16,24 @@
 </head>
 <body>
 
-<!-- Page 1 -> page 2 until the router slice hands over. -->
-<a class="btn btn--soft btn--sm shell-next" href="./editor.html"><span class="lb"><span>Open editor</span><span aria-hidden="true">Open editor</span></span></a>
-
-<!-- Layout plan, page 1 zone 2: upload.js fills this slot. -->
+<!-- upload.js renders the whole upload screen here (stepper, drop zone,
+     file list, Previous/Next). "Next step" opens editor.html?job=<job_id>. -->
 <div id="upload-root"></div>
 
-<!-- Offline fallback payload for upload.js (used when fetch of schema/doc_demo.json is blocked, e.g. file://). -->
-<script id="doc" type="application/json">
-{
-  "page": 1,
-  "profile": "HEAVY",
-  "preprocessed": true,
-  "needs_review": true,
-  "quality": {
-    "blur": 38.4,
-    "contrast": 0.27,
-    "noise": 0.63,
-    "skew_deg": 3.4,
-    "damage_flags": ["yellowed", "stained"],
-    "ink_density": 0.14,
-    "estimated_lines": 3,
-    "quality_score": 34
-  },
-  "lines": [
-    { "id": "L1", "seq": 1, "body": "அகர முதல எழுத்தெல்லாம் ஆதி", "bbox": [180, 320, 1240, 90], "confidence": 0.93, "kural": 1 },
-    { "id": "L2", "seq": 2, "body": "பகவன் முதற்றே உலகு", "bbox": [200, 470, 1180, 88], "confidence": 0.88, "kural": 1 },
-    { "id": "L3", "seq": 3, "body": "கற்றதனால் ஆய பயனென்கொல் வாழறிவன்", "bbox": [170, 620, 1270, 92], "confidence": 0.41, "kural": 2 }
-  ],
-  "corrections": [
-    {
-      "before": "வாழறிவன்",
-      "after": "வாலறிவன்",
-      "tier": "T1",
-      "evidence": "ழ/ல glyph confusion on a stained, low-contrast stroke: the ல in வால் was misread as the looped ழ, yielding வாழறிவன் instead of வாலறிவன் (Kural 2)."
-    }
-  ],
-  "text": "அகர முதல எழுத்தெல்லாம் ஆதி பகவன் முதற்றே உலகு கற்றதனால் ஆய பயனென்கொல் வாலறிவன்",
-  "processing_ms": 4820,
-  "work": "திருக்குறள்",
-  "chapter": 1,
-  "script": "Tamil",
-  "material": "paper"
-}
-</script>
+
+<!-- Watch-demo modal: opened from the empty-state "Watch demo" button.
+     Styles live in upload.css (.demo-modal*); open/close wiring in upload.js.
+     The clip (demo.mp4, repo root) is the scripted upload -> editor walkthrough. -->
+<div class="demo-modal" id="demo-modal" hidden>
+  <div class="demo-modal-backdrop" data-demo-close></div>
+  <div class="demo-modal-card" role="dialog" aria-modal="true" aria-label="Pink Cloud demo video">
+    <button type="button" class="demo-modal-close" data-demo-close aria-label="Close demo video">
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2.2 2.2l9.6 9.6M11.8 2.2l-9.6 9.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
+    <video class="demo-modal-video" src="./demo.mp4" preload="metadata" playsinline muted loop controls></video>
+  </div>
+</div>
+
 <script src="./upload.js"></script>
 </body>
 </html>

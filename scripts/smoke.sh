@@ -86,8 +86,12 @@ else
   ok "no purple anywhere"
 fi
 
-# 6. No network calls: no http, no CDN hints in page code.
-if grep -rEn 'http|cdn' index.html editor.html api.js translit.js editor.js ui.css editor.css; then
+# 6. No network calls: no external URLs loaded by page code. Matches real
+#    loads only (src/href/url()/fetch/@import to an absolute or protocol-
+#    relative URL, sockets, CDN hosts) - not the word "http" in comments or
+#    error-kind strings like api.js's ?api= note and ApiError(..., "http").
+NET_RE="(src|href)=[\"']?(https?:)?//|url\\([\"']?(https?:)?//|fetch\\([\"'\`](https?:)?//|@import[^;]*(https?:)?//|new (WebSocket|EventSource)\\(|cdn\\.|cdnjs|jsdelivr|unpkg|googleapis"
+if grep -rEn "$NET_RE" index.html editor.html api.js translit.js editor.js upload.js ui.css editor.css upload.css tokens.css; then
   bad "network reference in page code"
 else
   ok "offline: no network references"
