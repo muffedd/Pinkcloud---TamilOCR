@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Omni - Intro (Variant B: Lightning Strike)</title>
+<!--
+  OMNI INTRO - VARIANT B "LIGHTNING STRIKE"
+  Palette (Pink Cloud tokens.css):
+    bg canvas  #FDFCFB   (lightest brand neutral)
+    black      #1E1A18   (text-primary)
+    dark orange#D93A0B   (primary-solid)   deeper: #B32E08
+    orange     #F94612   (primary)         light orange: #FA683D, #FFC9B3, #FFF4EF
+
+  Reference: cosmos.so/e/229833236 - halftone dot-matrix letterforms; dots of mixed
+  size, colored discs with white cores, grid cells popping in and out.
+
+  TIMELINE (seconds)
+    0.00-0.40  Charge     : clean light canvas, spark flickers at the strike point
+    0.40-0.62  Strike     : bolt path shoots top -> impact (easeOutExpo), warm flash + 3 frame shake
+    0.55-1.35  Bolt land  : bolt body scales 0.15 -> 1 with SPRING (zeta 0.38, omega 17) = ~18% overshoot, rotation -14deg -> 0
+    0.62-1.60  Impact     : 2 shockwave rings (easeOutQuart), 5 large deliberate orbs pop in,
+                            SPRING (zeta 0.36, omega 15) delayed by distance / 1400px/s (no ambient dot sprinkle)
+    0.75-2.00  Glow bloom : orange/light-orange radial bloom, easeOutBack(1.7) then breathes
+    1.55-2.70  "Omni" dots: word assembles as halftone dot-matrix, column stagger 18ms,
+                            SPRING (zeta 0.34, omega 19); dark orange -> orange gradient, black shadow cells, white cores
+    1.70-2.40  Lockup     : bolt travels to sit left of word, scale 1 -> 0.46, SPRING (zeta 0.5, omega 13)
+    2.55-3.15  Resolve    : dots collapse into solid layered type (black face + orange offset layer), easeInOutCubic
+    3.55-4.45  Slide up   : intro panel exits UP, cubic-bezier(0.76,-0.25,0.24,1) (anticipation dip then fast up)
+    3.70-4.80  Product    : product page rises 60px -> 0 with SPRING (zeta 0.42, omega 14) + fade in
+
+  CSS equivalents for devs:
+    bouncy overshoot : cubic-bezier(0.34, 1.56, 0.64, 1)
+    slide-up exit    : cubic-bezier(0.76, -0.25, 0.24, 1)
+    strike           : cubic-bezier(0.16, 1, 0.3, 1)  (easeOutExpo)
+
+  Controls: click / R = replay.  URL hash #t=1.2 freezes the frame at 1.2s (for review).
+-->
+<style>
+  :root{
+    --bg:#FDFCFB; --ink:#1E1A18; --dark:#D93A0B; --deep:#B32E08; --orange:#F94612;
+    --orange-2:#FA683D; --peach:#FFC9B3; --blush:#FFF4EF; --muted:#655E58; --line:#E6E2DE;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:var(--bg);overflow:hidden;
+    font-family:Inter,"SF Pro Display",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink)}
+  /* ---------- product underneath ---------- */
+  #product{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;will-change:transform,opacity}
+  .nav{display:flex;align-items:center;justify-content:space-between;padding:22px 40px;border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:20px;letter-spacing:-.02em}
+  .brand svg{width:22px;height:22px}
+  .navlinks{display:flex;gap:28px;font-size:14px;color:var(--muted)}
+  .cta{background:linear-gradient(180deg,#F94612,#FA683D);color:#fff;border:0;border-radius:8px;padding:10px 18px;font-weight:600;font-size:14px;cursor:pointer}
+  .hero{flex:1;display:grid;grid-template-columns:1.05fr 1fr;gap:48px;align-items:center;padding:40px 64px}
+  .hero h1{font-size:clamp(34px,4.6vw,64px);line-height:1.02;letter-spacing:-.035em;font-weight:800}
+  .hero h1 span{background:linear-gradient(180deg,#F94612,#D93A0B);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p{margin-top:18px;color:var(--muted);font-size:17px;line-height:1.5;max-width:460px}
+  .hero .row{display:flex;gap:12px;margin-top:28px}
+  .ghost{background:#E7E4E0;color:var(--ink);border:0;border-radius:8px;padding:10px 18px;font-weight:600;font-size:14px}
+  .app{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 30px 60px -30px rgba(30,26,24,.25);overflow:hidden}
+  .app .bar{display:flex;gap:6px;padding:12px 14px;border-bottom:1px solid var(--line);background:#F8F6F4}
+  .app .bar i{width:10px;height:10px;border-radius:50%;background:#D2CCC6}
+  .app .body{display:grid;grid-template-columns:1fr 1fr;min-height:300px}
+  .scan{background:linear-gradient(180deg,#F1E6D1,#EADCC2);margin:14px;border-radius:6px;position:relative;padding:22px 18px}
+  .scan b{display:block;height:9px;border-radius:2px;background:#8f7f66;opacity:.45;margin:10px 0}
+  .scan b.hl{outline:2px solid #D93A0B;outline-offset:3px;background:#F946124d;opacity:1}
+  .lines{padding:18px 16px;font-size:14px;line-height:1.9}
+  .lines div{display:flex;justify-content:space-between;border-bottom:1px solid #F1EEEB}
+  .chip{font-size:11px;border-radius:5px;padding:1px 7px;align-self:center}
+  .ok{background:#DDF3EA;color:#0B7A55}.dz{background:#FFF1B8;color:#7A5200}
+  /* ---------- intro ---------- */
+  #intro{position:fixed;inset:0;background:var(--bg);will-change:transform;box-shadow:0 30px 80px rgba(30,26,24,.18)}
+  #intro canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  #replay{position:fixed;right:18px;bottom:16px;z-index:5;background:rgba(30,26,24,.06);border:1px solid var(--line);
+    color:var(--muted);font-size:12px;border-radius:999px;padding:6px 12px;cursor:pointer}
+  @media (max-width:820px){.hero{grid-template-columns:1fr;padding:24px}.navlinks{display:none}.app{display:none}}
+</style>
+</head>
+<body>
+<div id="product">
+  <div class="nav">
+    <div class="brand"><svg viewBox="0 0 24 24"><path d="M14 1 4 14h6l-2 9 10-13h-6z" fill="#F94612"/></svg>Omni</div>
+    <div class="navlinks"><span>Product</span><span>Tamil OCR</span><span>Review</span><span>Pricing</span></div>
+    <button class="cta">Upload a scan</button>
+  </div>
+  <div class="hero">
+    <div>
+      <h1>Every Tamil page,<br><span>read and repaired.</span></h1>
+      <p>Drop in a scan. Omni reads each line, flags what it doubts, and lets you fix it in one pass.</p>
+      <div class="row"><button class="cta">Start free</button><button class="ghost">See a demo</button></div>
+    </div>
+    <div class="app">
+      <div class="bar"><i></i><i></i><i></i></div>
+      <div class="body">
+        <div class="scan"><b style="width:90%"></b><b style="width:76%"></b><b class="hl" style="width:84%"></b><b style="width:66%"></b><b style="width:88%"></b><b style="width:54%"></b><b style="width:80%"></b></div>
+        <div class="lines">
+          <div>வரி 1 <span class="chip ok">auto</span></div>
+          <div>வரி 2 <span class="chip ok">auto</span></div>
+          <div>வரி 3 <span class="chip dz">doubt</span></div>
+          <div>வரி 4 <span class="chip ok">auto</span></div>
+          <div>வரி 5 <span class="chip ok">auto</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="intro"><canvas id="c"></canvas></div>
+<button id="replay">Replay intro</button>
+
+<script>
+(() => {
+/* ================= motion library ================= */
+const clamp=(v,a=0,b=1)=>Math.min(b,Math.max(a,v));
+const prog=(t,a,b)=>clamp((t-a)/(b-a));
+const lerp=(a,b,k)=>a+(b-a)*k;
+/* damped spring, x(0)=0 -> 1, zeta<1 = bouncy overshoot. t in seconds since start */
+function spring(t,zeta=0.38,omega=17){
+  if(t<=0) return 0;
+  const wd=omega*Math.sqrt(1-zeta*zeta);
+  return 1-Math.exp(-zeta*omega*t)*(Math.cos(wd*t)+(zeta*omega/wd)*Math.sin(wd*t));
+}
+const easeOutExpo=k=>k>=1?1:1-Math.pow(2,-10*k);
+const easeOutQuart=k=>1-Math.pow(1-k,4);
+const easeInOutCubic=k=>k<.5?4*k*k*k:1-Math.pow(-2*k+2,3)/2;
+const easeOutBack=(k,s=1.7)=>1+(s+1)*Math.pow(k-1,3)+s*Math.pow(k-1,2);
+/* cubic-bezier solver (for the slide-up exit: 0.76,-0.25,0.24,1) */
+function bezier(x1,y1,x2,y2){
+  const cx=3*x1,bx=3*(x2-x1)-cx,ax=1-cx-bx,cy=3*y1,by=3*(y2-y1)-cy,ay=1-cy-by;
+  const X=s=>((ax*s+bx)*s+cx)*s,Y=s=>((ay*s+by)*s+cy)*s,dX=s=>(3*ax*s+2*bx)*s+cx;
+  return x=>{ if(x<=0)return 0; if(x>=1)return 1; let s=x;
+    for(let i=0;i<8;i++){const e=X(s)-x; const d=dX(s); if(Math.abs(e)<1e-6||!d)break; s-=e/d;}
+    return Y(clamp(s)); };
+}
+const slideEase=bezier(0.76,-0.25,0.24,1);
+
+/* ================= palette ================= */
+const C={bg:'#FDFCFB',ink:'#1E1A18',dark:'#D93A0B',deep:'#B32E08',orange:'#F94612',orange2:'#FA683D',peach:'#FFC9B3',blush:'#FFF4EF',line:'#E6E2DE'};
+
+/* ================= setup ================= */
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+const intro=document.getElementById('intro'), product=document.getElementById('product');
+let W,H,DPR,orbs=[],wordDots=[],G,impact,bolt,word;
+const rand=(s=>()=>(s=(s*16807)%2147483647)/2147483647)(7);
+
+/* minoli (lightning bolt) path in a 100x160 box, origin at center */
+const BOLT=[[18,-80],[-34,6],[-4,6],[-20,80],[36,-14],[6,-14],[22,-80]];
+function boltPath(){const p=new Path2D();BOLT.forEach(([x,y],i)=>i?p.lineTo(x,y):p.moveTo(x,y));p.closePath();return p;}
+const BP=boltPath();
+
+function layout(){
+  DPR=Math.min(2,window.devicePixelRatio||1);
+  W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;
+  const m=Math.min(W,H);
+  G=Math.max(18,Math.round(m/30));           // dot grid pitch
+  impact={x:W*0.5,y:H*0.5};
+  // five large deliberate orbs, placed around the composition (relative coords)
+  orbs=[[0.16,0.24,0.070,'white'],[0.84,0.20,0.050,'orange'],[0.80,0.78,0.085,'peach'],[0.22,0.80,0.045,'orange'],[0.62,0.12,0.030,'white']]
+    .map(([rx,ry,rr,kind],i)=>{const x=rx*W,y=ry*H;return {x,y,r:rr*m,kind,ph:i*1.3,delay:0.62+Math.hypot(x-impact.x,y-impact.y)/1400};});
+  // word "Omni" rasterised -> halftone cells
+  const fs=Math.round(Math.min(W*0.26,H*0.36));
+  const off=document.createElement('canvas');const ox=off.getContext('2d');
+  ox.font=`900 ${fs}px Inter,"SF Pro Display",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif`;
+  const tw=Math.ceil(ox.measureText('Omni').width);
+  off.width=tw+20;off.height=Math.ceil(fs*1.1);
+  ox.font=`900 ${fs}px Inter,"SF Pro Display",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif`;
+  ox.textBaseline='middle';ox.fillStyle='#000';ox.fillText('Omni',10,off.height/2);
+  const data=ox.getImageData(0,0,off.width,off.height).data;
+  const markW=fs*0.42, gap=fs*0.12, total=markW+gap+off.width;
+  const left=(W-total)/2;
+  word={fs,x:left+markW+gap,y:H/2-off.height/2,w:off.width,h:off.height,tw};
+  bolt={endX:left+markW/2,endY:H/2+fs*0.02,endScale:(fs*0.92)/160};
+  const step=Math.max(7,Math.round(fs/15));
+  wordDots=[];
+  for(let y=step/2;y<off.height;y+=step)for(let x=step/2;x<off.width;x+=step){
+    // coverage sample
+    let cov=0,cnt=0;for(let j=-2;j<=2;j++)for(let i=-2;i<=2;i++){
+      const px=Math.round(x+i*step/5),py=Math.round(y+j*step/5);
+      if(px<0||py<0||px>=off.width||py>=off.height)continue;cnt++;cov+=data[(py*off.width+px)*4+3]/255;}
+    cov/=cnt||1;
+    if(cov>0.4){
+      const n=rand();
+      wordDots.push({x:word.x+x,y:word.y+y,cov,col:x/off.width,row:y/off.height,step,n,
+        shade:n<.14?'ink':'grad',core:n>.72});
+    }
+  }
+}
+
+/* ================= render(t) - pure function of time ================= */
+function render(t){
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  // shake at strike
+  const shakeK=prog(t,0.5,0.72), sh=(1-shakeK)*(shakeK>0&&shakeK<1?1:0)*Math.min(W,H)*0.012;
+  const sx=Math.sin(t*173)*sh, sy=Math.cos(t*131)*sh;
+  ctx.fillStyle=C.bg;ctx.fillRect(0,0,W,H);
+  ctx.save();ctx.translate(sx,sy);
+
+  // ---- glow bloom ----
+  const bloomK=prog(t,0.72,1.55), bloom=bloomK>0?easeOutBack(bloomK,1.7):0;
+  const lockK=spring(t-1.7,0.5,13);
+  const bx=lerp(impact.x,bolt.endX,lockK), by=lerp(impact.y,bolt.endY,lockK);
+  if(bloom>0){
+    const breathe=1+0.04*Math.sin((t-1.5)*3.2)*prog(t,1.5,2);
+    const R=Math.max(W,H)*0.55*bloom*breathe*lerp(1,0.75,lockK);
+    const resolveFade=1-0.45*prog(t,2.6,3.3);
+    const g=ctx.createRadialGradient(bx,by,0,bx,by,R);
+    g.addColorStop(0,`rgba(249,70,18,${0.55*resolveFade})`);
+    g.addColorStop(0.22,`rgba(250,104,61,${0.42*resolveFade})`);
+    g.addColorStop(0.5,`rgba(255,201,179,${0.35*resolveFade})`);
+    g.addColorStop(1,'rgba(255,244,239,0)');
+    ctx.fillStyle=g;ctx.fillRect(-50,-50,W+100,H+100);
+  }
+
+  // ---- a few large, deliberate orbs (no ambient sprinkle) ----
+  for(const o of orbs){
+    const s=spring(t-o.delay,0.36,15);
+    if(s<=0)continue;
+    const fade=1-easeInOutCubic(prog(t,2.45,3.0));
+    if(fade<=0.01)continue;
+    const drift=Math.sin((t-o.delay)*1.6+o.ph)*o.r*0.08;
+    const r=o.r*s;
+    if(r<=0.5)continue;
+    const x=o.x+drift, y=o.y-drift*0.6;
+    ctx.save();ctx.globalAlpha=fade;
+    if(o.kind==='white'){
+      ctx.shadowColor='rgba(217,58,11,.35)';ctx.shadowBlur=o.r*0.6;
+      ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle='#FFFFFF';ctx.fill();
+      ctx.shadowBlur=0;ctx.lineWidth=Math.max(2,o.r*0.07);ctx.strokeStyle='rgba(249,70,18,.55)';ctx.stroke();
+    }else{
+      const g=ctx.createRadialGradient(x-r*0.3,y-r*0.3,r*0.1,x,y,r);
+      g.addColorStop(0,o.kind==='peach'?'#FFE3D6':C.orange2);g.addColorStop(1,o.kind==='peach'?C.peach:C.orange);
+      ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=g;ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // ---- shockwave rings ----
+  for(const [st,dur,wid,col] of [[0.62,0.9,6,'249,70,18'],[0.74,1.1,3,'217,58,11']]){
+    const k=prog(t,st,st+dur); if(k<=0||k>=1)continue;
+    const e=easeOutQuart(k);
+    ctx.beginPath();ctx.arc(impact.x,impact.y,e*Math.max(W,H)*0.7,0,Math.PI*2);
+    ctx.strokeStyle=`rgba(${col},${(1-k)*0.8})`;ctx.lineWidth=wid*(1-k*0.6);ctx.stroke();
+  }
+
+  // ---- spark flicker (charge) ----
+  if(t<0.45){
+    const f=(Math.sin(t*90)>0.2?1:0.3)*prog(t,0.05,0.4);
+    ctx.fillStyle=`rgba(249,70,18,${0.6*f})`;
+    ctx.beginPath();ctx.arc(impact.x+G*0.3,-2+G*0.8,G*0.25*f,0,Math.PI*2);ctx.fill();
+  }
+
+  // ---- strike path (jagged line from top to impact) ----
+  const strikeK=prog(t,0.4,0.62);
+  const strikeOut=prog(t,0.62,0.9);
+  if(strikeK>0&&strikeOut<1){
+    const pts=[];const segs=9;
+    for(let i=0;i<=segs;i++){const k=i/segs;const jit=(i%2?1:-1)*G*0.9*(1-k)*((i*37%5)/5+0.4);
+      pts.push([impact.x+jit+(1-k)*G*1.2, lerp(-20,impact.y,k)]);}
+    const upto=easeOutExpo(strikeK)*segs;
+    ctx.save();ctx.lineJoin='miter';ctx.lineCap='round';
+    for(const [lw,col] of [[G*0.9,`rgba(250,104,61,${0.35*(1-strikeOut)})`],[G*0.28,`rgba(249,70,18,${1-strikeOut})`],[G*0.09,`rgba(255,255,255,${1-strikeOut})`]]){
+      ctx.beginPath();ctx.moveTo(...pts[0]);
+      for(let i=1;i<=Math.ceil(upto)&&i<=segs;i++){const fr=Math.min(1,upto-(i-1));
+        ctx.lineTo(lerp(pts[i-1][0],pts[i][0],fr),lerp(pts[i-1][1],pts[i][1],fr));}
+      ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.stroke();}
+    ctx.restore();
+  }
+
+  // ---- "Omni" halftone dots ----
+  const resolveK=easeInOutCubic(prog(t,2.55,3.15));
+  if(t>1.55){
+    for(const d of wordDots){
+      const delay=1.55+d.col*0.62+d.n*0.05;
+      const s=spring(t-delay,0.34,19);
+      if(s<=0)continue;
+      const r=d.step*0.5*(0.55+0.5*d.cov)*s;
+      if(r<=0.5)continue;
+      ctx.globalAlpha=1-resolveK;
+      let fill;
+      if(d.shade==='ink') fill=C.ink;
+      else { // vertical gradient dark orange (top) -> orange (bottom)
+        fill = d.row<0.33?C.deep : d.row<0.66?C.dark : C.orange; }
+      ctx.beginPath();ctx.arc(d.x,d.y,r,0,Math.PI*2);ctx.fillStyle=fill;ctx.fill();
+      if(d.core&&r>d.step*0.35){ctx.beginPath();ctx.arc(d.x,d.y,r*0.42,0,Math.PI*2);ctx.fillStyle='#FFFFFF';ctx.fill();}
+    }
+    ctx.globalAlpha=1;
+  }
+
+  // ---- solid layered type (resolve) ----
+  if(resolveK>0){
+    ctx.save();
+    ctx.font=`900 ${word.fs}px Inter,"SF Pro Display",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif`;
+    ctx.textBaseline='middle';
+    const ty=word.y+word.h/2, tx=word.x+10;
+    const off=word.fs*0.045*spring(t-2.75,0.4,16);
+    // back layer: orange gradient, offset
+    const g2=ctx.createLinearGradient(0,word.y,0,word.y+word.h);
+    g2.addColorStop(0,C.orange2);g2.addColorStop(1,C.orange);
+    ctx.globalAlpha=resolveK;
+    ctx.fillStyle=g2;ctx.fillText('Omni',tx+off,ty+off);
+    // mid layer: dark orange
+    ctx.fillStyle=C.dark;ctx.fillText('Omni',tx+off*0.5,ty+off*0.5);
+    // face: black -> deep orange gradient
+    const g=ctx.createLinearGradient(0,word.y+word.h*0.15,0,word.y+word.h*0.95);
+    g.addColorStop(0,C.ink);g.addColorStop(0.62,C.ink);g.addColorStop(1,C.deep);
+    ctx.fillStyle=g;ctx.fillText('Omni',tx,ty);
+    ctx.restore();
+  }
+
+  // ---- minoli (bolt body) ----
+  const landT=t-0.55;
+  if(landT>0){
+    const s0=spring(landT,0.38,17);
+    const scaleIntro=lerp(0.15,1,s0)*(Math.min(W,H)*0.46/160);
+    const scale=lerp(scaleIntro,bolt.endScale,lockK);
+    const rot=lerp(-14,0,s0)*Math.PI/180+Math.sin((t-1.7)*14)*0.06*Math.exp(-Math.max(0,t-1.7)*5)*(t>1.7?1:0);
+    ctx.save();ctx.translate(bx,by);ctx.rotate(rot);ctx.scale(scale,scale);
+    // glow halo
+    ctx.shadowColor='rgba(249,70,18,.75)';ctx.shadowBlur=40*(1-0.5*resolveK);
+    const bg=ctx.createLinearGradient(0,-80,0,80);
+    bg.addColorStop(0,C.orange2);bg.addColorStop(0.55,C.orange);bg.addColorStop(1,C.dark);
+    ctx.fillStyle=bg;ctx.fill(BP);
+    ctx.shadowBlur=0;
+    // hot white core at impact, fades
+    const hot=1-prog(t,0.6,1.1);
+    if(hot>0){ctx.fillStyle=`rgba(255,255,255,${hot*0.9})`;ctx.fill(BP);}
+    // inner highlight edge
+    ctx.lineWidth=2.5/scale*1.4;ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineJoin='round';ctx.stroke(BP);
+    ctx.restore();
+  }
+  ctx.restore();
+
+  // ---- flash (warm, so it reads on a light bg) ----
+  const fl=prog(t,0.56,0.64), flOut=prog(t,0.64,0.95);
+  const fa=fl<1?fl:1-easeOutQuart(flOut);
+  if(fa>0){ctx.fillStyle=`rgba(249,70,18,${0.55*fa})`;ctx.fillRect(0,0,W,H);
+    ctx.fillStyle=`rgba(255,255,255,${0.5*fa})`;ctx.fillRect(0,0,W,H);}
+
+  // ---- slide up to product ----
+  const upK=prog(t,3.55,4.45);
+  intro.style.transform=`translate3d(0,${-slideEase(upK)*110}%,0)`;
+  const pk=t-3.7;
+  product.style.transform=`translate3d(0,${(1-spring(pk,0.42,14))*60}px,0)`;
+  product.style.opacity=t<3.55?0:clamp(prog(t,3.6,4.1));
+  return t<5;
+}
+
+/* ================= loop ================= */
+let start=null, raf=null;
+function frozen(){const m=location.hash.match(/t=([\d.]+)/);return m?parseFloat(m[1]):null;}
+function tick(now){ if(start===null)start=now; const t=(now-start)/1000; if(render(t))raf=requestAnimationFrame(tick); }
+function play(){cancelAnimationFrame(raf);start=null;const f=frozen();
+  if(f!==null){render(f);return;} raf=requestAnimationFrame(tick);}
+function boot(){layout();play();}
+addEventListener('resize',()=>{layout();const f=frozen();if(f!==null)render(f);});
+addEventListener('hashchange',play);
+document.getElementById('replay').onclick=()=>{history.replaceState(null,'',location.pathname);play();};
+addEventListener('keydown',e=>{if(e.key==='r'||e.key==='R'){history.replaceState(null,'',location.pathname);play();}});
+intro.addEventListener('click',play);
+(document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve()).then(boot);
+})();
+</script>
+</body>
+</html>
