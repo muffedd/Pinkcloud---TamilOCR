@@ -13,7 +13,7 @@ Early. Design foundations are done. Application code is not written yet.
 | `pink-cloud-color-system-rename-to-.html` | Pink Cloud color system, tokens, scan states, and examples. |
 | `styles.css` | Shared layout styles. |
 | `comps.html` | Component sheet. Button states, icon buttons, modal footer. |
-| | `typography-suisse.html` | Suisse type and spacing specimen. |
+| `typography-suisse.html` | Suisse type and spacing specimen. |
 
 Open the HTML files in a browser. No build step. No server needed.
 
