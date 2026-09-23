@@ -154,7 +154,11 @@
   --pc-ease-in-out: cubic-bezier(.65, 0, .35, 1);
   --pc-ease-bounce: cubic-bezier(.22, 1.9, .36, 1);     /* from design-drafts/icon-motion-*: big overshoot, tiny moves only (1-2px) */
   --pc-ease-overshoot: cubic-bezier(.34, 1.56, .64, 1); /* from icon-motion: press release springs back past rest */
-  --pc-lift-hover: -1px;                               /* solid/outline button hover lift */
+  --pc-lift-hover: -1px;
+  --pc-motion-pop: 420ms;    /* icon motion A: state icon / status dot springs in */
+  --pc-motion-draw: 560ms;   /* icon motion B: icon strokes draw on */
+  --pc-motion-spin: 1600ms;  /* icon motion A: stepped spring spinner, one turn */
+  --pc-motion-pulse: 1500ms; /* icon motion A: processing dot pulse */                               /* solid/outline button hover lift */
   --pc-scale-press: .96;
   --pc-scale-press-sm: .97;
   --pc-motion-fast: 100ms;

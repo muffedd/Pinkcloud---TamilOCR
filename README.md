@@ -152,7 +152,7 @@ The output contract is in [`schema/schema.json`](schema/schema.json), the endpoi
 | `samples/editor/` | Offline editor fixtures from real Sarvam output (`make_fixtures.py`); fake suggestions |
 | `api.js` | Data access: live backend or `?mock=1` demo |
 | `translit.js` | Offline Tanglish → Tamil transliteration for fixes |
-| `tokens.css`, `ui.css` | Design tokens and shared components. Motion: `--pc-ease-bounce` / `--pc-ease-overshoot` (from `design-drafts/icon-motion-*`); solid and outline buttons lift 1px on hover and spring back after a press. Reduced motion keeps color changes only |
+| `tokens.css`, `ui.css` | Design tokens and shared components. Motion: `--pc-ease-bounce` / `--pc-ease-overshoot` (from `design-drafts/icon-motion-*`); solid and outline buttons lift 1px on hover and spring back after a press. Icon motion (from `design-drafts/icon-motion-a.html` spring + `icon-motion-b.html` draw-on): Library and Export status dots pop in and Processing dots pulse (A), spinners turn in springy quarter steps (A), Export not-found/failed icons pop in (A), Export download icons and a finished upload row's action icons draw on (B). Nothing in a sidebar or the intro moves. Reduced motion keeps color changes only |
 
 ## Design system
 
