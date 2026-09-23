@@ -41,6 +41,7 @@
 <div class="app" id="app">
 
   <header class="topbar">
+    <a class="btn btn--outline btn--sm pc-back" data-back href="./index.html" data-back-fallback="#snUpload" title="Go back"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 8H3.5M7 4.5 3.5 8 7 11.5"/></svg><span class="lb"><span>Back</span><span aria-hidden="true">Back</span></span></a>
     <nav class="page-badges" id="pageBadges" aria-label="Pages"></nav>
     <span class="spacer"></span>
     <div class="seg" id="modeToggle" role="radiogroup" aria-label="Review mode" data-active="0">
@@ -238,6 +239,7 @@
 <script src="./api.js"></script>
 <script src="./translit.js"></script>
 <script src="./editor.js"></script>
+<script src="./nav-back.js"></script>
 <script>
 /* Editor polish: shortcut overlay. Self-contained; does not touch
    editor.js state. Runs in the capture phase so it can step in before

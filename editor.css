@@ -107,6 +107,9 @@ body {
 .page-pager { display: inline-flex; align-items: center; gap: var(--pc-space-1); }
 
 
+/* Back (nav-back.js): same button as library/export, centred in the bar */
+.topbar .pc-back { align-self: center; flex: none; }
+
 .topbar .spacer {
   flex: 1;
 }

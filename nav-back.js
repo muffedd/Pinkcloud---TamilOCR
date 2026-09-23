@@ -1,4 +1,4 @@
-/* Pink Cloud - shared Back button (library.html, export.html).
+/* Pink Cloud - shared Back button (library.html, export.html, editor.html).
    Markup: <a class="btn btn--ghost btn--sm pc-back" data-back href="./index.html"
              data-back-fallback="#someNavLink">...</a>
    Click goes back one step in history when the previous page is ours
