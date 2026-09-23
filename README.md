@@ -127,6 +127,10 @@ The output contract is in [`schema/schema.json`](schema/schema.json), the endpoi
 | File | Role |
 | --- | --- |
 | `index.html`, `upload.js`, `upload.css` | Upload screen and stepper |
+| `intro.js`, `intro.css` | Landing intro on `index.html` (from `design-drafts/pinkcloud-intro.html`): plays once per browser session, click/Esc/Skip jumps to the slide-up, skipped for reduced motion. `?intro=0` off, `?intro=1` replay |
+| `library.html`, `library.js`, `library.css` | Library: job list (`GET /jobs`) and text search (`GET /search`, `?q=` kept in the URL); a hit opens `editor.html?job=<id>&page=<n>` |
+| `export.html`, `export.js`, `export.css` | Export page: receipt card, PDF/TXT downloads |
+| `nav-back.js` | Back button on Library and Export: returns to the previous Pink Cloud page, else to Upload (Library) or the job's editor (Export) |
 | `editor.html`, `editor.js`, `editor.css` | Review editor |
 | `api.js` | Data access: live backend or `?mock=1` demo |
 | `translit.js` | Offline Tanglish → Tamil transliteration for fixes |

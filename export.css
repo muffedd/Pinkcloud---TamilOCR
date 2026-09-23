@@ -97,6 +97,7 @@ body.ex-body {
 /* ---------- Main column: single centered 880px column (layout plan page 3) ---------- */
 .ex-main { min-width: 0; padding: var(--pc-space-8) var(--pc-space-6) var(--pc-space-12); }
 .ex-col { max-width: 880px; margin: 0 auto; }
+.ex-col > .pc-back { margin-bottom: var(--pc-space-4); }
 .ex-state { display: flex; flex-direction: column; gap: var(--pc-space-6); }
 .ex-state[hidden] { display: none; }
 .ex-muted { color: var(--pc-color-text-secondary); }

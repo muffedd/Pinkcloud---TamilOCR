@@ -880,3 +880,10 @@ h1, h2, h3, h4, h5, h6, p {
   z-index: 41;
   text-decoration: none;
 }
+
+/* Back button (library.html, export.html; behaviour in nav-back.js).
+   An outline .btn--sm with a left arrow, first thing in the page column. */
+.pc-back {
+  align-self: flex-start;
+  text-decoration: none;
+}

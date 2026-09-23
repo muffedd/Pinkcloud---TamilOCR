@@ -13,8 +13,13 @@
 <link rel="stylesheet" href="./tokens.css">
 <link rel="stylesheet" href="./ui.css">
 <link rel="stylesheet" href="./upload.css">
+<link rel="stylesheet" href="./intro.css">
 </head>
 <body>
+<!-- Landing intro (design-drafts/pinkcloud-intro.html), once per session,
+     skippable. Must stay the first thing in <body> so the page never flashes
+     before the sheet covers it. ?intro=0 turns it off, ?intro=1 replays. -->
+<script src="./intro.js"></script>
 
 <!-- upload.js renders the whole upload screen here (stepper, drop zone,
      file list, Previous/Next). "Next step" opens editor.html?job=<job_id>. -->

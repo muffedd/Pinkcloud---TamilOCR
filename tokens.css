@@ -221,6 +221,11 @@
   --pc-qs-h: 28px;
   --pc-qs-pad: 0 8px 0 4px;
 
+  /* ---------- Landing intro (intro.js / intro.css, design-drafts/pinkcloud-intro.html) ---------- */
+  --pc-intro-sheet-radius: 28px;           /* bottom corners of the sheet as it slides up */
+  --pc-intro-sheet-shadow: 0 30px 60px #1E1A1814; /* only visible while the sheet leaves */
+  --pc-intro-skip-inset: 16px;
+
   /* ---------- Buttons / pills / toggles / inputs ---------- */
   --pc-btn-h: 36px;
   --pc-btn-pad: 0 16px;
