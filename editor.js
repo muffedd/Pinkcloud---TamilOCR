@@ -275,10 +275,39 @@ function renderScan() {
   if (!paperW) return;
   S.scale = paperW / IMG_W;
   var s = S.scale;
-  el.paper.style.height = Math.round(PAGE_H * s) + "px";
+  el.paper.style.height = Math.round((S.pageH || PAGE_H) * s) + "px";
   el.paper.innerHTML = "";
 
-  /* Placeholder sheet: each line body placed at its bbox. */
+  /* Live mode: draw the real scan behind the boxes when the backend's
+     scan-image route answers (SCAN_IMAGE in api.js - URL still TBD by the
+     backend owner). Probe it once per page; on any failure the placeholder
+     paper below stays, so the editor still works. Mock mode never probes. */
+  if (S.pageImageUrl && !S.imageTried) {
+    S.imageTried = true;
+    var probe = new Image();
+    probe.onload = function () {
+      /* bboxes live in the 1600px-capped space: map the image height into it */
+      S.pageH = probe.naturalWidth ? Math.round(probe.naturalHeight * (IMG_W / probe.naturalWidth)) : PAGE_H;
+      S.imageLoaded = true;
+      renderScan();
+    };
+    probe.onerror = function () {
+      S.imageFailed = true;
+      renderScan();
+    };
+    probe.src = S.pageImageUrl;
+  }
+  if (S.imageLoaded && S.pageImageUrl) {
+    el.paper.style.backgroundImage = "url(\"" + S.pageImageUrl + "\")";
+    el.paper.style.backgroundSize = "100% 100%";
+    el.paper.style.backgroundRepeat = "no-repeat";
+  } else {
+    el.paper.style.backgroundImage = "";
+  }
+
+  /* Placeholder sheet: each line body placed at its bbox. Skipped once the
+     real scan image is on the paper (the text would double-draw). */
+  if (!S.imageLoaded) {
   S.lines.forEach(function (line) {
     var d = document.createElement("div");
     d.className = "paper-line";
@@ -288,6 +317,7 @@ function renderScan() {
     d.textContent = line.body;
     el.paper.appendChild(d);
   });
+  }
 
   var layer = document.createElement("div");
   layer.className = "scan-layer";
@@ -434,7 +464,7 @@ function renderBadges() {
     el.queue.scrollTop = 0;
   });
   el.pageBadges.appendChild(b);
-  el.scanSub.textContent = "page " + S.page.page + " of 1 · " + S.page.profile + " · " + state;
+  el.scanSub.textContent = "page " + S.page.page + " of " + (S.pageCount || 1) + " · " + S.page.profile + " · " + state;
   var open = state === "clean" || state === "repaired" || state === "precomputed";
   el.exportBtn.disabled = !open;
 }
@@ -570,6 +600,11 @@ function doAccept() {
   refreshWordEl(w);
   w.line.body = w.line.words.map(function (x) { return x.text; }).join(" ");
   S.page.text = S.lines.map(function (l) { return l.body; }).join("\n");
+  /* TODO(save-back): schema/endpoints.md defines no endpoint for persisting
+     corrections yet, so this fix stays client-side (this session only). When
+     the backend contract lands, persist here via
+     window.PC_API.saveCorrections(S.jobId, S.page.page, ...) and surface
+     failures in the toast. Do not invent a route before endpoints.md names one. */
   closePopup();
   renderScan();
   renderQueue();
@@ -673,7 +708,65 @@ function wireHotkeys() {
   });
 }
 
+/* ---------------- load states (live mode) ---------------- */
+
+var overlayEl = null;
+
+function hideOverlay() {
+  if (overlayEl && overlayEl.parentNode) overlayEl.parentNode.removeChild(overlayEl);
+  overlayEl = null;
+}
+
+/* Full-pane overlay for loading / processing / fatal states. Covers the
+   panes so the three empty panes never read as a broken editor. */
+function showOverlay(title, detail) {
+  hideOverlay();
+  overlayEl = document.createElement("div");
+  overlayEl.className = "pc-load-overlay";
+  overlayEl.style.position = "absolute";
+  overlayEl.style.inset = "0";
+  overlayEl.style.zIndex = "30";
+  overlayEl.style.display = "flex";
+  overlayEl.style.flexDirection = "column";
+  overlayEl.style.alignItems = "center";
+  overlayEl.style.justifyContent = "center";
+  overlayEl.style.gap = "10px";
+  overlayEl.style.padding = "24px";
+  overlayEl.style.textAlign = "center";
+  overlayEl.style.background = getComputedStyle(document.documentElement).getPropertyValue("--pc-bg") || "#fff";
+  var t = document.createElement("div");
+  t.style.fontWeight = "600";
+  t.style.fontSize = "15px";
+  t.textContent = title;
+  var d = document.createElement("div");
+  d.style.opacity = "0.75";
+  d.style.maxWidth = "52ch";
+  d.style.fontSize = "13px";
+  d.style.lineHeight = "1.5";
+  d.textContent = detail;
+  overlayEl.appendChild(t);
+  overlayEl.appendChild(d);
+  var host = document.querySelector(".panes");
+  if (getComputedStyle(host).position === "static") host.style.position = "relative";
+  host.appendChild(overlayEl);
+}
+
+/* Clear, actionable failure: what happened + how to still see the demo. */
+function showFatal(err) {
+  hideOverlay();
+  var hint = window.PC_API.USE_MOCK
+    ? ""
+    : " Start the backend (schema/endpoints.md) or open editor.html?mock=1 for the offline Kural demo.";
+  showOverlay("Could not open this job", err.message + "." + hint);
+  toast("Could not load job · " + err.message);
+}
+
 /* ---------------- boot ---------------- */
+
+var BOOT_QS = new URLSearchParams(location.search);
+var JOB_ID = BOOT_QS.get("job");
+var PAGE_NO = parseInt(BOOT_QS.get("page") || "1", 10);
+if (!(PAGE_NO >= 1)) PAGE_NO = 1;
 
 function loadPage(doc) {
   buildModel(doc);
@@ -747,10 +840,71 @@ function init() {
     });
   });
 
-  window.PC_API.getPage(1).then(loadPage).catch(function (err) {
-    toast("Could not load page · " + err.message);
-  });
+  bootData();
+}
+
+/* Wraps loadPage with the job context the live mode needs (page count for
+   the header, scan-image URL, the state flags renderScan probes). */
+function loadJob(doc, meta) {
+  S.jobId = meta.jobId || null;
+  S.pageCount = meta.pageCount || 1;
+  S.pageImageUrl = (meta.jobId && window.PC_API.pageImageUrl)
+    ? window.PC_API.pageImageUrl(meta.jobId, doc.page)
+    : null;
+  S.imageTried = false;
+  S.imageLoaded = false;
+  S.imageFailed = false;
+  S.pageH = null;
+  loadPage(doc);
+}
+
+/* Live mode: GET /jobs/{job_id}; poll while status is "pending" (POST /jobs
+   is synchronous today, but the contract allows background processing). */
+function pollJob(depth) {
+  window.PC_API.getJob(JOB_ID).then(function (job) {
+    if (job.status === "pending") {
+      if (depth >= window.PC_API.POLL_MAX) {
+        showFatal(new Error("Timed out waiting for job " + JOB_ID + " - still processing on the server"));
+        return;
+      }
+      showOverlay("Job still processing",
+        "Job " + JOB_ID + " is still running on the backend - checking again every " +
+        (window.PC_API.POLL_MS / 1000) + "s.");
+      setTimeout(function () { pollJob(depth + 1); }, window.PC_API.POLL_MS);
+      return;
+    }
+    if (job.status === "error") {
+      showFatal(new Error("Job " + JOB_ID + " failed on the backend: " +
+        ((job.result && job.result.error) || "unknown error")));
+      return;
+    }
+    var pages = job.result && job.result.pages;
+    if (!pages || !pages.length) {
+      showFatal(new Error("Job " + JOB_ID + " returned no pages"));
+      return;
+    }
+    var idx = Math.min(PAGE_NO, pages.length) - 1;
+    hideOverlay();
+    loadJob(pages[idx], { jobId: JOB_ID, pageCount: pages.length });
+  }).catch(showFatal);
+}
+
+function bootData() {
+  if (window.PC_API.USE_MOCK) {
+    /* Demo path, untouched: the Kural page from schema/doc_demo.json. */
+    window.PC_API.getPage(1)
+      .then(function (doc) { loadJob(doc, {}); })
+      .catch(function (err) { toast("Could not load page · " + err.message); });
+    return;
+  }
+  if (!JOB_ID) {
+    showFatal(new Error("No job id in the URL - open editor.html?job=<job_id> after an upload"));
+    return;
+  }
+  showOverlay("Loading job", "GET /jobs/" + JOB_ID + " on " + (window.PC_API.API_BASE || "this origin"));
+  pollJob(0);
 }
 
 document.addEventListener("DOMContentLoaded", init);
 })();
+
