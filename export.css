@@ -49,10 +49,8 @@ body.ex-body {
   justify-content: center;
   width: var(--pc-logo-tile);
   height: var(--pc-logo-tile);
-  border-radius: var(--pc-logo-radius);
-  background: var(--pc-gradient-primary);
 }
-.ex-logo-tile svg { width: 14px; height: 14px; color: var(--pc-color-on-primary); }
+.ex-logo-tile svg { width: var(--pc-logo-tile); height: var(--pc-logo-tile); color: var(--pc-logo-ink); }
 
 .ex-nav { display: flex; flex-direction: column; gap: var(--pc-space-1); }
 .ex-nav-item {

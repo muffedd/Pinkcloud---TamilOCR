@@ -10,9 +10,8 @@ body:has(#upload-root.up-active) { background: var(--pc-sidenav-bg); }
   padding: 0 var(--pc-space-2); border-radius: var(--pc-radius-btn);
   background: var(--pc-color-bg-hover); font: 500 14px/1 var(--pc-font-sans); }
 .pc-chip .logo-tile { display: inline-flex; align-items: center; justify-content: center; flex: none;
-  width: var(--pc-logo-tile); height: var(--pc-logo-tile); border-radius: var(--pc-logo-radius);
-  background: var(--pc-gradient-primary); }
-.pc-chip .logo-tile svg { width: 14px; height: 14px; color: var(--pc-color-on-primary); }
+  width: var(--pc-logo-tile); height: var(--pc-logo-tile); }
+.pc-chip .logo-tile svg { width: var(--pc-logo-tile); height: var(--pc-logo-tile); color: var(--pc-logo-ink); }
 .pc-chip-name { flex: 1; }
 .pc-nav { display: flex; flex-direction: column; gap: 2px; }
 .pc-nav-item { display: flex; align-items: center; gap: var(--pc-space-2); height: var(--pc-sidenav-item-h);

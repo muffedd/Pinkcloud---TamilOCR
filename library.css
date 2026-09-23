@@ -51,14 +51,13 @@ body {
   justify-content: center;
   width: var(--pc-logo-tile);
   height: var(--pc-logo-tile);
-  border-radius: var(--pc-logo-radius);
-  background: var(--pc-gradient-primary);
 }
 
+/* logo2.svg cloud mark, drawn at the full tile size (no orange tile) */
 .lib-logo-tile svg {
-  width: 14px;
-  height: 14px;
-  color: var(--pc-color-on-primary);
+  width: var(--pc-logo-tile);
+  height: var(--pc-logo-tile);
+  color: var(--pc-logo-ink);
 }
 
 .lib-nav {

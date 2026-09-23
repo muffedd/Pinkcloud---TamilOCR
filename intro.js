@@ -8,7 +8,7 @@
    Variants (all share one timeline, springs and colours from tokens.css;
    ported from design-drafts/pinkcloud-intro.html, fake product page removed,
    the real page animates in instead):
-     logo       the Pink Cloud logo (logo@2x.svg): cloud mark materialises,
+     logo       the Pink Cloud logo (logo2.svg): cloud mark materialises,
                 springs up, "Pinkcloud" wordmark builds in beneath (default)
      pinkcloud  bolt + "Pink Cloud" in dot type
      omni       bolt + "Omni", exactly as the draft spelled it
@@ -192,11 +192,11 @@
   /* shared timing: every variant leaves on the same beat */
   function timed(v) { v.EXIT = 3.70; v.SHEET_END = 4.60; v.PRODUCT_AT = 3.95; v.FADE_AT = [3.85, 4.4]; v.END = 4.9; return v; }
 
-  /* ================= variant: logo (logo@2x.svg) =================
+  /* ================= variant: logo (logo2.svg) =================
      Same timeline as the bolt variant: the cloud mark materialises from its
      centre, then springs up into place while the
      "Pinkcloud" wordmark builds in left to right beneath it. Shapes are the
-     paths of logo@2x.svg (viewBox 0 0 80 80), inlined so the first frame
+     paths of logo2.svg (viewBox 0 0 80 80), inlined so the first frame
      never waits on a network fetch. */
   var LOGO_MARK = [
       "M33.44 43.58L27.66 43.58C24.65 43.58 22.38 41.16 22.38 38.39C22.43 34.78 25.56 32.26 29.02 32.26C32.65 32.26 35.57 35.1 35.57 38.52L35.57 40.07C35.57 45.48 40.36 49.08 45.67 49.08L52.1 49.08C58.93 49.08 63.83 43.97 63.83 38.11C63.83 31.91 59.17 27.31 53.74 26.72C53.9 28.81 53.74 31.31 53.11 32.62C55.58 33.38 57.37 35.49 57.37 38.11C57.37 41.22 54.67 43.57 51.58 43.57L46.59 43.57C43.7 43.57 41.47 41.52 41.47 38.71L41.47 37.53C41.47 30.82 35.6 26.11 29.02 26.11C21.66 26.22 16.08 31.7 16.08 38.16C16.08 44.58 21.24 49.08 27.37 49.08L33.44 49.08C33.47 49.08 33.47 49.03 33.45 49.06C33.5 47.32 33.47 45.06 33.44 43.58Z",
