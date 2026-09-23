@@ -1,9 +1,14 @@
 """SQLite storage for Pink Cloud jobs.
 
-One tiny table, stdlib sqlite3 only. Each row = one uploaded document,
-its hash, processing status, and (when done) the full result JSON.
+Two tables, stdlib sqlite3 only:
+  - jobs: one row per uploaded document, its hash, processing status,
+    and (when done) the full result JSON.
+  - line_fts: FTS5 index over every OCR line body of finished jobs,
+    with job/page/line refs, powering GET /search. Rebuilt row-by-row
+    from jobs.result_json, so the jobs table stays the source of truth.
 """
 
+import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,8 +25,29 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
+def _fts5_supported(conn: sqlite3.Connection) -> bool:
+    """True when this SQLite build has FTS5 (virtually all do; some
+    minimal builds do not, and search then degrades to a clean 503
+    instead of crashing startup)."""
+    try:
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS line_fts USING fts5("
+            " job_id UNINDEXED,"  # job uuid hex
+            " page UNINDEXED,"    # 1-based page number
+            " line UNINDEXED,"    # line id, e.g. 'L3'
+            " body"               # OCR line text (the indexed column)
+            ")"
+        )
+    except sqlite3.OperationalError:
+        return False
+    return True
+
+
 def init_db() -> None:
-    """Create the jobs table if it doesn't exist yet. Safe to call often."""
+    """Create the jobs table and FTS index if they don't exist yet.
+    Safe to call often. Also reconciles the search index: any 'done'
+    job not yet indexed (e.g. jobs from before search existed) is
+    indexed here, so startup is the only migration step needed."""
     with _connect() as conn:
         conn.execute(
             """
@@ -35,6 +61,16 @@ def init_db() -> None:
             )
             """
         )
+        if not _fts5_supported(conn):
+            return
+        indexed = {r["job_id"] for r in conn.execute(
+            "SELECT DISTINCT job_id FROM line_fts")}
+        rows = conn.execute(
+            "SELECT id, result_json FROM jobs WHERE status = 'done'"
+        ).fetchall()
+        for row in rows:
+            if row["id"] not in indexed:
+                _index_job_result(conn, row["id"], row["result_json"])
 
 
 def create_job(job_id: str, filename: str, sha256: str) -> None:
@@ -55,10 +91,94 @@ def get_job(job_id: str) -> dict | None:
         return dict(row) if row else None
 
 
+def list_jobs(limit: int, offset: int) -> tuple[list[dict], int]:
+    """Newest-first page of job rows plus the total job count."""
+    with _connect() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+        rows = conn.execute(
+            "SELECT * FROM jobs ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ).fetchall()
+        return [dict(r) for r in rows], total
+
+
+def _index_job_result(conn: sqlite3.Connection, job_id: str,
+                      result_json: str | None) -> None:
+    """(Re)index one finished job: delete its old rows, insert one FTS row
+    per OCR line. Indexes whatever text the contract carries - no
+    assumptions about the OCR engine or script."""
+    conn.execute("DELETE FROM line_fts WHERE job_id = ?", (job_id,))
+    if not result_json:
+        return
+    try:
+        result = json.loads(result_json)
+    except ValueError:
+        return
+    for page in (result or {}).get("pages") or []:
+        page_no = page.get("page")
+        for line in page.get("lines") or []:
+            body = (line.get("body") or "").strip()
+            if not body:
+                continue
+            conn.execute(
+                "INSERT INTO line_fts (job_id, page, line, body) "
+                "VALUES (?, ?, ?, ?)",
+                (job_id, page_no, line.get("id"), body),
+            )
+
+
 def set_result(job_id: str, status: str, result_json: str) -> None:
-    """Store the final status + result JSON once processing is done."""
+    """Store the final status + result JSON once processing is done.
+    A 'done' result is indexed for search in the same write; any other
+    status leaves the job out of the index."""
     with _connect() as conn:
         conn.execute(
             "UPDATE jobs SET status = ?, result_json = ? WHERE id = ?",
             (status, result_json, job_id),
         )
+        if _fts5_supported(conn):
+            if status == "done":
+                _index_job_result(conn, job_id, result_json)
+            else:
+                conn.execute("DELETE FROM line_fts WHERE job_id = ?", (job_id,))
+
+
+def fts_available() -> bool:
+    """Live check that the FTS table exists (GET /search gates on this)."""
+    with _connect() as conn:
+        return _fts5_supported(conn)
+
+
+def _match_query(q: str) -> str:
+    """Turn raw user text into a safe FTS5 MATCH string: each
+    whitespace-separated token becomes a double-quoted phrase, joined
+    with implicit AND. Quoting defangs FTS operators (AND/OR/NEAR/*),
+    so arbitrary user input can never produce a syntax error."""
+    return " ".join('"' + t.replace('"', '""') + '"' for t in q.split())
+
+
+def search_lines(q: str, limit: int, offset: int) -> tuple[list[dict], int]:
+    """Full-text search over indexed OCR lines, best matches first.
+
+    Returns (rows, total). Each row: job_id, filename, page, line,
+    snippet (query terms wrapped in <mark>), score (SQLite bm25; lower
+    is a better match)."""
+    match = _match_query(q)
+    with _connect() as conn:
+        total = conn.execute(
+            "SELECT COUNT(*) FROM line_fts WHERE line_fts MATCH ?",
+            (match,),
+        ).fetchone()[0]
+        rows = conn.execute(
+            "SELECT f.job_id AS job_id, j.filename AS filename,"
+            "       f.page AS page, f.line AS line,"
+            "       snippet(line_fts, 3, '<mark>', '</mark>', '…', 16)"
+            "           AS snippet,"
+            "       bm25(line_fts) AS score"
+            " FROM line_fts f JOIN jobs j ON j.id = f.job_id"
+            " WHERE line_fts MATCH ?"
+            " ORDER BY score"
+            " LIMIT ? OFFSET ?",
+            (match, limit, offset),
+        ).fetchall()
+        return [dict(r) for r in rows], total

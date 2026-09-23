@@ -25,7 +25,7 @@ import uuid
 from pathlib import Path
 
 import cv2
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
 from . import db, storage
@@ -180,6 +180,79 @@ def get_job(job_id: str):
         "status": job["status"],
         "created_at": job["created_at"],
         "result": parse_job_result(job["result_json"]),
+    }
+
+
+def _job_summary(job: dict) -> dict:
+    """List-row shape for GET /jobs: everything a jobs UI needs without
+    fetching each job's full result. page_count / pages_needing_review /
+    receipt_url are null until the job is done; error carries the failure
+    message for failed jobs."""
+    result = parse_job_result(job["result_json"])
+    done = job["status"] == "done"
+    pages = (result or {}).get("pages") or [] if done else []
+    return {
+        "job_id": job["id"],
+        "filename": job["filename"],
+        "sha256": job["sha256"],
+        "status": job["status"],
+        "created_at": job["created_at"],
+        "page_count": len(pages) if done else None,
+        "pages_needing_review": (
+            sum(1 for p in pages if p.get("needs_review")) if done else None
+        ),
+        "error": (result or {}).get("error") if job["status"] == "error" else None,
+        "result_url": f"/jobs/{job['id']}",
+        "receipt_url": f"/jobs/{job['id']}/receipt" if done else None,
+    }
+
+
+@app.get("/jobs")
+def list_jobs(limit: int = Query(50, ge=1, le=200),
+              offset: int = Query(0, ge=0)):
+    """List jobs, newest first, with the fields a jobs UI needs.
+    Paginate with limit/offset; total is the full job count."""
+    rows, total = db.list_jobs(limit, offset)
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "jobs": [_job_summary(r) for r in rows],
+    }
+
+
+@app.get("/search")
+def search(q: str = Query(..., min_length=1, max_length=200),
+           limit: int = Query(20, ge=1, le=100),
+           offset: int = Query(0, ge=0)):
+    """Full-text search over the OCR text of finished jobs.
+
+    q is matched as whole-word tokens (implicit AND). Results carry the
+    job + page + line refs and a snippet with hits wrapped in <mark>.
+    Only 'done' jobs are searched; raw stored OCR text is indexed
+    (reviewer corrections are not)."""
+    if not q.strip():
+        raise HTTPException(status_code=400, detail="empty search query")
+    if not db.fts_available():
+        raise HTTPException(status_code=503,
+                            detail="search index unavailable in this build")
+    rows, total = db.search_lines(q.strip(), limit, offset)
+    return {
+        "query": q.strip(),
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "results": [
+            {
+                "job_id": r["job_id"],
+                "filename": r["filename"],
+                "page": r["page"],
+                "line": r["line"],
+                "snippet": r["snippet"],
+                "score": round(float(r["score"]), 4),
+            }
+            for r in rows
+        ],
     }
 
 # Job ids are uuid4 hex (32 lowercase hex chars); anything else was never
