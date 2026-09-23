@@ -1,21 +1,114 @@
-# Pink Cloud — Tamil OCR
+# Pink Cloud - Tamil OCR
 
-Pink Cloud reads scanned Tamil and English books. Its workflow repairs low-quality pages, supports human corrections, and exports searchable text.
+**Tamil OCR for damaged heritage scans, with a human review loop driven by confidence.**
 
-## Status
+Palm-leaf manuscripts and old Tamil print break ordinary OCR. The ink is faded, the pages are stained or warped, and the letterforms are older than the ones modern models were trained on. Pink Cloud accepts that the machine will be wrong sometimes. It scores every word, shows a reviewer only the words it doubts, and makes each fix a single keystroke. The result is Unicode Tamil text and a searchable PDF you can trust, without proofreading every line by hand.
 
-The FastAPI + SQLite backend, upload screen, and correction editor are in the repo. Use `?mock=1` for the offline sample flow.
+> **Status:** the frontend is complete and runs fully offline in demo mode (`?mock=1`). The FastAPI backend runs upload → quality routing → Tamil OCR today. The scan-image and PDF-export routes are on branches and are being merged into `main`. See [Current state](#current-state).
 
-## Frontend
+## How it works
 
-- `index.html` provides the upload screen; completed jobs open the editor.
-- `editor.html` shows the scan, Tamil text, and correction queue.
-- Serve the repo root with `python -m http.server 8877`. Open `index.html?mock=1` for the offline upload demo or `editor.html?mock=1` for the standalone editor demo.
-- Live mode uses the FastAPI API. When the frontend and backend use different origins, configure CORS and pass `?api=http://127.0.0.1:8000`.
+The app follows five steps. The stepper at the top of the upload screen shows them.
 
-## Application — FastAPI + SQLite backend
+1. **Scan pages** - photograph or scan the palm leaf or printed page.
+2. **Prepare files** - gather the scans as PDF, JPG, PNG or TIFF. Multi-page PDFs and TIFFs are fine.
+3. **Upload** - drag and drop or browse. Each file becomes a job, and its row shows status live: queued → uploading → processing → done.
+4. **Tamil OCR** - every page is scored on blur, contrast, noise and skew, then badged **FAST** (clean) or **HEAVY** (damaged, sent to repair). A PaddleOCR PP-OCRv5 pass with the Tamil recognition model reads each line and gives it a bounding box and a confidence score.
+5. **Review & export PDF** - the editor opens with the doubtful words queued. Fix them, then export.
 
-The pipe-skeleton-router backend lives in `fastapi/sqlite/app/`. Python 3, CPU only, runs on Windows with no Docker/poppler/torch.
+## The review editor
+
+The editor puts three panes side by side: the scan, the Unicode Tamil text, and the review queue.
+
+- **Every word is boxed.** Boxes are drawn on the scan at the OCR's coordinates. Click a word on the scan or in the text and the other pane highlights it too.
+- **Doubtful words are flagged.** Each word falls into a confidence band: Auto (≥ 0.90), OK, or Doubt (< 0.75). **Auto** mode queues only Doubt words. **Review** mode adds the OK words for a stricter pass. A heatmap view shows the weak areas of the scan at a glance.
+- **Fixes take one key.** `J` / `K` move through the queue, `Enter` opens the fix box, and `Enter` again accepts. `Esc` rejects. You can type the correction in Tanglish (for example `vaalarivan` → வாலறிவன்) using the built-in offline transliterator. No Tamil keyboard needed.
+- **Every change is traceable.** The Provenance lens colours each word by where it came from: Raw OCR, Rule, Swap, LLM or Human. Accepted fixes are marked Human.
+- **Export a searchable PDF.** The finished job exports as a PDF with the Tamil text layer under the scan.
+
+## Current state
+
+| Area | State |
+| --- | --- |
+| Upload screen (`index.html`) | Complete. Live mode posts to the backend; `?mock=1` runs offline. |
+| Review editor (`editor.html`) | Complete. Live mode loads a job by `?job=<job_id>`; `?mock=1` loads the Thirukkural demo page. |
+| Backend on `main` | `GET /health`, `POST /jobs`, `GET /jobs/{job_id}`: upload, SHA-256 master storage, FAST/HEAVY routing, OCR, contract JSON. |
+| Backend routes being merged | Page scan images (`slice/per-page-image`), `export.pdf` / `export.txt` / receipt (`slice/pipe-export-receipt`), and serving the UI from the API origin so live mode needs no CORS (`slice/b01-static-serving`). |
+| Not built yet | Saving reviewer corrections back to the server. Edits stay in the browser for now. |
+
+For judging today, the offline demo is the complete experience. The live path works end to end once the three branches above land.
+
+## Run it
+
+### 1. Frontend demo (offline, no backend)
+
+From the repo root:
+
+```bash
+python -m http.server 8877
+```
+
+Then open:
+
+- http://127.0.0.1:8877/index.html?mock=1 - upload screen. Drop a few files and they run through mock OCR.
+- http://127.0.0.1:8877/editor.html?mock=1 - review editor on the demo page. Press `J`, then `Enter`, then accept the fix.
+
+No build step and no network access. Fonts are bundled in `fonts/`.
+
+### 2. Backend (FastAPI + SQLite)
+
+Python 3.11 to 3.13, CPU only. Works on Windows with no Docker, poppler or torch.
+
+```bash
+cd fastapi/sqlite
+python -m venv .venv
+.venv\Scripts\activate          # Windows
+# source .venv/bin/activate     # macOS / Linux
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
+
+- http://127.0.0.1:8000/health → `{"ok": true, "ocr_engine": "..."}`
+- http://127.0.0.1:8000/docs → Swagger UI
+
+Real OCR is optional and a large download:
+
+```bash
+pip install "paddlepaddle==3.3.1" "paddleocr==3.7.0"
+```
+
+Without it, or on a CPU without AVX, the API returns marked `[stub]` lines in the same contract shape, and `/health` reports `"ocr_engine": "stub"`. Check `/health` before trusting OCR text.
+
+### 3. Quick test
+
+```bash
+curl -s http://127.0.0.1:8000/health
+curl -s -X POST http://127.0.0.1:8000/jobs -F "file=@scan.png"   # {"job_id": "..."}
+curl -s http://127.0.0.1:8000/jobs/<job_id>                        # status + result JSON
+```
+
+Accepted types: pdf, jpg, jpeg, png, tiff. Anything else returns HTTP 400. Processing is synchronous, so the job is already `done` or `error` when `POST /jobs` returns.
+
+### 4. Live frontend against the backend
+
+Open `editor.html?job=<job_id>`. If the UI and API run on different origins, add `&api=http://127.0.0.1:8000`. Cross-origin calls need CORS on the backend until the same-origin serving branch is merged.
+
+### 5. Tests
+
+```bash
+cd fastapi/sqlite
+python -m pytest tests/ -v      # the real-OCR end-to-end test skips when paddle is unusable
+```
+
+```bash
+bash scripts/smoke.sh           # static checks on the frontend files and demo data
+```
+
+Full backend notes, including threshold tuning on sample scans, are in [`fastapi/sqlite/RUN.md`](fastapi/sqlite/RUN.md).
+
+## Backend layout
+
+The backend lives in `fastapi/sqlite/app/`.
 
 | File | Role |
 | --- | --- |
@@ -27,54 +120,35 @@ The pipe-skeleton-router backend lives in `fastapi/sqlite/app/`. Python 3, CPU o
 | `app/ocr.py` | Lazy PaddleOCR fast pass (PP-OCRv5_mobile_det + ta_PP-OCRv5_mobile_rec); stub result if paddle is absent |
 | `app/schema_out.py` | Builds the frozen output contract JSON (`schema/schema.json`) |
 
-### Run it
+The output contract is in [`schema/schema.json`](schema/schema.json), the endpoint reference in [`schema/endpoints.md`](schema/endpoints.md), and a sample page in [`schema/doc_demo.json`](schema/doc_demo.json).
 
-```bash
-pip install -r fastapi/sqlite/requirements.txt
-cd fastapi/sqlite
-uvicorn app.main:app --reload
-```
+## Frontend layout
 
-PaddleOCR is optional — without it the API returns stub OCR lines with the same contract, so the frontend can be built against it today.
-
-### Quick test
-
-```bash
-curl -s http://127.0.0.1:8000/health                     # {"ok": true}
-curl -s -X POST http://127.0.0.1:8000/jobs -F "file=@scan.png"   # {"job_id": "..."}
-curl -s http://127.0.0.1:8000/jobs/<job_id>              # status + result JSON
-```
-
-Full details in [`fastapi/sqlite/RUN.md`](fastapi/sqlite/RUN.md).
-
-### Backend tests
-
-With the backend virtual environment active, from `fastapi/sqlite` run:
-
-```bash
-python -m pytest tests/ -v
-```
+| File | Role |
+| --- | --- |
+| `index.html`, `upload.js`, `upload.css` | Upload screen and stepper |
+| `editor.html`, `editor.js`, `editor.css` | Review editor |
+| `api.js` | Data access: live backend or `?mock=1` demo |
+| `translit.js` | Offline Tanglish → Tamil transliteration for fixes |
+| `tokens.css`, `ui.css` | Design tokens and shared components |
 
 ## Design system
 
 | Folder | Contents |
 | --- | --- |
-| `design system/foundations/` | Color systems, typography specimen, design brief, and shared styles. |
-| `design system/components/` | Component sheet, library, and standalone button/toggle examples. |
-| `design system/layout/` | Three-page layout plan. |
+| `design system/foundations/` | Color systems, typography specimen, design brief, and shared styles |
+| `design system/components/` | Component sheet, library, and standalone button/toggle examples |
+| `design system/layout/` | Three-page layout plan and annotated editor mock |
 
 Open the HTML design files in a browser. No build step is needed.
 
-## Product direction
+## Where it goes next
 
-- Upload multi-page PDF and image scans, including TIFF.
-- Run a fast OCR pass on every page and send doubtful pages through repair and heavier OCR.
-- Review the scan beside Unicode Tamil text; make corrections explicit and traceable.
-- Export searchable PDF, TXT, and a processing receipt.
+- Send HEAVY pages through image repair and a heavier OCR pass.
+- Save reviewer corrections to the server so fixes persist and can improve later passes.
+- Wire the editor to the TXT export and processing receipt that ship with the export branch.
 - Keep runtime assets local. Any hosted OCR route remains a project decision.
 
-## Project references
+## License
 
-- `design system/foundations/design-system-spec.txt` — design system brief.
-- `schema/schema.json` and `schema/doc_demo.json` — OCR output contract and demo page.
-
+MIT. See [`LICENSE`](LICENSE).
