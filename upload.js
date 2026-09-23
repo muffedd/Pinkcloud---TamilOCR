@@ -41,6 +41,11 @@
   const EXPORT_PDF = (id) => `${API_BASE}/jobs/${encodeURIComponent(id)}/export.pdf`;
   /* Upload -> editor handoff. The editor loads GET /jobs/{job_id}
      (result.pages) itself; we only pass the ids. */
+  /* "Try a sample page": drop a real scan at this path and the link
+     appears on the live page (it stays hidden until the file exists).
+     In mock mode the link always shows and runs the mock engine. */
+  const SAMPLE_URL = './samples/sample-page.png';
+  const SAMPLE_NAME = 'sample-kural-page.png';
   function EDITOR_URL(jobIds) {
     const q = new URLSearchParams();
     if (MOCK) q.set('mock', '1');
@@ -318,6 +323,26 @@
     const dz = h('div', 'up-dz');
     dz.id = 'up-dz';
     dz.appendChild(svgEl('<svg class="up-dz-border" preserveAspectRatio="none" aria-hidden="true"><rect x="0.7" y="0.7" rx="8.5" ry="8.5" width="calc(100% - 1.4px)" height="calc(100% - 1.4px)"/></svg>'));
+    /* palm-leaf (olai) strips on both flanks: decoration only */
+    const leaves = h('div', 'up-leaves');
+    leaves.setAttribute('aria-hidden', 'true');
+    const KURAL = [
+      ['அகர முதல எழுத்தெல்லாம் ஆதி', 'பகவன் முதற்றே உலகு'],
+      ['கற்றதனால் ஆய பயனென்கொல்', 'வாலறிவன் நற்றாள் தொழாஅர்'],
+      ['மலர்மிசை ஏகினான் மாணடி', 'சேர்ந்தார் நிலமிசை நீடுவாழ்வார்']
+    ];
+    // [side, top px, rotate deg]
+    [['l', 70, -6], ['l', 142, -3], ['l', 214, -7], ['r', 58, 5], ['r', 132, 2], ['r', 206, 6]].forEach((pos, k) => {
+      const leaf = h('div', 'up-leaf up-leaf--' + pos[0] + (k % 3 === 1 ? ' is-near' : ''));
+      leaf.style.top = pos[1] + 'px';
+      leaf.style.setProperty('--r', pos[2] + 'deg');
+      leaf.appendChild(h('span', 'up-leaf-t', KURAL[k % 3][0]));
+      leaf.appendChild(h('span', 'up-leaf-b', KURAL[k % 3][1]));
+      leaf.appendChild(h('i', 'up-leaf-hole'));
+      leaves.appendChild(leaf);
+    });
+    dz.appendChild(leaves);
+
     const idle = h('div', 'up-idle');
     const tile = h('div', 'up-tile');
     tile.appendChild(svgEl('<svg width="32" height="37" viewBox="0 0 32 37" aria-hidden="true"><defs><linearGradient id="up-tg" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#FB8D69"/><stop offset="1" stop-color="#F94612"/></linearGradient></defs><path d="M5 0h14l13 13v19a5 5 0 0 1-5 5H5a5 5 0 0 1-5-5V5a5 5 0 0 1 5-5z" fill="url(#up-tg)"/><path d="M19 0l13 13H23a4 4 0 0 1-4-4z" fill="#D93A0B"/></svg>'));
@@ -328,8 +353,14 @@
     browse.type = 'button';
     browse.setAttribute('aria-label', 'Browse for scans');
     idle.appendChild(browse);
+    const sample = h('button', 'up-sample', 'Try a sample page');
+    sample.type = 'button';
+    sample.id = 'up-sample';
+    sample.hidden = !MOCK; // live: shown once SAMPLE_URL is found
+    idle.appendChild(sample);
     const note = h('div', 'up-note');
-    note.appendChild(document.createTextNode('Supported files: PDF (multi-page), JPG, PNG and TIFF'));
+    const pasteKey = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘V' : 'Ctrl+V';
+    note.appendChild(document.createTextNode('Supported files: PDF (multi-page), JPG, PNG and TIFF · or paste an image (' + pasteKey + ')'));
     note.appendChild(h('br'));
     note.appendChild(h('span', 'ta', 'தமிழ் ஆவணங்களுக்கான OCR'));
     idle.appendChild(note);
@@ -410,7 +441,7 @@
     card.appendChild(foot);
 
     page.appendChild(card);
-    return { dz, browse, input, list, empty, notices, offline, rmall, count, prev, next, demo };
+    return { dz, browse, sample, input, list, empty, notices, offline, rmall, count, prev, next, demo };
   }
 
   const el = buildSkeleton();
@@ -718,6 +749,49 @@
   });
   el.browse.addEventListener('click', (e) => { e.stopPropagation(); el.input.click(); });
   el.input.addEventListener('change', () => { addFiles(el.input.files); el.input.value = ''; });
+
+  /* paste an image or PDF anywhere on the page (not while typing in a field) */
+  document.addEventListener('paste', (e) => {
+    const t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    const cd = e.clipboardData;
+    if (!cd) return;
+    let files = Array.from(cd.files || []);
+    if (!files.length) {
+      files = Array.from(cd.items || []).filter((it) => it.kind === 'file').map((it) => it.getAsFile()).filter(Boolean);
+    }
+    if (!files.length) return;
+    e.preventDefault();
+    const stamp = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+    addFiles(files.map((f, i) => {
+      // clipboard images arrive as "image.png": give each a unique, readable name
+      if (!f.name || /^image\.(png|jpe?g)$/i.test(f.name)) {
+        const ext = f.type === 'image/jpeg' ? '.jpg' : '.png';
+        return new File([f], 'pasted-' + stamp + (files.length > 1 ? '-' + (i + 1) : '') + ext, { type: f.type || 'image/png' });
+      }
+      return f;
+    }));
+  });
+
+  /* "Try a sample page" */
+  el.sample.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (MOCK) {
+      addFiles([new File([new Uint8Array(186000)], SAMPLE_NAME, { type: 'image/png' })]);
+      return;
+    }
+    el.sample.disabled = true;
+    fetch(SAMPLE_URL, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
+      .then((b) => addFiles([new File([b], SAMPLE_NAME, { type: b.type || 'image/png' })]))
+      .catch(() => addNotice('Sample page is not available on this server'))
+      .finally(() => { el.sample.disabled = false; });
+  });
+  if (!MOCK) {
+    fetch(SAMPLE_URL, { method: 'HEAD', cache: 'no-store' })
+      .then((r) => { el.sample.hidden = !r.ok; })
+      .catch(() => { el.sample.hidden = true; });
+  }
 
   refreshFooter();
   if (MOCK) setHealth({ state: 'mock' }); else probeHealth();
