@@ -179,6 +179,87 @@ def get_job(job_id: str):
         "result": parse_job_result(job["result_json"]),
     }
 
+# --- corrections: reviewer fixes persisted per job -----------------------
+# Contract: schema/corrections spec (editor at main 62843be builds on it).
+# PUT replaces the job's whole correction map; GET returns it. Stored as one
+# JSON document at uploads/<job_id>/corrections.json - the name never
+# matches the master.* glob, so master hashing/verification is unaffected.
+#
+# 404 ONLY for an unknown job: the editor reads any 404 from this route as
+# "endpoint not deployed" and silently falls back to localStorage.
+import os
+import re as _re
+from datetime import datetime, timezone
+
+from pydantic import BaseModel, Field
+
+CORRECTIONS_FILE = "corrections.json"
+MAX_CORRECTIONS = 10_000  # soft cap per job; bounds the JSON blob
+_CORR_JOB_ID_RE = _re.compile(r"[0-9a-f]{32}")  # same rule as /jobs/{id}/image
+
+
+class Correction(BaseModel):
+    page: int      # 1-based, matches result.pages[].page
+    line: str      # line id, e.g. "L3"
+    word: int      # 1-based word index in the line body (split on whitespace)
+    before: str    # OCR word as recognized
+    after: str     # reviewer-accepted replacement
+
+
+class CorrectionsDoc(BaseModel):
+    corrections: list[Correction] = Field(max_length=MAX_CORRECTIONS)
+
+
+def _require_job(job_id: str) -> None:
+    if not _CORR_JOB_ID_RE.fullmatch(job_id) or db.get_job(job_id) is None:
+        raise HTTPException(status_code=404, detail="job not found")
+
+
+def _corrections_path(job_id: str) -> Path:
+    # Read storage.UPLOAD_ROOT at call time (tests redirect it).
+    return storage.UPLOAD_ROOT / job_id / CORRECTIONS_FILE
+
+
+@app.get("/jobs/{job_id}/corrections")
+def get_corrections(job_id: str):
+    """Return the job's saved corrections ([] / null when none yet)."""
+    _require_job(job_id)
+    path = _corrections_path(job_id)
+    if not path.is_file():
+        return {"job_id": job_id, "corrections": [], "updated_at": None}
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        # Never 404 here - that would hide a real failure behind the
+        # editor's "not deployed" fallback.
+        logging.getLogger("pinkcloud.corrections").exception(
+            "unreadable corrections for job %s", job_id)
+        raise HTTPException(status_code=500, detail="corrections unreadable")
+    return {
+        "job_id": job_id,
+        "corrections": doc.get("corrections", []),
+        "updated_at": doc.get("updated_at"),
+    }
+
+
+@app.put("/jobs/{job_id}/corrections")
+def put_corrections(job_id: str, body: CorrectionsDoc):
+    """Replace the job's full correction map. An empty array clears it."""
+    _require_job(job_id)
+    path = _corrections_path(job_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    updated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    doc = {
+        "corrections": [c.model_dump() for c in body.corrections],
+        "updated_at": updated_at,
+    }
+    # Write-then-rename so a crash never leaves a half-written file.
+    tmp = path.with_name(CORRECTIONS_FILE + ".tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, path)
+    return {"job_id": job_id, **doc}
+
+
 # --- demo box: serve the UI from the API origin (no CORS needed) ---------
 # Whitelist only: never expose pinkcloud.db or uploads/ over HTTP.
 #
