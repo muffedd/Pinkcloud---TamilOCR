@@ -21,7 +21,7 @@ Server environment:
 | `GEMINI_API_KEY` | Turns AI fix on. Read at call time, sent only as the `x-goog-api-key` header, never logged or returned. |
 | `SUGGEST_PROVIDER` | Unset or `gemini` = Gemini. `off` = disabled even with a key. `sarvam` = Sarvam chat (`sarvam-105b`, uses `SARVAM_API_KEY`), explicit opt-in only. |
 | `SUGGEST_MODEL` | Model id override. |
-| `SUGGEST_TIMEOUT_S` | Per-request budget, default 8. |
+| `SUGGEST_TIMEOUT_S` | Per-request budget in seconds, default 12. |
 
 Request:
 ```json
@@ -40,6 +40,10 @@ At most 3 candidates, best first. The server trims them, drops blanks,
 duplicates and anything equal to `before`, and clamps `score` to 0..1. The
 score is the model's own guess, not a recognition probability, so the editor
 does not show it. An empty list means "AI found no better reading".
+A `before` with no Tamil letter (U+0B80-U+0BFF: English/Latin, digits,
+symbols) is never sent to the model: the server answers 200
+`{"candidates": []}` straight away (same rule as the editor's non-Tamil skip).
+When AI fix is off, the 503 below still wins.
 Accepting a candidate saves a normal human correction via
 `PUT /jobs/{id}/corrections` (which also teaches the dictionary below).
 

@@ -18,7 +18,8 @@ and that alone must never start paid chat calls.
 Other environment:
   SUGGEST_MODEL      override the model id. Defaults: gemini-3.1-flash-lite
                      (Gemini API, stable id), sarvam-105b (Sarvam chat).
-  SUGGEST_TIMEOUT_S  per-request budget, default 8.
+  SUGGEST_TIMEOUT_S  per-request budget, default 12 (live Gemini calls run
+                     2.5-4.3s with a slow tail; 8s cut off real answers).
   GEMINI_BASE_URL    default https://generativelanguage.googleapis.com
   SARVAM_BASE_URL    default https://api.sarvam.ai (shared with OCR)
 
@@ -79,16 +80,30 @@ def _model(name: str) -> str:
     return (os.environ.get("SUGGEST_MODEL") or "").strip() or DEFAULT_MODELS[name]
 
 
+DEFAULT_TIMEOUT_S = 12.0
+
+
 def _timeout() -> float:
     try:
-        return max(1.0, float(os.environ.get("SUGGEST_TIMEOUT_S") or 8.0))
+        return max(1.0, float(os.environ.get("SUGGEST_TIMEOUT_S") or DEFAULT_TIMEOUT_S))
     except ValueError:
-        return 8.0
+        return DEFAULT_TIMEOUT_S
 
 
 def _client():
     import httpx
     return httpx.Client(timeout=_timeout(), transport=_TRANSPORT)
+
+
+# --- non-Tamil guard ---------------------------------------------------------
+# AI fix reads Tamil only. Given a Latin/English word (or digits, symbols)
+# the model tends to transliterate it or invent a Tamil word, so such a
+# word never reaches the provider: suggest() answers an empty list ("AI
+# found no better reading") with no network call. Same rule as the
+# editor's aiSkipsWord(): no character in the Tamil block U+0B80-U+0BFF.
+
+def has_tamil(text: str) -> bool:
+    return any("\u0b80" <= ch <= "\u0bff" for ch in text or "")
 
 
 # --- prompt -----------------------------------------------------------------
@@ -235,6 +250,8 @@ def suggest(before: str, line_text: str, word: int,
     name = provider()
     if name is None:
         raise SuggestUnavailable("AI suggestions are off")
+    if not has_tamil(before):
+        return []
     prompt = build_prompt(before, line_text, word,
                           neighbors_before or [], neighbors_after or [])
     try:

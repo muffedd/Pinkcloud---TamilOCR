@@ -266,3 +266,45 @@ def test_unfinished_job_is_409(client, monkeypatch):
 ])
 def test_validation(client, bad):
     assert client.post(f"/jobs/{_done_job()}/suggest", json=bad).status_code == 422
+
+
+# --- timeout default + non-Tamil guard ----------------------------------------
+
+def test_timeout_default_is_12s_and_env_override(monkeypatch):
+    monkeypatch.delenv("SUGGEST_TIMEOUT_S", raising=False)
+    assert suggest._timeout() == 12.0
+    monkeypatch.setenv("SUGGEST_TIMEOUT_S", "20")
+    assert suggest._timeout() == 20.0
+    monkeypatch.setenv("SUGGEST_TIMEOUT_S", "junk")
+    assert suggest._timeout() == 12.0
+    monkeypatch.setenv("SUGGEST_TIMEOUT_S", "0")
+    assert suggest._timeout() == 1.0
+
+
+def test_client_uses_timeout(monkeypatch):
+    monkeypatch.delenv("SUGGEST_TIMEOUT_S", raising=False)
+    with suggest._client() as c:
+        assert c.timeout.read == 12.0
+
+
+@pytest.mark.parametrize("before", ["Aiyar", "the", "1921", "p.12", "—", "Mudaliar,"])
+def test_non_tamil_word_skips_model(client, monkeypatch, before):
+    rec = Recorder(_gemini_reply({"candidates": [{"text": "அய்யர்", "score": 0.9}]}))
+    _use(monkeypatch, "gemini", rec)
+    r = client.post(f"/jobs/{_done_job()}/suggest", json={**REQ, "before": before})
+    assert r.status_code == 200
+    assert r.json() == {"candidates": []}
+    assert rec.requests == []
+
+
+def test_mixed_tamil_word_still_goes_to_model(client, monkeypatch):
+    rec = Recorder(_gemini_reply({"candidates": [{"text": "வாலறிவன்", "score": 0.9}]}))
+    _use(monkeypatch, "gemini", rec)
+    r = client.post(f"/jobs/{_done_job()}/suggest", json={**REQ, "before": "வாழறிவன்1"})
+    assert r.status_code == 200 and len(rec.requests) == 1
+    assert r.json()["candidates"][0]["text"] == "வாலறிவன்"
+
+
+def test_non_tamil_word_when_off_is_still_503(client):
+    r = client.post(f"/jobs/{_done_job()}/suggest", json={**REQ, "before": "Aiyar"})
+    assert r.status_code == 503
