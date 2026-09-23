@@ -98,6 +98,11 @@ def on_startup() -> None:
     """
     logging.basicConfig(level=logging.INFO)
     db.init_db()
+    try:
+        _flywheel.init_db()
+    except Exception:  # flywheel is additive; never block startup on it
+        logging.getLogger("pinkcloud.flywheel").exception(
+            "flywheel init failed; dictionary endpoints may not work")
     warn_legacy_env()
 
 
@@ -500,6 +505,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field, StringConstraints
 
+from . import flywheel as _flywheel
+
 CORRECTIONS_FILE = "corrections.json"
 MAX_CORRECTIONS = 10_000  # soft cap per job; bounds the JSON blob
 _CORR_JOB_ID_RE = _re.compile(r"[0-9a-f]{32}")  # same rule as /jobs/{id}/image
@@ -584,6 +591,19 @@ def put_corrections(job_id: str, body: CorrectionsDoc):
     # write gets its own temp file (concurrent PUTs used to share one name
     # and collide), and a per-job lock keeps last-writer-wins ordering sane.
     with _corrections_lock(job_id):
+        # Previous map, for the flywheel diff below. An unreadable file
+        # diffs as empty (the save itself reports its own errors).
+        old_corrections: list[dict] = []
+        if path.is_file():
+            try:
+                prev = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(prev, dict) and isinstance(
+                        prev.get("corrections"), list):
+                    old_corrections = prev["corrections"]
+            except (OSError, ValueError):
+                logging.getLogger("pinkcloud.flywheel").warning(
+                    "flywheel diff skipped: prior corrections for job %s "
+                    "unreadable", job_id)
         with tempfile.NamedTemporaryFile(
                 "w", encoding="utf-8", dir=path.parent,
                 prefix=CORRECTIONS_FILE + ".", suffix=".tmp",
@@ -607,7 +627,44 @@ def put_corrections(job_id: str, body: CorrectionsDoc):
         # (corrected) line text, so refresh this job's rows with the new
         # map. A no-op for unfinished jobs and FTS-less builds.
         db.reindex_job(job_id)
+    # Flywheel fold-in: only pairs this PUT newly accepted (diff vs the
+    # previous map) teach the cross-job dictionary. Learning must never
+    # break the save, so failures are logged, not raised.
+    try:
+        _flywheel.learn_from_put(job_id, old_corrections, doc["corrections"])
+    except Exception:
+        logging.getLogger("pinkcloud.flywheel").exception(
+            "flywheel learning failed for job %s", job_id)
     return {"job_id": job_id, **doc}
+
+
+# --- dictionary: the cross-job corrections flywheel -----------------------
+# Learned from corrections PUTs (see above). GET serves only pairs that
+# were accepted at least MIN_ACCEPTS times and more often than skipped;
+# POST /skip lets a reviewer kill a bad suggestion. Storage is Turso when
+# LIBSQL_URL/LIBSQL_AUTH_TOKEN are set, else a local flywheel.db file, so
+# everything below works with zero config.
+
+
+@app.get("/dictionary")
+def get_dictionary(limit: int = Query(200, ge=1, le=1000)):
+    """Reviewer-proven fixes worth suggesting, strongest first."""
+    return {"dictionary": _flywheel.dictionary(limit=limit),
+            "min_accepts": _flywheel.MIN_ACCEPTS}
+
+
+class DictionarySkip(BaseModel):
+    before: Annotated[str, StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=256)]
+    after: Annotated[str, StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=256)]
+
+
+@app.post("/dictionary/skip")
+def post_dictionary_skip(body: DictionarySkip):
+    """Dismiss a suggested pair; it disappears once skips catch accepts."""
+    _flywheel.skip(body.before, body.after)
+    return {"before": body.before, "after": body.after, "skipped": True}
 
 
 # --------------------------------------------------------------------------
