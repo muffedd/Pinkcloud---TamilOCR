@@ -23,7 +23,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 
 from . import db, storage
 from .ocr import ocr_page
-from .pdfutil import load_pages, to_gray
+from .pdfutil import load_pages, to_gray, validate_upload
 from .router import choose_profile, compute_scores
 from .schema_out import build_job_result, build_page_result, parse_job_result
 
@@ -34,6 +34,18 @@ ALLOWED_TYPES = {
     "image/png",
     "image/tiff",
 }
+
+# Which content type each accepted extension must arrive with.
+EXT_TYPES = {
+    ".pdf": "application/pdf",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".tif": "image/tiff",
+    ".tiff": "image/tiff",
+}
+
+UNSUPPORTED = "unsupported file type: use pdf, jpg, jpeg, png or tiff"
 
 app = FastAPI(title="Pink Cloud", version="0.1.0")
 
@@ -113,15 +125,26 @@ def _run_job(job_id: str, filename: str, data: bytes) -> None:
 async def create_job(file: UploadFile = File(...)):
     """Accept an upload, process it, return the new job id."""
     filename = file.filename or "upload"
-    ctype = (file.content_type or "").lower()
-    ext_ok = Path(filename).suffix.lower() in storage.ALLOWED_EXTS
-    if ctype not in ALLOWED_TYPES and not ext_ok:
+    # Both client-supplied values must be valid, and must agree with each
+    # other: a supported content type AND a supported extension.
+    ctype = (file.content_type or "").split(";")[0].strip().lower()
+    ext = Path(filename).suffix.lower()
+    if ctype not in ALLOWED_TYPES or ext not in storage.ALLOWED_EXTS:
+        raise HTTPException(status_code=400, detail=UNSUPPORTED)
+    if EXT_TYPES.get(ext) != ctype:
         raise HTTPException(
             status_code=400,
-            detail="unsupported file type: use pdf, jpg, jpeg, png or tiff",
+            detail=f"content type {ctype} does not match extension {ext}",
         )
 
     data = await file.read()
+
+    # Check the bytes themselves (magic bytes + decodable) before creating
+    # a job, so corrupt or disguised files get a 400 instead of 200 + error.
+    try:
+        validate_upload(data, ext)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"invalid file: {exc}") from None
 
     job_id = uuid.uuid4().hex  # also the folder name under uploads/
     db.create_job(job_id, filename, storage.sha256_bytes(data))
