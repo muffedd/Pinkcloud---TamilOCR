@@ -6,14 +6,13 @@ Pink Cloud is an early-stage tool for reading scanned Tamil and English books. I
 
 Design foundations are in progress. The application code is not written yet.
 
-## Design files
+## Design system
 
-| File | What it contains |
+| Folder | Contents |
 | --- | --- |
-| `pink-cloud-color-system-rename-to-.html` | Color tokens, scan states, provenance, and editor examples. |
-| `comps.html` | UI component examples and button states. |
-| `typography-suisse.html` | Suisse type and spacing specimen. |
-| `styles.css` | Shared design tokens and UI styles. |
+| `design system/foundations/` | Color systems, typography specimen, design brief, and shared styles. |
+| `design system/components/` | Component sheet, library, and standalone button/toggle examples. |
+| `design system/layout/` | Three-page layout plan. |
 
 Open the HTML design files in a browser. No build step is needed.
 
@@ -27,8 +26,6 @@ Open the HTML design files in a browser. No build step is needed.
 
 ## Project references
 
-- `design-system-spec.txt` — design system brief.
-- `pink-cloud-layout-plan-rename-to-.html` — three-page layout plan.
+- `design system/foundations/design-system-spec.txt` — design system brief.
 - `schema/schema.json` and `schema/doc_demo.json` — OCR output contract and demo page.
-
 
