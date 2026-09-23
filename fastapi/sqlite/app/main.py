@@ -190,6 +190,18 @@ _JOB_ID_RE = re.compile(r"[0-9a-f]{32}")
 _PAGE_NO_RE = re.compile(r"[0-9]+")
 
 
+# One page render at a time: pypdfium2 is not thread-safe (concurrent renders
+# crash the whole server) and each full render of a PDF costs ~150 MB, so a
+# burst of page requests could also OOM-kill the process. Shared with
+# pdfutil/export when they define it.
+from . import pdfutil as _pdfutil  # noqa: E402
+import threading as _threading  # noqa: E402
+
+_PAGE_RENDER_LOCK = getattr(_pdfutil, "PDFIUM_LOCK", None)
+if _PAGE_RENDER_LOCK is None:
+    _PAGE_RENDER_LOCK = _pdfutil.PDFIUM_LOCK = _threading.RLock()
+
+
 def _rendered_page_png(job_id: str, page_number: int) -> Path | None:
     """Render one page of the job's master to PNG, cached on disk.
 
@@ -197,32 +209,40 @@ def _rendered_page_png(job_id: str, page_number: int) -> Path | None:
     pypdfium2 at ~200 DPI for PDFs, cv2 for images, ALL pages of TIFFs,
     long side capped at 1600 px) so the PNG lives in the same coordinate
     space the editor draws bboxes in. Masters are immutable per job, so a
-    cached page never goes stale. Returns None when the page cannot be
-    rendered.
+    cached page never goes stale. The first miss renders the master once
+    and caches EVERY page, so later page requests are plain file reads.
+    Returns None when the page cannot be rendered.
     """
     cache_path = storage.UPLOAD_ROOT / job_id / f"page-{page_number}.png"
     if cache_path.is_file():
         return cache_path
 
-    master = storage.master_path(job_id)
-    if master is None:
-        return None
-    try:
-        pages = load_pages(master)
-    except Exception:  # master unreadable -> treat as missing page
-        return None
-    if not 1 <= page_number <= len(pages):
-        return None
+    with _PAGE_RENDER_LOCK:
+        if cache_path.is_file():  # another request rendered it meanwhile
+            return cache_path
+        master = storage.master_path(job_id)
+        if master is None:
+            return None
+        try:
+            pages = load_pages(master)
+        except Exception:  # master unreadable -> treat as missing page
+            return None
+        if not 1 <= page_number <= len(pages):
+            return None
 
-    # Write-then-rename so a crash mid-write never leaves a corrupt cache.
-    # (cv2.imwrite picks its encoder from the extension, so the temp name
-    # must still end in .png.)
-    tmp_path = cache_path.with_name(cache_path.name + ".tmp.png")
-    if not cv2.imwrite(str(tmp_path), pages[page_number - 1]):
-        tmp_path.unlink(missing_ok=True)
-        return None
-    tmp_path.replace(cache_path)
-    return cache_path
+        for no, img in enumerate(pages, start=1):
+            target = storage.UPLOAD_ROOT / job_id / f"page-{no}.png"
+            if target.is_file():
+                continue
+            # Write-then-rename so a crash mid-write never leaves a corrupt
+            # cache. (cv2.imwrite picks its encoder from the extension, so
+            # the temp name must still end in .png.)
+            tmp_path = target.with_name(f"{target.name}.{uuid.uuid4().hex}.tmp.png")
+            if cv2.imwrite(str(tmp_path), img):
+                tmp_path.replace(target)
+            else:
+                tmp_path.unlink(missing_ok=True)
+    return cache_path if cache_path.is_file() else None
 
 
 @app.get("/jobs/{job_id}/pages/{n}/image")
