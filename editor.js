@@ -47,8 +47,10 @@ var S = {
 };
 
 /* Bands on the text-quality proxy scale. The Sarvam engine gives no per-line
-   recognition confidence (line.confidence is a layout-block score), so the
-   editor scores each live line itself with textScore() below, a port of
+   recognition confidence; the backend now fills line.confidence from
+   app/textcheck.py (Sarvam's block score moved to line.layout_confidence).
+   The editor still scores each live line itself with textScore() below (so
+   the score follows the reviewer's edits), a port of
    app/textcheck.py score_line(text): clean Tamil 0.99; flaws (orphan vowel
    signs, odd characters, repeats) 0.90 sliding to 0.62; garbage <= 0.54; low
    Tamil share slides toward 0; digits-only 0.3. Values come from tokens.css
@@ -113,9 +115,10 @@ function reviewBinOf(conf, doc) {
 }
 
 /* ---------------- text check (port of fastapi/sqlite/app/textcheck.py) ----------------
-   Live pages: Sarvam's line.confidence is a LAYOUT-BLOCK score (one value per
-   block, unrelated to how the text reads), so the editor does not bin or show
-   it. Each line is scored from its OCR text instead - the agreed text-quality
+   Live pages: the backend's line.confidence is the same text check on the
+   stored OCR text (older jobs are re-scored on read; Sarvam's layout-block
+   score is line.layout_confidence and is never binned or shown). The editor
+   re-scores each line from its current text - the agreed text-quality
    proxy scale: ~0.99 clean Tamil, ~0.90 one flaw (orphan vowel sign, odd
    char, repeated sentence), <= 0.6 low Tamil share / garbage, 0.3 digits or
    punctuation only, 0 empty. Keep in sync with textcheck.score_line; the

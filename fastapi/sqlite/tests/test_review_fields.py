@@ -35,16 +35,19 @@ def test_per_line_needs_review_follows_the_receipt_rule():
                          ("[stub] OCR unavailable", 0.0)),
         processing_ms=1.0)
     assert page["lines"][0]["needs_review"] is False   # clean, above floor
-    assert page["lines"][1]["needs_review"] is True    # below the 0.5 floor
+    assert page["lines"][1]["needs_review"] is True    # below the 0.80 line floor
     assert page["lines"][2]["needs_review"] is True    # stub output
 
 
-def test_heavy_page_flags_every_line():
+def test_heavy_page_flags_the_page_not_every_line():
+    """HEAVY keeps the page-level flag; a clean line is not forced."""
     page = build_page_result(
         page_number=1, profile="HEAVY", quality=QUALITY,
-        ocr_lines=_lines(("நல்ல வரி", 0.99)), processing_ms=1.0)
+        ocr_lines=_lines(("நல்ல வரி", 0.99), ("மங்கலான வரி", 0.6)),
+        processing_ms=1.0)
     assert page["needs_review"] is True
-    assert page["lines"][0]["needs_review"] is True
+    assert page["lines"][0]["needs_review"] is False
+    assert page["lines"][1]["needs_review"] is True
 
 
 def test_suggestions_passthrough_optional():
@@ -71,9 +74,10 @@ def client(tmp_path):
 
 
 def _legacy_result():
-    """A result JSON as jobs stored BEFORE per-line needs_review existed."""
+    """A result JSON as jobs stored BEFORE per-line needs_review existed
+    (and before the text check: confidence is Sarvam's layout score)."""
     page = build_page_result(1, "FAST", QUALITY,
-                             _lines(("நல்ல வரி", 0.9), ("மங்கலான வரி", 0.2)), 1.0)
+                             _lines(("நல்ல வரி", 0.9), ("\u0bcd\u0bcdவரி\ufffd\ufffd\ufffd", 0.95)), 1.0)
     for line in page["lines"]:
         del line["needs_review"]
     page["suggestions"] = [{"line": "L2", "word": 1, "before": "மங்கலான",
@@ -90,7 +94,9 @@ def test_get_job_backfills_line_flags_and_passes_suggestions(client):
     assert r.status_code == 200, r.text
     page = r.json()["result"]["pages"][0]
     flags = {l["id"]: l["needs_review"] for l in page["lines"]}
+    # flags come from the text check on the body, not the stored layout score
     assert flags == {"L1": False, "L2": True}
+    assert page["lines"][1]["layout_confidence"] == 0.95
     for line in page["lines"]:
         assert "confidence" in line
     # stored suggestions[] survives the trip untouched

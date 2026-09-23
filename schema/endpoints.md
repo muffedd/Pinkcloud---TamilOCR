@@ -94,7 +94,8 @@ curl -s http://127.0.0.1:8000/jobs/af3c8e14...
         "profile": "FAST",
         "quality": {"blur": 412.7, "contrast": 0.51, "noise": 6.2, "skew_deg": 0.4},
         "lines": [
-          {"id": "L1", "seq": 1, "body": "தமிழ் உரை", "bbox": [120, 88, 900, 40], "confidence": 0.96}
+          {"id": "L1", "seq": 1, "body": "தமிழ் உரை", "bbox": [120, 88, 900, 40], "confidence": 0.99,
+           "layout_confidence": 0.41, "needs_review": false}
         ],
         "text": "தமிழ் உரை",
         "needs_review": false,
@@ -141,8 +142,9 @@ Each `lines[]` item:
 | `seq` | int | 1-based reading order (top-to-bottom, left-to-right within a line band) |
 | `body` | string | Recognized Tamil line text |
 | `bbox` | `[x, y, w, h]` | Pixels on the 1600px-capped image; draw directly on the frontend |
-| `confidence` | number | 0-1; the UI colors each line by this |
-| `needs_review` | bool | Per-line review flag: confidence < 0.5, `[stub]` body, or a `HEAVY` page (same rule the receipt counts by). Back-filled on read for jobs stored before this field existed |
+| `confidence` | number | 0-1 text-quality score from `app/textcheck.py` `score_line()`: how malformed the line text looks (orphan vowel signs, odd characters, low Tamil share, repeats). Not a recognition probability. `[stub]` lines are 0. The UI colors each line by this (Auto ≥ 0.95, OK 0.80-0.95, Doubt < 0.80) |
+| `layout_confidence` | number | Sarvam's layout-block score (one value per block). Reference only; no flag uses it |
+| `needs_review` | bool | Per-line review flag: confidence < 0.80 (text looks malformed) or `[stub]` body - same rule the receipt counts by. A `HEAVY` page does **not** flag every line; only the page-level flag. Jobs processed before the text check (no `layout_confidence` on their lines) are re-scored on read: stored confidence is shown as `layout_confidence`, `confidence` and `needs_review` come from the text check. Stored data is not rewritten |
 
 Also emitted by the current backend:
 
@@ -242,14 +244,15 @@ carries `Title`, `Keywords` (`master-sha256:<hash> job:<id>`) plus custom keys `
   "corrections": {"total": 0, "by_tier": {}, "human_verdicts": 0},
   "reviewer": "Tinku",
   "time": {"created_at": "...", "exported_at": "...", "processing_ms_total": 4181},
-  "ocr": {"engine_now": "sarvam", "stub_pages": 0, "review_floor": 0.5},
+  "ocr": {"engine_now": "sarvam", "stub_pages": 0, "review_floor": 0.8},
   "per_page": [{"page": 1, "profile": "FAST", "needs_review": false, "lines": 4,
                 "lines_auto": 4, "lines_human_review": 0, "corrections": 0, "processing_ms": 4181}]
 }
 ```
 
 - `pages.human_review` = pages with `needs_review: true`.
-- A line counts as `human_review` if its confidence < 0.5, it is a `[stub]` line, or its page is `HEAVY`.
+- A line counts as `human_review` if its text-quality confidence < 0.80 or it is a `[stub]` line
+  (same rule as the per-line `needs_review`; a `HEAVY` page no longer counts every line).
 - `corrections` counts the page `corrections[]` (by `tier`); `human_verdicts` counts `verdicts[]` with
   `source: "review"`. Both are 0 until the editor saves edits back to the backend.
 - `master.verified_on_disk` re-hashes the stored master at request time.

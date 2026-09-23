@@ -10,6 +10,8 @@ Pipeline per upload:
   5. score + route        -> router.py   (FAST / HEAVY badge per page)
   6. OCR fast pass        -> ocr.py      (Sarvam Document AI, marked stub
      fallback; engine failures are logged and shown in /health)
+  6b. text check          -> textcheck.py (per-line confidence = "text looks
+     malformed" score; Sarvam's layout score kept as layout_confidence)
   7. build contract JSON  -> schema_out.py
   8. store result         -> db.py
 
@@ -33,7 +35,7 @@ from .ocr import engine_status, failed_page_lines, ocr_page, warn_legacy_env
 from .pdfutil import load_pages, probe_decode, to_gray
 from .router import choose_profile, compute_scores
 from .schema_out import (build_job_result, build_page_result, enrich_page,
-                         parse_job_result)
+                         parse_job_result, score_ocr_lines)
 
 # Both a supported content type AND a supported extension are required;
 # a mismatch on EITHER side is rejected with 400 before any job exists.
@@ -133,6 +135,11 @@ def _pipeline(job_id: str, master: Path | list[Path]) -> list[dict]:
             logging.getLogger("pinkcloud.job").exception(
                 "job %s: OCR failed on page %d", job_id, page_number)
             ocr_lines, ocr_ms = failed_page_lines(img, exc), 0.0
+
+        # (6b) Per-line confidence from the text check ("text looks
+        #      malformed" score), not Sarvam's layout-block score, which
+        #      is kept as layout_confidence.
+        ocr_lines = score_ocr_lines(ocr_lines)
 
         # (7) Freeze the contract JSON for this page.
         page_ms = (time.perf_counter() - t_page) * 1000.0
@@ -629,9 +636,12 @@ def _done_job(job_id: str) -> tuple[dict, list[dict]]:
     if job["status"] != "done":
         raise HTTPException(status_code=409, detail=f"job is {job['status']}, not done")
     result = parse_job_result(job["result_json"]) or {}
+    # Same read-time line semantics as GET /jobs/{id} (old jobs get the
+    # text-check confidence/needs_review), so receipt counts match the API.
+    pages = [enrich_page(p) for p in (result.get("pages") or [])]
     # Reviewer corrections saved for this job (uploads/<id>/corrections.json)
     # are applied to every export and counted in the receipt.
-    return job, _export.apply_saved_corrections(job_id, result.get("pages") or [])
+    return job, _export.apply_saved_corrections(job_id, pages)
 
 
 def _receipt(job: dict, pages: list[dict], reviewer: str | None) -> dict:

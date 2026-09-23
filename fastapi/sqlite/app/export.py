@@ -40,7 +40,7 @@ from typing import Any
 
 from . import pdfutil as _pdfutil
 from . import storage
-from .schema_out import CONFIDENCE_REVIEW_FLOOR, STUB_MARK, line_needs_review
+from .schema_out import LINE_REVIEW_FLOOR, STUB_MARK, line_needs_review
 
 PT_PER_PX = 72.0 / 150.0
 FONT_PATH = Path(__file__).resolve().parents[3] / "fonts" / "noto-sans-tamil.ttf"
@@ -182,8 +182,9 @@ def count_applicable_corrections(job_id: str, pages: list[dict]) -> int:
 # --------------------------------------------------------------------------
 
 def _line_needs_human(line: dict, page: dict) -> bool:
-    """A line goes to a human if its confidence is under the review floor,
-    it is stub output, or its page was routed HEAVY. The rule itself lives
+    """A line goes to a human if its text-quality confidence is under the
+    line review floor (text looks malformed) or it is stub output. A HEAVY
+    page no longer sends every line. The rule itself lives
     in schema_out.line_needs_review (it is also the per-line needs_review
     served by GET /jobs/{id}), so receipt counts and API flags agree."""
     return line_needs_review(line, page.get("profile"))
@@ -257,7 +258,7 @@ def build_receipt(job: dict, pages: list[dict], reviewer: str | None = None,
             "processing_ms_total": tot["ms"],
         },
         "ocr": {"engine_now": ocr_engine, "stub_pages": stub_pages,
-                "review_floor": CONFIDENCE_REVIEW_FLOOR},
+                "review_floor": LINE_REVIEW_FLOOR},
         "per_page": per_page,
     }
 

@@ -66,7 +66,7 @@
     },
     "needs_review": {
       "type": "boolean",
-      "description": "True if this page was routed to the human review queue due to low confidence."
+      "description": "True if this page was routed to the human review queue: profile HEAVY, no lines, or best line confidence below 0.5."
     },
     "processing_ms": {
       "type": "number",
@@ -200,7 +200,11 @@
         },
         "confidence": {
           "$ref": "#/$defs/confidence",
-          "description": "0-1 confidence; the UI highlights each line colored by this value."
+          "description": "0-1 text-quality score of the line text (textcheck.score_line: how malformed the text looks - orphan vowel signs, odd characters, low Tamil share, repeats). Not a recognition probability. The UI colors each line by this value (Auto >= 0.95, OK 0.80-0.95, Doubt < 0.80); [stub] lines are 0."
+        },
+        "layout_confidence": {
+          "$ref": "#/$defs/confidence",
+          "description": "Optional. Sarvam's layout-block score for the block this line came from (one value per block, not per line). Reference only; review flags do not use it."
         },
         "kural": {
           "type": [
@@ -223,7 +227,7 @@
         },
         "needs_review": {
           "type": "boolean",
-          "description": "True if this line goes to the human review queue: confidence below the review floor, stub output, or a HEAVY page."
+          "description": "True if this line goes to the human review queue: its text looks malformed (confidence below 0.80) or it is stub output. A HEAVY page does not flag every line; the page-level needs_review still marks the page."
         }
       }
     },
