@@ -10,8 +10,8 @@ Early. Design foundations are done. Application code is not written yet.
 
 | File | What it holds |
 | --- | --- |
-| `colourscheme.html` | Colour foundations. Tokens, swatches, scan states, principles. |
-| `styles.css` | Tokens and layout styles. |
+| `pink-cloud-color-system-rename-to-.html` | Pink Cloud color system, tokens, scan states, and examples. |
+| `styles.css` | Shared layout styles. |
 | `comps.html` | Component sheet. Button states, icon buttons, modal footer. |
 | | `typography-suisse.html` | Suisse type and spacing specimen. |
 
