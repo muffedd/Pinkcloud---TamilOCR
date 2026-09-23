@@ -1940,7 +1940,7 @@ function loadJob(doc, meta) {
 }
 
 /* Live mode: GET /jobs/{job_id}; poll while status is "pending" (POST /jobs
-   is synchronous today, but the contract allows background processing). */
+   returns at once and OCR runs in the background). */
 function pollJob(depth) {
   window.PC_API.getJob(JOB_ID).then(function (job) {
     if (job.status === "pending") {

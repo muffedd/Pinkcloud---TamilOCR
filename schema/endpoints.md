@@ -12,12 +12,13 @@ Base URL when run locally (see `fastapi/sqlite/RUN.md`): `http://127.0.0.1:8000`
 | GET | `/search?q=` | Full-text search over the FINAL (corrections-applied) line text of done jobs |
 | GET | `/docs` | Auto-generated Swagger UI (FastAPI) |
 
-## Processing is synchronous
+## Processing runs in the background
 
-`POST /jobs` does the whole pipeline (validate → hash + store → route → OCR → contract JSON)
-before it responds. When you get a `job_id` back, the job is already `done` or `error`,
-so one `GET /jobs/{job_id}` is enough. No polling needed today; if this moves to a
-background task later, poll until `status` is not `pending`.
+`POST /jobs` validates the upload, creates the job row and answers with the `job_id`
+right away (`status: "pending"`). The rest of the pipeline (hash + store → route → OCR →
+text check → contract JSON) runs on a background thread, one per job, pages in order.
+Poll `GET /jobs/{job_id}` until `status` is `done` or `error`; while `pending` it also
+carries a progress hint (`pages_done`, `pages_total`, `progress`).
 
 ## GET /health
 
@@ -48,7 +49,7 @@ Multipart upload, one file in the form field `file`.
 
 ```bash
 curl -s -X POST http://127.0.0.1:8000/jobs -F "file=@scan.jpg"
-# → {"job_id": "af3c8e14..."}
+# → {"job_id": "af3c8e14...", "status": "pending"}
 ```
 
 Validation runs in this order, before any job row is created:
@@ -69,7 +70,7 @@ multi-page TIFFs produce one result page per page.
 
 | Status | Body | When |
 |---|---|---|
-| `200` | `{"job_id": "<32-char hex>"}` | Accepted and processed (check `status` - it can still be `error`) |
+| `200` | `{"job_id": "<32-char hex>", "status": "pending"}` | Accepted; OCR runs in the background. Poll `GET /jobs/{job_id}` (it can still end in `error`) |
 | `400` | `{"detail": "unsupported file type: use pdf, jpg, jpeg, png or tiff"}` | Bad content type or extension |
 | `422` | `{"detail": "file could not be decoded (corrupt or empty document)"}` | Corrupt or empty file |
 | `422` | FastAPI validation error (`detail` is a list) | `file` field missing from the form |
@@ -113,7 +114,10 @@ curl -s http://127.0.0.1:8000/jobs/af3c8e14...
 | `sha256` | string | Hex SHA-256 of the uploaded bytes, taken before writing to disk |
 | `status` | string | `pending` \| `done` \| `error` |
 | `created_at` | string | ISO 8601, UTC |
-| `result` | object \| null | `{"pages": [...]}` when `done`; `{"error": "<message>"}` when `error`; `null` while `pending` |
+| `result` | object \| null | `{"pages": [...]}` when `done`; `{"error": "<message>"}` when `error` (one line, API key scrubbed); `null` while `pending` |
+| `pages_done` | int | Only while `pending` on the server process running the job: pages finished so far |
+| `pages_total` | int | Only while `pending`: pages in the job |
+| `progress` | int | Only while `pending`: 0-99, `pages_done / pages_total` in percent |
 
 | Status | Body | When |
 |---|---|---|
