@@ -13,8 +13,7 @@ Early. Design foundations are done. Application code is not written yet.
 | `colourscheme.html` | Colour foundations. Tokens, swatches, scan states, principles. |
 | `styles.css` | Tokens and layout styles. |
 | `comps.html` | Component sheet. Button states, icon buttons, modal footer. |
-| `layout.html` | Minoli Tamil and English OCR upload page layout. |
-| `typography-helvetica.html` | Helvetica type and spacing specimen. |
+| | `typography-suisse.html` | Suisse type and spacing specimen. |
 
 Open the HTML files in a browser. No build step. No server needed.
 
