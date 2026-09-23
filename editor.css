@@ -985,3 +985,43 @@ span.sn-item { cursor: default; }
   .lens-conf .w.is-ai-loading, .lens-prov .w.is-ai-loading { animation: none; background-image: none; background-color: var(--pc-color-primary-soft); }
   .pop-ai[aria-busy="true"] svg { animation: none; }
 }
+
+/* ---------- AI fix all (topbar action + dialog; shares .kb-help / .kb-card) ----------
+   The action is an outline button next to Export; the sparkle uses the LLM
+   provenance hue, same as the popup's AI fix button. */
+.ai-all-btn { flex: none; gap: var(--pc-space-2); }
+.ai-all-btn[hidden] { display: none; }
+.ai-all-btn svg { width: 16px; height: 16px; color: var(--pc-color-prov-llm); }
+.aia-card { width: 400px; }
+.aia-view[hidden] { display: none; }
+.aia-modes { display: flex; flex-direction: column; gap: var(--pc-space-2); margin-top: var(--pc-space-3); }
+.aia-mode { display: flex; align-items: flex-start; gap: var(--pc-space-2); padding: var(--pc-space-2) var(--pc-space-3);
+  border-radius: var(--pc-radius-input); box-shadow: inset 0 0 0 1px var(--pc-color-border-subtle); cursor: pointer;
+  transition: box-shadow var(--pc-motion-base) var(--pc-ease-out), background var(--pc-motion-base) var(--pc-ease-out); }
+.aia-mode:hover { background: var(--pc-color-bg-subtle); }
+.aia-mode:has(input:checked) { background: var(--pc-color-primary-soft); box-shadow: inset 0 0 0 1px var(--pc-color-primary-soft-border); }
+.aia-mode input, .aia-all input, .aia-row input { margin: 3px 0 0; flex: none; accent-color: var(--pc-color-primary); }
+.aia-mode-body { display: flex; flex-direction: column; gap: 2px; }
+.aia-mode-title { font-size: var(--pc-fs-toast); font-weight: 600; color: var(--pc-color-text-primary); }
+.aia-mode-desc { font-size: var(--pc-fs-small); line-height: 1.45; color: var(--pc-color-text-secondary); }
+.aia-mode-desc .kbd { min-width: 0; }
+.aia-progress { margin: var(--pc-space-2) 0 var(--pc-space-2); }
+.aia-found { margin: 0; font-size: var(--pc-fs-small); color: var(--pc-color-text-secondary); font-variant-numeric: tabular-nums; }
+.aia-all { display: flex; align-items: center; gap: var(--pc-space-2); padding: var(--pc-space-1) 0 var(--pc-space-2);
+  border-bottom: 1px solid var(--pc-color-row-divider); font-size: var(--pc-fs-small); font-weight: 500; color: var(--pc-color-text-secondary); cursor: pointer; }
+.aia-all input { margin: 0; }
+.aia-all[hidden] { display: none; }
+.aia-list { max-height: 320px; overflow-y: auto; }
+.aia-group { margin: var(--pc-space-2) 0 var(--pc-space-1); font-size: var(--pc-fs-eyebrow); font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--pc-color-primary-solid); }
+.aia-row { display: flex; align-items: flex-start; gap: var(--pc-space-2); padding: var(--pc-gap-6) 0;
+  border-bottom: 1px solid var(--pc-color-row-divider); cursor: pointer; }
+.aia-row:last-child { border-bottom: 0; }
+.aia-row-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.aia-pair { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--pc-space-2); font-family: var(--pc-font-tamil); font-size: var(--pc-fs-toast); }
+.aia-before { color: var(--pc-color-text-disabled); text-decoration: line-through; }
+.aia-arrow { color: var(--pc-color-text-disabled); font-family: var(--pc-font-sans); }
+.aia-after { color: var(--pc-color-text-primary); font-weight: 600; }
+.aia-where { font-size: var(--pc-fs-small); color: var(--pc-color-text-secondary); }
+.aia-where .qs-src--ai { margin-left: var(--pc-space-1); }
+.aia-row:has(input:not(:checked)) .aia-after { color: var(--pc-color-text-disabled); font-weight: 500; }

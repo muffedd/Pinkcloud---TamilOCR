@@ -50,6 +50,7 @@
     </div>
     <button type="button" class="hint-btn topbar-help" id="kbHelpBtn" aria-haspopup="dialog" aria-controls="kbHelp" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)"><span class="kbd">?</span></button>
     <span class="offline-badge" id="connBadge" data-state="offline" role="status"><i class="pdot" aria-hidden="true"></i><span id="connText">Offline</span></span>
+    <button type="button" class="btn btn--outline ai-all-btn" id="aiAllBtn" hidden aria-haspopup="dialog" aria-controls="aiAllModal" title="Ask AI about every Doubt word on all pages"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9z"/><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg><span>AI fix all</span></button>
     <button type="button" class="btn btn--solid" id="exportBtn" disabled><span class="lb"><span>Export</span><span aria-hidden="true">Export</span></span></button>
   </header>
 
@@ -156,6 +157,58 @@
       <span class="spacer"></span>
       <button type="button" class="btn btn--outline btn--sm" id="expAlt" hidden><span class="exp-lb">Open export anyway</span></button>
       <button type="button" class="btn btn--solid btn--sm" id="expGo"><span class="exp-lb">Open export</span><span class="kbd" aria-hidden="true">↵</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- AI fix all (editor.js: AI fix all section). Shares .kb-help / .kb-card.
+     Three views: choose a mode, progress while the per-word suggest calls
+     run, and (confirm mode) the list of proposed fixes. Nothing is applied
+     without the reviewer: pre-fill puts AI readings in as suggestion 1,
+     confirm mode applies only the ticked rows. -->
+<div class="kb-help aia-modal" id="aiAllModal" hidden>
+  <div class="kb-card aia-card" role="dialog" aria-modal="true" aria-labelledby="aiaTitle" tabindex="-1">
+    <div class="kb-head">
+      <h2 class="kb-title" id="aiaTitle">AI fix all pages</h2>
+      <span class="kbd">Esc</span>
+    </div>
+
+    <div class="aia-view" id="aiaChoose">
+      <p class="exp-lead" id="aiaLead">AI reads every Doubt word on every page. Doubt = text looks malformed. AI readings can be wrong, so you confirm each one.</p>
+      <ul class="kb-list exp-facts">
+        <li><span class="exp-key">Pages</span><span class="exp-val" id="aiaPages">1</span></li>
+        <li><span class="exp-key">Doubt words to read</span><span class="exp-val" id="aiaWords">0</span></li>
+      </ul>
+      <div class="aia-modes" role="radiogroup" aria-label="How to review">
+        <label class="aia-mode"><input type="radio" name="aiaMode" value="prefill" checked><span class="aia-mode-body"><span class="aia-mode-title">Pre-fill, I accept each</span><span class="aia-mode-desc">AI's reading becomes suggestion 1 on every Doubt word. Press <span class="kbd">1</span> to accept, <span class="kbd">J</span> to skip.</span></span></label>
+        <label class="aia-mode"><input type="radio" name="aiaMode" value="confirm"><span class="aia-mode-body"><span class="aia-mode-title">Fix all, I confirm first</span><span class="aia-mode-desc">AI reads everything, then shows you the full list. Nothing changes until you apply.</span></span></label>
+      </div>
+      <div class="exp-actions">
+        <button type="button" class="btn btn--outline btn--sm" data-aia="cancel"><span>Cancel</span></button>
+        <span class="spacer"></span>
+        <button type="button" class="btn btn--solid btn--sm" id="aiaStart"><span>Start</span><span class="kbd" aria-hidden="true">↵</span></button>
+      </div>
+    </div>
+
+    <div class="aia-view" id="aiaRun" hidden>
+      <p class="exp-lead" id="aiaRunText" role="status" aria-live="polite">Reading…</p>
+      <div class="progress aia-progress" role="progressbar" aria-label="AI fix all progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="aiaBar"><i id="aiaFill"></i></div>
+      <p class="aia-found" id="aiaFound"></p>
+      <div class="exp-actions">
+        <span class="spacer"></span>
+        <button type="button" class="btn btn--outline btn--sm" id="aiaStop"><span>Stop</span></button>
+      </div>
+    </div>
+
+    <div class="aia-view" id="aiaReview" hidden>
+      <p class="exp-lead" id="aiaReviewLead"></p>
+      <label class="aia-all" id="aiaAllRow"><input type="checkbox" id="aiaAll" checked><span>Select all</span></label>
+      <div class="aia-list" id="aiaList"></div>
+      <div class="exp-actions">
+        <button type="button" class="btn btn--outline btn--sm" data-aia="cancel"><span id="aiaDiscardLb">Discard</span></button>
+        <span class="spacer"></span>
+        <button type="button" class="btn btn--solid btn--sm" id="aiaApply"><span id="aiaApplyLb">Apply</span><span class="kbd" aria-hidden="true">↵</span></button>
+      </div>
     </div>
   </div>
 </div>

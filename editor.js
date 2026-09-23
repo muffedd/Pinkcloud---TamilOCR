@@ -1227,6 +1227,7 @@ function setConn(state) {
   badge.setAttribute("data-state", state);
   text.textContent = LABEL[state] || "Offline";
   if (state !== "connected") hideAiButton(); /* AI fix never shows offline */
+  renderAiAllBtn();
   badge.title = state === "offline" && !window.PC_API.USE_MOCK
     ? "No response from " + (window.PC_API.API_BASE || location.origin) + "/health"
     : "";
@@ -1463,6 +1464,7 @@ function requestAiFix(w) {
     refreshWordEl(w);
     setAiOff();
     hideAiButton();
+    renderAiAllBtn();
     toast("AI unavailable", "info");
   });
 }
@@ -1487,7 +1489,7 @@ function pickSuggestion(w, i) {
   acceptFix(w, c.text);
   toast("Fix accepted · " + c.text + " (suggestion " + (i + 1) + ") marked human");
   var open = S.queue.some(function (q) { return !q.fixed; });
-  if (open) stepQueue(1);
+  if (open || aiaLoad()) stepQueue(1); /* pre-fill run: stepQueue hops to the next AI reading / page */
 }
 
 /* Shared accept path: the word becomes a human fix, is saved back, and
@@ -1610,7 +1612,8 @@ function wireSeg(node, onChange) {
 /* ---------------- hotkeys ---------------- */
 
 function stepQueue(dir) {
-  if (!S.queue.length) { toast("Queue done"); return; }
+  if (aiaStepPrefill(dir)) return; /* AI fix all pre-fill run: hop between pre-filled words */
+  if (!S.queue.length) { if (dir > 0 && aiaNudgeNextPage()) return; toast("Queue done"); return; }
   var i = -1;
   for (var k = 0; k < S.queue.length; k++) {
     if (S.queue[k].key === S.activeKey) { i = k; break; }
@@ -1619,6 +1622,7 @@ function stepQueue(dir) {
   if (i === -1) n = dir > 0 ? 0 : S.queue.length - 1;
   while (n >= 0 && n < S.queue.length && S.queue[n].fixed) n += dir;
   if (n < 0 || n >= S.queue.length) {
+    if (dir > 0 && aiaNudgeNextPage()) return; /* AI fix all: pre-fills wait on another page */
     toast(dir > 0 ? "Queue done" : "Start of queue");
     return;
   }
@@ -1915,6 +1919,458 @@ function wireExport() {
   }, true);
 }
 
+/* ---------------- AI fix all (every Doubt word, every page) ----------------
+   One POST /jobs/{id}/suggest per word (window.PC_API.suggestWord: the local
+   stub until AI_SUGGEST_LIVE flips), a few at a time, with a progress bar and
+   Stop. Two ways to review, both reviewer-confirmed:
+     prefill - AI's reading becomes suggestion 1 on every Doubt word; the
+               reviewer accepts each with 1 (J skips). Other pages keep their
+               pre-fills in sessionStorage and get them on load.
+     confirm - AI reads everything first, then one list of proposed fixes;
+               only the ticked rows are applied (as normal human corrections
+               via the same PUT /corrections save path).
+   The first failure (503, network, anything non-2xx) stops the run, turns AI
+   off for the session like the single-word AI fix, and keeps what arrived. */
+var AIA_CONCURRENCY = 3;
+var SS_AIA = "pc.aiall.";   /* + job/storage id: {mode, items: {key: {page, line, word, before, after}}} */
+var aia = { open: false, running: false, stop: false };
+
+function aiaStoreKey() { var id = storageId(); return id ? SS_AIA + id : null; }
+function aiaLoad() {
+  var k = aiaStoreKey();
+  if (!k) return null;
+  try { var v = JSON.parse(window.sessionStorage.getItem(k) || "null"); return v && v.items ? v : null; } catch (e) { return null; }
+}
+function aiaSave(v) {
+  var k = aiaStoreKey();
+  if (!k) return;
+  try {
+    if (v) window.sessionStorage.setItem(k, JSON.stringify(v));
+    else window.sessionStorage.removeItem(k);
+  } catch (e) { /* private mode: this page only */ }
+}
+
+/* Is AI usable at all right now? Same gate as the popup's AI fix. */
+function aiaAvailable() {
+  if (!window.PC_API.suggestWord || aiOff()) return false;
+  var badge = $("connBadge");
+  return !!badge && badge.getAttribute("data-state") === "connected";
+}
+function renderAiAllBtn() {
+  if (!el.aiAllBtn) return;
+  el.aiAllBtn.hidden = !(S.page && aiaAvailable());
+}
+
+/* Keys of words that already have a saved fix (this page or others). */
+function aiaFixedKeys() {
+  var done = {};
+  (S.otherCorr || []).forEach(function (c) { done["p" + c.page + ":" + c.line + ":w" + c.word] = true; });
+  Object.keys(S.corrections).forEach(function (k) { done[k] = true; });
+  return done;
+}
+
+/* Every open Doubt word on every page of the job, in reading order. This page
+   uses the live model (current text, fixes, dictionary); other pages are split
+   the same way buildModel does, scored with the same text check. Words the
+   learned dictionary will fix on load are skipped. */
+function aiaTargets() {
+  var out = [];
+  var done = aiaFixedKeys();
+  var dict = dictLoad();
+  var here = S.page ? Number(S.page.page) : null;
+  var pages = (S.allPages && S.allPages.length ? S.allPages : [S.page]).slice()
+    .sort(function (a, b) { return Number(a.page) - Number(b.page); });
+  pages.forEach(function (doc) {
+    if (!doc || !Array.isArray(doc.lines)) return;
+    if (Number(doc.page) === here) {
+      S.words.forEach(function (w) {
+        if (w.bin !== "doubt" || w.fixed || done[w.key]) return;
+        out.push({ key: w.key, page: w.page, line: w.lineId, word: w.idx, before: w.orig, context: w.line.body });
+      });
+      return;
+    }
+    doc.lines.slice().sort(function (a, b) { return a.seq - b.seq; }).forEach(function (line) {
+      if (reviewBinOf(lineScore(line), doc) !== "doubt") return;
+      String(line.body).split(/\s+/).filter(Boolean).forEach(function (text, i) {
+        var key = "p" + doc.page + ":" + line.id + ":w" + (i + 1);
+        if (done[key] || (dict[text] && dict[text] !== text)) return;
+        out.push({ key: key, page: Number(doc.page), line: line.id, word: i + 1, before: text, context: line.body });
+      });
+    });
+  });
+  return out;
+}
+
+function aiaView(name) {
+  ["aiaChoose", "aiaRun", "aiaReview"].forEach(function (id) { $(id).hidden = id !== name; });
+}
+
+function openAiAll() {
+  if (!aiaAvailable() || aia.open) return;
+  closePopup();
+  aia.targets = aiaTargets();
+  var pages = S.allPages && S.allPages.length ? S.allPages.length : 1;
+  $("aiaPages").textContent = String(pages);
+  $("aiaWords").textContent = String(aia.targets.length);
+  $("aiaStart").disabled = !aia.targets.length;
+  $("aiaLead").textContent = aia.targets.length
+    ? "AI reads every Doubt word on every page. Doubt = text looks malformed. AI readings can be wrong, so you confirm each one."
+    : "No open Doubt words left on any page.";
+  aiaView("aiaChoose");
+  aia.lastFocus = document.activeElement;
+  aia.open = true;
+  aia.root.hidden = false;
+  aia.root.classList.add("show");
+  el.aiAllBtn.setAttribute("aria-expanded", "true");
+  aia.card.focus();
+}
+
+function closeAiAll() {
+  if (!aia.open) return;
+  if (aia.running) aia.stop = true;
+  aia.open = false;
+  aia.root.classList.remove("show");
+  aia.root.hidden = true;
+  el.aiAllBtn.setAttribute("aria-expanded", "false");
+  if (aia.lastFocus && aia.lastFocus.focus) aia.lastFocus.focus();
+}
+
+function aiaMode() {
+  var r = aia.root.querySelector('input[name="aiaMode"]:checked');
+  return r ? r.value : "prefill";
+}
+
+function aiaProgress(done, total, found) {
+  var pct = total ? Math.round(done / total * 100) : 100;
+  $("aiaFill").style.width = pct + "%";
+  $("aiaBar").setAttribute("aria-valuenow", String(pct));
+  $("aiaRunText").textContent = "Reading " + Math.min(done + 1, total) + " of " + total + " Doubt words…";
+  $("aiaFound").textContent = found ? plural(found, "better reading", "better readings") + " so far" : "";
+}
+
+function startAiAll() {
+  if (aia.running || !aia.targets || !aia.targets.length) return;
+  var mode = aiaMode();
+  var list = aia.targets.slice();
+  var total = list.length, next = 0, done = 0, ok = 0, active = 0, failed = false;
+  var found = {};
+  aia.running = true;
+  aia.stop = false;
+  aiaView("aiaRun");
+  aiaProgress(0, total, 0);
+  $("aiaStop").focus();
+
+  function finish() {
+    aia.running = false;
+    var n = Object.keys(found).length;
+    if (failed) {
+      setAiOff();
+      hideAiButton();
+      renderAiAllBtn();
+      toast("AI unavailable · stopped after " + ok + " of " + total + " words", "info");
+    }
+    if (mode === "prefill") {
+      closeAiAll();
+      aiaFinishPrefill(found, ok, total, failed);
+    } else if (failed && !n) {
+      closeAiAll(); /* nothing arrived: the toast says AI is unavailable */
+    } else {
+      aiaShowReview(found, ok, total, failed);
+    }
+  }
+  function pump() {
+    if (aia.stop || failed) { if (!active) finish(); return; }
+    if (next >= list.length) { if (!active) finish(); return; }
+    while (active < AIA_CONCURRENCY && next < list.length) {
+      (function (t) {
+        active++;
+        window.PC_API.suggestWord(S.jobId, {
+          page: t.page, line: t.line, word: t.word, before: t.before, context: t.context
+        }).then(function (res) {
+          var c = ((res && res.candidates) || []).filter(function (x) {
+            return x && String(x.text || "").trim() && String(x.text).trim() !== t.before;
+          })[0];
+          ok++;
+          if (c && !aia.stop) found[t.key] = { page: t.page, line: t.line, word: t.word, before: t.before, after: String(c.text).trim(), context: t.context };
+        }, function () { failed = true; }).then(function () {
+          active--;
+          done++;
+          if (!failed && aia.open) aiaProgress(done, total, Object.keys(found).length);
+          pump();
+        });
+      })(list[next++]);
+    }
+  }
+  pump();
+}
+
+/* ---- prefill mode ---- */
+function aiaApplyPrefill(w, after) {
+  if (!w || w.fixed || w.orig === after) return false;
+  var rest = w.sugg.filter(function (c) { return c.text !== after; });
+  w.sugg = [{ text: after, score: null, source: "llm" }].concat(rest).slice(0, MAX_SUGG);
+  w.after = after;
+  return true;
+}
+
+/* Pre-fills for this page from the session store (after a page change). */
+function aiaRestorePrefill() {
+  var st = aiaLoad();
+  if (!st || st.mode !== "prefill" || !S.page) return 0;
+  var n = 0;
+  Object.keys(st.items).forEach(function (k) {
+    var it = st.items[k];
+    if (Number(it.page) !== Number(S.page.page)) return;
+    var w = S.byKey[k];
+    if (w && w.orig === it.before && aiaApplyPrefill(w, it.after)) n++;
+  });
+  return n;
+}
+
+/* Open pre-fills on OTHER pages: {page: count}, fixed ones excluded. */
+function aiaPendingElsewhere() {
+  var st = aiaLoad();
+  var out = {};
+  if (!st || st.mode !== "prefill" || !S.page) return out;
+  var done = aiaFixedKeys();
+  Object.keys(st.items).forEach(function (k) {
+    var p = Number(st.items[k].page);
+    if (p === Number(S.page.page) || done[k]) return;
+    out[p] = (out[p] || 0) + 1;
+  });
+  return out;
+}
+
+/* During a pre-fill run, J / K and the step after an accept move between the
+   open pre-filled words so "1, 1, 1..." accepts one AI reading per key. When
+   this page has none left, J offers the next page that does; after that the
+   queue steps normally again. */
+function aiaStepPrefill(dir) {
+  var st = aiaLoad();
+  if (!st || st.mode !== "prefill") return false;
+  var open = S.queue.filter(function (w) { return !w.fixed && w.sugg[0] && w.sugg[0].source === "llm"; });
+  if (!open.length) return dir > 0 && aiaNudgeNextPage();
+  var i = -1;
+  for (var k = 0; k < S.queue.length; k++) { if (S.queue[k].key === S.activeKey) { i = k; break; } }
+  var pick = null;
+  var pos = function (w) { return S.queue.indexOf(w); };
+  if (dir > 0) pick = open.filter(function (w) { return pos(w) > i; })[0] || open[0];
+  else pick = open.filter(function (w) { return pos(w) < i; }).pop() || open[open.length - 1];
+  select(pick.key, "queue");
+  return true;
+}
+
+function aiaFirstPrefilled() {
+  return S.queue.filter(function (w) { return !w.fixed && w.sugg[0] && w.sugg[0].source === "llm"; })[0] || null;
+}
+
+function aiaFinishPrefill(found, done, total, failed) {
+  var keys = Object.keys(found);
+  if (!keys.length) {
+    if (!failed) toast("AI found no better reading for " + plural(done, "word", "words"), "info");
+    return;
+  }
+  aiaSave({ mode: "prefill", items: found });
+  var here = 0;
+  keys.forEach(function (k) {
+    if (Number(found[k].page) === Number(S.page.page) && aiaApplyPrefill(S.byKey[k], found[k].after)) here++;
+  });
+  var pages = {};
+  keys.forEach(function (k) { pages[found[k].page] = true; });
+  renderQueue();
+  var first = aiaFirstPrefilled();
+  if (first) select(first.key, "queue");
+  if (!failed) {
+    toast("AI pre-filled " + plural(keys.length, "word", "words") + " on " + plural(Object.keys(pages).length, "page", "pages") +
+      " · 1 accepts, J skips", "info");
+  }
+  if (!here) aiaNudgeNextPage();
+}
+
+/* End of this page's queue: offer the next page that still has pre-fills. */
+function aiaNudgeNextPage() {
+  var pend = aiaPendingElsewhere();
+  var pages = Object.keys(pend).map(Number).sort(function (a, b) { return a - b; });
+  if (!pages.length) return false;
+  var cur = Number(S.page.page);
+  var target = pages.filter(function (p) { return p > cur; })[0] || pages[0];
+  if (aia.nudged === target) { gotoPage(target); return true; }
+  aia.nudged = target;
+  toast("Page done · " + plural(pend[target], "AI fix", "AI fixes") + " waiting on page " + target + " · press J", "info");
+  return true;
+}
+
+/* ---- confirm mode ---- */
+function aiaShowReview(found, done, total, failed) {
+  aia.found = found;
+  var keys = Object.keys(found).sort(function (a, b) {
+    var x = found[a], y = found[b];
+    return x.page - y.page || String(x.line).localeCompare(String(y.line), undefined, { numeric: true }) || x.word - y.word;
+  });
+  aia.keys = keys;
+  var list = $("aiaList");
+  list.innerHTML = "";
+  var lastPage = null;
+  keys.forEach(function (k) {
+    var f = found[k];
+    if (f.page !== lastPage) {
+      lastPage = f.page;
+      var g = document.createElement("p");
+      g.className = "aia-group";
+      g.textContent = "Page " + f.page;
+      list.appendChild(g);
+    }
+    var row = document.createElement("label");
+    row.className = "aia-row";
+    var cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = true;
+    cb.setAttribute("data-key", k);
+    cb.addEventListener("change", aiaRenderApply);
+    var body = document.createElement("span");
+    body.className = "aia-row-body";
+    var pair = document.createElement("span");
+    pair.className = "aia-pair";
+    var b = document.createElement("span"); b.className = "aia-before"; b.textContent = f.before;
+    var ar = document.createElement("span"); ar.className = "aia-arrow"; ar.textContent = "→"; ar.setAttribute("aria-hidden", "true");
+    var a = document.createElement("span"); a.className = "aia-after"; a.textContent = f.after;
+    pair.appendChild(b); pair.appendChild(ar); pair.appendChild(a);
+    var where = document.createElement("span");
+    where.className = "aia-where";
+    where.textContent = "Line " + String(f.line).replace(/^L/, "") + ", word " + f.word;
+    var src = document.createElement("span"); src.className = "qs-src--ai"; src.textContent = "AI";
+    where.appendChild(src);
+    body.appendChild(pair); body.appendChild(where);
+    row.appendChild(cb); row.appendChild(body);
+    list.appendChild(row);
+  });
+  var lead = keys.length
+    ? "AI suggests " + plural(keys.length, "fix", "fixes") + " for " + plural(done, "word", "words") + " it read" +
+      (done < total ? " (stopped at " + done + " of " + total + ")" : "") + ". Untick any you don't want. Nothing is applied until you press Apply."
+    : "AI found no better reading for " + plural(done, "word", "words") +
+      (done < total ? " (stopped at " + done + " of " + total + ")." : ".");
+  $("aiaReviewLead").textContent = lead;
+  $("aiaAllRow").hidden = keys.length < 2;
+  $("aiaAll").checked = true;
+  $("aiaDiscardLb").textContent = keys.length ? "Discard" : "Close";
+  $("aiaApply").hidden = !keys.length;
+  aiaRenderApply();
+  aiaView("aiaReview");
+  if (!aia.open) return;
+  ($("aiaApply").hidden ? aia.card : $("aiaApply")).focus();
+}
+
+function aiaChecked() {
+  return Array.prototype.filter.call($("aiaList").querySelectorAll("input[type=checkbox]"), function (c) { return c.checked; })
+    .map(function (c) { return c.getAttribute("data-key"); });
+}
+function aiaRenderApply() {
+  var n = aiaChecked().length;
+  var total = (aia.keys || []).length;
+  $("aiaApplyLb").textContent = "Apply " + plural(n, "fix", "fixes");
+  $("aiaApply").disabled = !n;
+  var all = $("aiaAll");
+  all.checked = n === total;
+  all.indeterminate = n > 0 && n < total;
+}
+
+/* Apply the ticked fixes: this page's words become human fixes (same as
+   Accept); other pages' fixes join the carried map, and one debounced PUT
+   saves the whole job. Every applied pair also teaches the dictionary. */
+function applyAiAll() {
+  var keys = aiaChecked();
+  if (!keys.length) return;
+  var here = Number(S.page.page);
+  var pages = {};
+  var applied = 0;
+  keys.forEach(function (k) {
+    var f = aia.found[k];
+    if (!f) return;
+    if (f.page === here) {
+      var w = S.byKey[k];
+      if (!w || w.fixed || w.orig !== f.before) return;
+      w.text = f.after;
+      w.prov = "human";
+      w.target = false;
+      w.fixed = true;
+      w.autoApplied = false;
+      w.autoPrev = null;
+      S.corrections[w.key] = { page: w.page, line: w.lineId, word: w.idx, before: w.orig, after: w.text };
+    } else {
+      S.otherCorr = (S.otherCorr || []).filter(function (c) {
+        return !(Number(c.page) === f.page && c.line === f.line && Number(c.word) === f.word);
+      });
+      S.otherCorr.push({ page: f.page, line: f.line, word: f.word, before: f.before, after: f.after });
+    }
+    dictAdd(f.before, f.after);
+    pages[f.page] = true;
+    applied++;
+  });
+  closeAiAll();
+  if (!applied) return;
+  S.corrDirty = true;
+  retext();
+  scheduleSave();
+  renderAll();
+  toast("Applied " + plural(applied, "AI fix", "AI fixes") + " on " + plural(Object.keys(pages).length, "page", "pages") + " · marked human");
+}
+
+function wireAiAll() {
+  el.aiAllBtn = $("aiAllBtn");
+  aia.root = $("aiAllModal");
+  if (!el.aiAllBtn || !aia.root) return;
+  aia.card = aia.root.querySelector(".kb-card");
+  el.aiAllBtn.setAttribute("aria-expanded", "false");
+  el.aiAllBtn.addEventListener("click", openAiAll);
+  $("aiaStart").addEventListener("click", startAiAll);
+  $("aiaStop").addEventListener("click", function () {
+    aia.stop = true;
+    $("aiaRunText").textContent = "Stopping after the words in flight…";
+    $("aiaStop").disabled = true;
+  });
+  $("aiaApply").addEventListener("click", applyAiAll);
+  $("aiaAll").addEventListener("change", function () {
+    var on = this.checked;
+    Array.prototype.forEach.call($("aiaList").querySelectorAll("input[type=checkbox]"), function (c) { c.checked = on; });
+    aiaRenderApply();
+  });
+  Array.prototype.forEach.call(aia.root.querySelectorAll('[data-aia="cancel"]'), function (b) { b.addEventListener("click", closeAiAll); });
+  aia.root.addEventListener("click", function (e) { if (!aia.card.contains(e.target) && !aia.running) closeAiAll(); });
+  /* Capture phase: while open the dialog owns the keyboard (Esc closes, Enter
+     runs the view's main action, Tab stays inside, editor hotkeys wait). */
+  window.addEventListener("keydown", function (e) {
+    if (!aia.open) return;
+    if (e.key === "Escape") {
+      e.preventDefault(); e.stopImmediatePropagation();
+      if (aia.running) $("aiaStop").click(); else closeAiAll();
+      return;
+    }
+    if (e.key === "Tab") {
+      var f = Array.prototype.filter.call(aia.card.querySelectorAll("button, input"), function (b) {
+        return !b.disabled && b.offsetParent !== null;
+      });
+      if (!f.length) return;
+      var i = f.indexOf(document.activeElement);
+      e.preventDefault();
+      var n = i === -1 ? (e.shiftKey ? f.length - 1 : 0) : (i + (e.shiftKey ? -1 : 1) + f.length) % f.length;
+      f[n].focus();
+      return;
+    }
+    if (e.key === "Enter") {
+      var a = document.activeElement;
+      var onCtl = a && a.tagName === "BUTTON" && aia.card.contains(a); /* Enter on a button clicks it natively */
+      if (!onCtl) {
+        e.preventDefault();
+        if (!$("aiaChoose").hidden) startAiAll();
+        else if (!$("aiaReview").hidden && !$("aiaApply").hidden) applyAiAll();
+      }
+      e.stopImmediatePropagation();
+      return;
+    }
+    e.stopImmediatePropagation();
+  }, true);
+}
+
 /* ---------------- sidebar shell ---------------- */
 function wireSidenav() {
   var snExport = $("snExport");
@@ -1958,8 +2414,14 @@ function renderAll() {
 function loadPage(doc) {
   buildModel(doc);
   bootstrapCorrections(function () {
+    var pre = aiaRestorePrefill();
     renderAll();
-    if (S.dictCount) {
+    renderAiAllBtn();
+    if (pre) {
+      var first = aiaFirstPrefilled();
+      if (first) select(first.key, "queue");
+      toast(plural(pre, "AI reading", "AI readings") + " pre-filled on this page · 1 accepts, J skips", "info");
+    } else if (S.dictCount) {
       toast(S.dictCount + (S.dictCount === 1 ? " fix" : " fixes") + " auto-applied from past corrections");
     }
   });
@@ -2022,6 +2484,7 @@ function init() {
 
   el.exportBtn.addEventListener("click", openExport);
   wireExport();
+  wireAiAll();
   wireSidenav();
 
   wireHotkeys();
@@ -2053,6 +2516,7 @@ function init() {
 function loadJob(doc, meta) {
   S.jobId = meta.jobId || null;
   S.pageCount = meta.pageCount || 1;
+  S.allPages = meta.pages || [doc];  /* every page of the job (AI fix all) */
   S.pageImageUrl = meta.imageUrl || ((meta.jobId && window.PC_API.pageImageUrl)
     ? window.PC_API.pageImageUrl(meta.jobId, doc.page)
     : null);
@@ -2100,7 +2564,7 @@ function pollJob(depth) {
     }
     var idx = Math.min(PAGE_NO, pages.length) - 1;
     hideOverlay();
-    loadJob(pages[idx], { jobId: JOB_ID, pageCount: pages.length, filename: job.filename || "" });
+    loadJob(pages[idx], { jobId: JOB_ID, pageCount: pages.length, pages: pages, filename: job.filename || "" });
   }).catch(showFatal);
 }
 
