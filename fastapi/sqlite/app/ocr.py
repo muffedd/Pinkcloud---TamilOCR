@@ -452,6 +452,21 @@ def _parse_sarvam_page(page: dict, img_w: int, img_h: int) -> list[dict]:
     return lines
 
 
+def failed_page_lines(img, exc: Exception) -> list[dict]:
+    """Marked placeholder line for a page whose OCR call raised (any engine).
+
+    Same "[stub]" marking as _stub_lines, so the page is flagged
+    needs_review (confidence 0), the text layer / txt / docx exports skip
+    it, and the rest of the job still completes. The error text is
+    scrubbed of the Sarvam key via _safe_error."""
+    h, w = img.shape[:2]
+    return [{
+        "body": f"[stub] OCR failed on this page - {_safe_error(exc)}",
+        "bbox": [int(w * 0.1), int(h * 0.3), int(w * 0.6), int(h * 0.05)],
+        "confidence": 0.0,
+    }]
+
+
 def _stub_lines(img) -> list[dict]:
     """Placeholder lines when paddle is missing or failed to initialize.
 

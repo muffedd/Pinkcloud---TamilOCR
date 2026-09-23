@@ -38,10 +38,11 @@ def _cap_1600(img: np.ndarray) -> np.ndarray:
     return cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
 
-def probe_decode(ext: str, data: bytes) -> None:
+def probe_decode(ext: str, data: bytes) -> int:
     """Cheap decodability check on raw upload bytes — raises ValueError
     if the file cannot be decoded. Used by main.py to reject corrupt
-    uploads with 4xx BEFORE a job row is created.
+    uploads with 4xx BEFORE a job row is created. Returns the PDF page
+    count (1 for images) so main.py can enforce its page cap.
     """
     if ext == ".pdf":
         import pypdfium2 as pdfium  # lazy import
@@ -52,11 +53,12 @@ def probe_decode(ext: str, data: bytes) -> None:
             pdf.close()
         if page_count == 0:
             raise ValueError("PDF has no pages")
-        return
+        return page_count
 
     img = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
     if img is None:
         raise ValueError("not a decodable image")
+    return 1
 
 
 def stack_images(paths: list[Path]) -> list[np.ndarray]:
