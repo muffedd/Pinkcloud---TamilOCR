@@ -42,9 +42,13 @@
   --pc-color-conf-doubt: #7A5200;
   --pc-color-conf-doubt-bg: #FFF1B8;
   --pc-color-conf-doubt-line: #A86A00;
-  --pc-conf-auto-min: 0.90;
-  --pc-conf-ok-min: 0.75;
-  --pc-conf-review-floor: 0.985; /* Doubt floor on needs_review/HEAVY pages */
+  /* Bands on the text-quality proxy scale (app/textcheck.py score_line:
+     clean Tamil 0.99, flawed 0.90 -> 0.62, garbage <= 0.54, low Tamil share -> 0). */
+  --pc-conf-auto-min: 0.95;
+  --pc-conf-ok-min: 0.80;
+  --pc-conf-review-floor: 0.95; /* Doubt floor on needs_review/HEAVY pages: any flaw */
+  --pc-heat-clean: 0.98;        /* heatmap: at/above = clean (green) */
+  --pc-heat-bad: 0.60;          /* heatmap: at/below = damaged (red) */
 
   /* ---------- Provenance ---------- */
   --pc-color-prov-raw: #9A948F;
@@ -199,6 +203,23 @@
   --pc-lib-row-h: 48px;
   --pc-lib-hit-pad: 10px 16px;
   --pc-lib-page-w: 56px;
+
+  /* ---------- Sidebar shell (--pc-rail-* stays the editor's review rail) ---------- */
+  --pc-sidenav-w: 216px;
+  --pc-sidenav-w-collapsed: 52px;          /* = --pc-topbar-h; expanded at >= 1600px viewports */
+  --pc-sidenav-bg: var(--pc-color-bg-subtle);
+  --pc-sidenav-pad: 8px;
+  --pc-sidenav-item-h: 32px;
+  --pc-sidenav-item-pad: 0 8px;
+  --pc-sidenav-step: 20px;
+  --pc-sidenav-active-bg: var(--pc-color-primary-soft);
+  --pc-sidenav-active-fg: var(--pc-color-primary-solid);
+
+  /* ---------- Review queue cards (scan crop + suggestions) ---------- */
+  --pc-qcrop-h: 44px;
+  --pc-qcard-body-pad: 0 14px 10px 23px;   /* left = row pad 10 + bar 3 + gap 10: aligns with the word */
+  --pc-qs-h: 28px;
+  --pc-qs-pad: 0 8px 0 4px;
 
   /* ---------- Buttons / pills / toggles / inputs ---------- */
   --pc-btn-h: 36px;

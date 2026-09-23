@@ -9,14 +9,38 @@
 <link rel="stylesheet" href="./editor.css">
 </head>
 <body>
+<div class="shell">
+
+<!-- Sidebar shell (app frame). Workflow steps 1-4; the editor is step 3
+     (Review). Collapses to an icon rail below 1600px so the three editor
+     panes keep their token widths. Styles: editor.css (.sidenav, .sn-*);
+     tokens: --pc-sidenav-*. -->
+<aside class="sidenav" aria-label="Pink Cloud">
+  <a class="wordmark sn-brand" href="./index.html" title="Pink Cloud">
+    <span class="logo-tile" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.2 8.6 4.5 4.5 0 0 0 7 18z"/></svg>
+    </span><span class="sn-label">Pink Cloud</span>
+  </a>
+  <nav class="sn-section" aria-labelledby="snWorkflow">
+    <p class="sn-group" id="snWorkflow"><span class="sn-label">Workflow</span></p>
+    <ol class="sn-list">
+      <li><a class="sn-item is-done" id="snUpload" href="./index.html" title="Upload"><span class="sn-step" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span class="sn-label">Upload</span></a></li>
+      <li><span class="sn-item is-done" title="Tamil OCR"><span class="sn-step" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span class="sn-label">Tamil OCR</span></span></li>
+      <li><span class="sn-item is-current" aria-current="step" title="Review"><span class="sn-step" aria-hidden="true">3</span><span class="sn-label">Review</span><span class="sn-count" id="snReviewCount"></span></span></li>
+      <li><button type="button" class="sn-item" id="snExport" title="Export"><span class="sn-step" aria-hidden="true">4</span><span class="sn-label">Export</span></button></li>
+    </ol>
+  </nav>
+  <nav class="sn-section" aria-labelledby="snLibraryHead">
+    <p class="sn-group" id="snLibraryHead"><span class="sn-label">Library</span></p>
+    <ul class="sn-list">
+      <li><a class="sn-item" id="snLibrary" href="./library.html" title="Documents"><span class="sn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></span><span class="sn-label">Documents</span><span class="sn-soon">soon</span></a></li>
+    </ul>
+  </nav>
+</aside>
+
 <div class="app" id="app">
 
   <header class="topbar">
-    <span class="wordmark">
-      <span class="logo-tile" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.2 8.6 4.5 4.5 0 0 0 7 18z"/></svg>
-      </span>Pink Cloud
-    </span>
     <nav class="page-badges" id="pageBadges" aria-label="Pages"></nav>
     <span class="spacer"></span>
     <div class="seg" id="modeToggle" role="radiogroup" aria-label="Review mode" data-active="0">
@@ -79,8 +103,12 @@
         <span class="warn-pill" id="leftPill">0 left</span>
       </div>
       <div class="rail-sub">
+        <p class="route-count" id="routeCount">…</p>
+        <div class="progress-row">
+          <div class="progress" role="progressbar" aria-label="Review progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progressBar"><i id="progressFill"></i></div>
+          <span class="fixed-count" id="fixedCount">0/0 fixed</span>
+        </div>
         <p id="railSub">…</p>
-        <div class="progress" role="progressbar" aria-label="Review progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progressBar"><i id="progressFill"></i></div>
       </div>
       <div class="queue" id="queue"></div>
       <div class="queue-empty" id="queueEmpty" hidden>
@@ -103,18 +131,33 @@
 
   </div>
 </div>
+</div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<!-- Export notice: calm inline info under the Export button (never an error banner). -->
-<div class="export-notice" id="exportNotice" role="status" aria-live="polite" hidden>
-  <span class="export-notice-icon" aria-hidden="true">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.1"/></svg>
-  </span>
-  <span class="export-notice-text" id="exportNoticeText"></span>
-  <button type="button" class="export-notice-close" id="exportNoticeClose" aria-label="Dismiss">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
-  </button>
+<!-- Export dialog (editor.js: openExport / wireExport). Reuses the
+     shortcut overlay's dialog styling (.kb-help / .kb-card). The main action
+     saves pending fixes first, then opens export.html?job=<id>. -->
+<div class="kb-help exp-modal" id="exportModal" hidden>
+  <div class="kb-card exp-card" role="dialog" aria-modal="true" aria-labelledby="expTitle" aria-describedby="expLead" tabindex="-1">
+    <div class="kb-head">
+      <h2 class="kb-title" id="expTitle">Export</h2>
+      <span class="kbd">Esc</span>
+    </div>
+    <p class="exp-lead" id="expLead">A searchable PDF: each scan with its Tamil text layer, plus a receipt.</p>
+    <ul class="kb-list exp-facts">
+      <li><span class="exp-key">Pages</span><span class="exp-val" id="expPages">1</span></li>
+      <li><span class="exp-key">Fixes</span><span class="exp-val" id="expFixes">None yet</span></li>
+      <li><span class="exp-key">Saved</span><span class="exp-val" id="expSaved">…</span></li>
+    </ul>
+    <p class="exp-note" id="expNote" role="status" hidden></p>
+    <div class="exp-actions">
+      <button type="button" class="btn btn--outline btn--sm" id="expCancel"><span>Cancel</span></button>
+      <span class="spacer"></span>
+      <button type="button" class="btn btn--outline btn--sm" id="expAlt" hidden><span class="exp-lb">Open export anyway</span></button>
+      <button type="button" class="btn btn--solid btn--sm" id="expGo"><span class="exp-lb">Open export</span><span class="kbd" aria-hidden="true">↵</span></button>
+    </div>
+  </div>
 </div>
 
 <!-- Keyboard shortcut overlay: "?" toggles; Esc, "?" or a click outside closes. -->
@@ -128,6 +171,7 @@
     <ul class="kb-list">
       <li><span class="kb-keys"><span class="kbd">J</span></span><span>Next flagged word</span></li>
       <li><span class="kb-keys"><span class="kbd">K</span></span><span>Previous flagged word</span></li>
+      <li><span class="kb-keys"><span class="kbd">1</span><span class="kbd">9</span></span><span>Pick a suggestion</span></li>
       <li><span class="kb-keys"><span class="kbd">↵</span></span><span>Fix the selected word</span></li>
       <li><span class="kb-keys"><span class="kbd">Esc</span></span><span>Clear the selection</span></li>
     </ul>
@@ -186,7 +230,7 @@
     var k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); closeDemo(); }
     else if (e.key === 'Enter' && document.activeElement === closeBtn) { e.preventDefault(); e.stopImmediatePropagation(); closeDemo(); }
-    else if (k === 'j' || k === 'k' || e.key === 'Enter') { e.preventDefault(); e.stopImmediatePropagation(); }
+    else if (k === 'j' || k === 'k' || e.key === 'Enter' || /^[1-9]$/.test(k)) { e.preventDefault(); e.stopImmediatePropagation(); }
   });
 })();
 </script>
@@ -195,120 +239,12 @@
 <script src="./translit.js"></script>
 <script src="./editor.js"></script>
 <script>
-/* Editor polish: shortcut overlay + graceful Export. Self-contained; does not
-   touch editor.js state. Runs in the capture phase so it can step in before
-   editor.js's own Export click / keydown handlers.
-   Export: if editor.js holds local corrections for this job, its own
-   corrected-text export runs untouched; otherwise a failed export.pdf shows
-   a calm notice instead of a dead click.
-   Test hooks (mock mode only):
-     editor.html?mock=1&sim-export=404        -> export request fails (real 404)
-     editor.html?mock=1&sim-filename=<name>   -> pretend the job has this filename */
+/* Editor polish: shortcut overlay. Self-contained; does not touch
+   editor.js state. Runs in the capture phase so it can step in before
+   editor.js's own keydown handlers. (Export moved into editor.js: the Export
+   dialog saves pending fixes, then opens export.html?job=<id>.) */
 (function () {
   "use strict";
-  var QS = new URLSearchParams(location.search);
-  var API = window.PC_API || {};
-  var MOCK = !!API.USE_MOCK;
-  var JOB = QS.get("job");
-  var NOTICE_MS = 6000;
-  var MSG_STARTING = "Export is starting up - try again in a moment";
-  var MSG_FILENAME = "Export works best with an English filename right now";
-
-  /* ---------- export notice ---------- */
-  var notice = document.getElementById("exportNotice");
-  var noticeText = document.getElementById("exportNoticeText");
-  var noticeTimer = 0;
-  function hideNotice() {
-    clearTimeout(noticeTimer);
-    notice.classList.remove("show");
-    notice.hidden = true;
-  }
-  function showNotice(msg) {
-    clearTimeout(noticeTimer);
-    noticeText.textContent = msg;
-    notice.hidden = false;
-    notice.classList.remove("show");
-    void notice.offsetWidth; /* restart the entrance animation */
-    notice.classList.add("show");
-    noticeTimer = setTimeout(hideNotice, NOTICE_MS);
-  }
-  document.getElementById("exportNoticeClose").addEventListener("click", hideNotice);
-
-  /* ---------- job filename (for the ASCII guard) ---------- */
-  var filename = MOCK ? (QS.get("sim-filename") || "") : "";
-  if (!MOCK && JOB && API.getJob) {
-    API.getJob(JOB).then(function (job) { filename = (job && job.filename) || ""; })
-      .catch(function () { /* editor.js already reports load errors */ });
-  }
-  function nonAscii(name) { return /[^\x00-\x7F]/.test(name || ""); }
-
-  /* editor.js keeps accepted fixes in localStorage["pc.corrections." + job id]
-     ("demo-kural" in mock mode). A non-empty list means local corrections. */
-  function hasLocalCorrections() {
-    var id = MOCK ? "demo-kural" : JOB;
-    if (!id) return false;
-    try {
-      var v = JSON.parse(window.localStorage.getItem("pc.corrections." + id) || "[]");
-      return Array.isArray(v) && v.length > 0;
-    } catch (err) { return false; }
-  }
-
-  function exportUrl() {
-    if (MOCK) return "./jobs/mock-demo/export.pdf"; /* no such file: exercises the 404 path */
-    return (API.API_BASE || "") + "/jobs/" + encodeURIComponent(JOB) + "/export.pdf";
-  }
-  function nameFrom(res) {
-    var cd = res.headers.get("Content-Disposition") || "";
-    var star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
-    if (star) { try { return decodeURIComponent(star[1]); } catch (e) { /* fall through */ } }
-    var plain = /filename="?([^";]+)"?/i.exec(cd);
-    return plain ? plain[1] : "pink-cloud-export.pdf";
-  }
-
-  var busy = false;
-  function runExport(btn) {
-    busy = true;
-    btn.setAttribute("aria-busy", "true");
-    fetch(exportUrl(), { cache: "no-store" })
-      .then(function (res) {
-        if (!res.ok) throw new Error(String(res.status));
-        var name = nameFrom(res);
-        return res.blob().then(function (blob) {
-          var url = URL.createObjectURL(blob);
-          var a = document.createElement("a");
-          a.href = url;
-          a.download = name;
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
-          hideNotice();
-        });
-      })
-      .catch(function () { showNotice(MSG_STARTING); })
-      .then(function () { busy = false; btn.removeAttribute("aria-busy"); });
-  }
-
-  document.addEventListener("click", function (e) {
-    var btn = e.target && e.target.closest && e.target.closest("#exportBtn");
-    if (!btn || btn.disabled) return;
-    var simFail = MOCK && QS.get("sim-export") === "404";
-    var live = !MOCK && !!JOB;
-    if (!live && !simFail && !nonAscii(filename)) return; /* plain mock demo: editor.js toast */
-    if (nonAscii(filename)) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      showNotice(MSG_FILENAME);
-      return;
-    }
-    /* Reviewer corrections saved locally (editor.js save-back fallback): hand
-       the click to editor.js untouched so its corrected-text export runs. */
-    if (hasLocalCorrections()) { hideNotice(); return; }
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    if (busy) return;
-    runExport(btn);
-  }, true);
 
   /* ---------- keyboard shortcut overlay ---------- */
   var help = document.getElementById("kbHelp");

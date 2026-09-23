@@ -46,15 +46,24 @@ var S = {
   dictCount: 0           /* fixes auto-applied to this page from the dictionary */
 };
 
-var AUTO_MIN = 0.9;
-var OK_MIN = 0.75;
+/* Confidence bands on the text-quality proxy scale. The Sarvam engine gives
+   no per-line recognition confidence, so line.confidence carries the backend's
+   app/textcheck.py score_line(text): clean Tamil 0.99; flaws (orphan vowel
+   signs, odd characters, repeats) 0.90 sliding to 0.62; garbage <= 0.54; low
+   Tamil share slides toward 0; digits-only 0.3. Values come from tokens.css
+   (--pc-conf-*); these are fallbacks.
+     Auto  >= 0.95 : clean text
+     OK    0.80-0.95: one or two small flaws (queued in Review mode)
+     Doubt < 0.80  : several flaws, low Tamil share, garbage */
+var AUTO_MIN = 0.95;
+var OK_MIN = 0.80;
 /* Review floor for pages the backend routed to review (needs_review, or
-   profile HEAVY). Paddle's line confidence averages per-character scores, so
-   a line with one or two misread glyphs still lands around 0.94-0.98 - far
-   above OK_MIN. On those pages any line below this floor is Doubt. Clean
-   pages keep the normal Auto/OK/Doubt bands. A higher-scoring misread can
-   still slip through: this raises recall, it is not proof of correctness. */
-var REVIEW_FLOOR = 0.985;
+   profile HEAVY): any line that is not clean (< 0.95, i.e. a single flaw at
+   0.90 or worse) is Doubt. Clean pages keep the normal bands. The proxy only
+   sees malformed text: a wrong but well-formed Tamil word scores 0.99 and is
+   NOT flagged. This raises recall on broken output, it is not proof of
+   correctness. */
+var REVIEW_FLOOR = 0.95;
 var MOTION_BASE = 160;
 var TOAST_MS = 2400;
 
@@ -144,6 +153,7 @@ function buildModel(doc) {
         fixed: false,
         autoApplied: false,  /* text came from the corrections dictionary, not the reviewer */
         autoPrev: null,      /* pre-auto-apply suggestion state, for undo */
+        sugg: [],            /* ranked candidates: [{text, score, source}] (attachSuggestions) */
         line: entry,
         el: null,
         boxEl: null,
@@ -155,7 +165,62 @@ function buildModel(doc) {
     });
     S.lines.push(entry);
   });
+  attachSuggestions(doc);
   rebuildQueue();
+}
+
+/* ---------------- suggestions (contract: schema/suggestions-contract.md) ----------------
+   page.suggestions[] = [{line, word, before, candidates: [{text, score, source}]}]
+     line   - line id ("L3"), matches lines[].id
+     word   - 1-based word index in that line's body split on whitespace (the
+              same index the corrections endpoint uses)
+     before - the word text the candidates were computed for; if it no longer
+              matches the OCR word the entry is ignored (stale)
+     candidates - best first; the editor sorts by score, drops duplicates and
+              the OCR word itself, and keeps at most 9 (number keys 1-9).
+   A page correction (corrections[], matched by `before`) becomes candidate 1.
+   Optional field: pages without it simply have no suggestions. */
+var MAX_SUGG = 9;
+var CORR_SOURCE = { T1: "swap", T2: "rule", T3: "llm" };
+
+function attachSuggestions(doc) {
+  var bySlot = {};
+  (Array.isArray(doc.suggestions) ? doc.suggestions : []).forEach(function (sg) {
+    if (!sg || typeof sg.line !== "string" || !(sg.word >= 1) || !Array.isArray(sg.candidates)) return;
+    bySlot["p" + doc.page + ":" + sg.line + ":w" + sg.word] = sg;
+  });
+  S.words.forEach(function (w) {
+    var list = [];
+    var seen = {};
+    function add(text, score, source) {
+      text = String(text || "").trim();
+      if (!text || text === w.orig || seen[text]) return;
+      seen[text] = true;
+      list.push({ text: text, score: typeof score === "number" ? score : null, source: source || "" });
+    }
+    if (w.target && w.after) add(w.after, null, CORR_SOURCE[w.tier] || "correction");
+    var sg = bySlot[w.key];
+    if (sg && (sg.before == null || sg.before === w.orig)) {
+      sg.candidates.slice().sort(function (a, b) {
+        return (typeof b.score === "number" ? b.score : -1) - (typeof a.score === "number" ? a.score : -1);
+      }).forEach(function (c) { if (c) add(c.text, c.score, c.source); });
+    }
+    w.sugg = list.slice(0, MAX_SUGG);
+    /* Prefill the fix popup with the best candidate when no correction is on file. */
+    if (!w.after && w.sugg.length) w.after = w.sugg[0].text;
+  });
+}
+
+/* Routing summary: a line is routed to the reviewer when its band is in the
+   current queue scope (Auto mode: Doubt; Review mode: Doubt + OK). Derived
+   only from line.confidence and the page's needs_review / profile. */
+function routingSummary() {
+  var total = S.lines.length;
+  var routed = S.lines.filter(function (l) {
+    var bin = reviewBinOf(l.conf, S.page);
+    return S.mode === "auto" ? bin === "doubt" : bin !== "auto";
+  }).length;
+  return { total: total, routed: routed, auto: total - routed };
 }
 
 function rebuildQueue() {
@@ -190,7 +255,7 @@ function lsSet(key, val) {
 
 /* localStorage key owner: the real job id, or the demo id in mock mode. */
 function storageId() {
-  return S.jobId || (window.PC_API.USE_MOCK ? MOCK_STORAGE_ID : null);
+  return S.jobId || (window.PC_API.USE_MOCK ? (S.mockId || MOCK_STORAGE_ID) : null);
 }
 
 /* Full-map payload, sorted into reading order (page, line, word). */
@@ -447,15 +512,15 @@ function setActive(key) {
     refreshWordEl(prev);
     if (prev.boxEl) prev.boxEl.className = boxClass(prev);
     if (prev.rowEl) prev.rowEl.classList.remove("is-active");
+    if (prev.cardEl) prev.cardEl.classList.remove("is-active");
   }
   var w = S.byKey[key];
   if (w) {
     refreshWordEl(w);
     if (w.boxEl) w.boxEl.className = boxClass(w);
-    if (w.rowEl) {
-      w.rowEl.classList.add("is-active");
-      scrollToThird(el.queue, w.rowEl);
-    }
+    if (w.rowEl) w.rowEl.classList.add("is-active");
+    if (w.cardEl) w.cardEl.classList.add("is-active");
+    if (w.cardEl || w.rowEl) scrollToThird(el.queue, w.cardEl || w.rowEl);
   }
 }
 
@@ -557,8 +622,8 @@ function boxClass(w) {
            counts in proportion to how wide that spread is, so a clean page
            with a tiny spread does not paint its "worst" line red.
    0 = clean (green), 0.5 = rough (orange), 1 = damaged (red). */
-var HEAT_CLEAN = 0.97;
-var HEAT_BAD = 0.70;
+var HEAT_CLEAN = 0.98;  /* proxy scale: clean Tamil is 0.99 -> green */
+var HEAT_BAD = 0.60;    /* flaw floor 0.62 / garbage 0.54 -> red */
 var HEAT_SPREAD_FULL = 0.15;
 
 function heatConfRange(lines) {
@@ -627,6 +692,7 @@ function renderScan() {
       S.pageH = probe.naturalHeight || PAGE_H;
       S.imageLoaded = true;
       renderScan();
+      renderQueue(); /* queue crops need the image and its size */
     };
     probe.onerror = function () {
       S.imageFailed = true;
@@ -767,6 +833,9 @@ function renderLegend() {
 function renderQueue() {
   el.queue.innerHTML = "";
   S.queue.forEach(function (w) {
+    var card = document.createElement("div");
+    card.className = "qcard" + (w.key === S.activeKey ? " is-active" : "") + (w.fixed ? " is-fixed" : "");
+    card.dataset.key = w.key;
     var row = document.createElement("button");
     row.type = "button";
     row.className = "qrow" + (w.key === S.activeKey ? " is-active" : "") + (w.fixed ? " is-fixed" : "");
@@ -781,7 +850,8 @@ function renderQueue() {
     var meta = document.createElement("span");
     meta.className = "qmeta";
     meta.textContent = "p" + w.page + " · " + w.lineId + " · w" + w.idx +
-      (w.autoApplied ? " · auto" : (w.prov !== "raw" ? " · " + w.prov : ""));
+      (w.autoApplied ? " · auto" : (w.prov !== "raw" ? " · " + w.prov : "")) +
+      (!w.fixed && w.sugg.length ? " · " + w.sugg.length + (w.sugg.length === 1 ? " suggestion" : " suggestions") : "");
     mid.appendChild(word);
     mid.appendChild(meta);
     var chip = document.createElement("span");
@@ -795,13 +865,128 @@ function renderQueue() {
     row.appendChild(bar);
     row.appendChild(mid);
     row.appendChild(chip);
-    row.addEventListener("click", function () { select(w.key, "queue"); });
-    row.addEventListener("mouseenter", function () { setHover(w.key); });
-    row.addEventListener("mouseleave", function () { setHover(null); });
+
+    /* Card body: the line's scan crop (+ suggestions on the active card). */
+    var body = document.createElement("div");
+    body.className = "qcard-body";
+    var crop = document.createElement("div");
+    crop.className = "qcrop";
+    crop.setAttribute("role", "img");
+    crop.setAttribute("aria-label", "Scan crop of " + w.lineId + ", word " + w.idx);
+    body.appendChild(crop);
+    if (w.sugg.length && !w.fixed) {
+      var list = document.createElement("div");
+      list.className = "qsugg";
+      list.setAttribute("role", "group");
+      list.setAttribute("aria-label", "Suggestions - press 1 to " + w.sugg.length);
+      w.sugg.forEach(function (c, i) { list.appendChild(suggButton(w, c, i)); });
+      body.appendChild(list);
+    }
+    card.appendChild(row);
+    card.appendChild(body);
+
+    function pick() { select(w.key, "queue"); }
+    row.addEventListener("click", pick);
+    crop.addEventListener("click", pick);
+    card.addEventListener("mouseenter", function () { setHover(w.key); });
+    card.addEventListener("mouseleave", function () { setHover(null); });
     w.rowEl = row;
-    el.queue.appendChild(row);
+    w.cardEl = card;
+    w.cropEl = crop;
+    el.queue.appendChild(card);
   });
   el.queueEmpty.hidden = S.queue.length > 0;
+  layoutCrops();
+}
+
+/* One numbered suggestion button (queue card and fix popup share it). */
+function suggButton(w, c, i) {
+  var b = document.createElement("button");
+  b.type = "button";
+  b.className = "qs-opt";
+  b.tabIndex = -1;
+  var k = document.createElement("span");
+  k.className = "kbd";
+  k.textContent = String(i + 1);
+  var t = document.createElement("span");
+  t.className = "qs-text";
+  t.textContent = c.text;
+  b.appendChild(k);
+  b.appendChild(t);
+  if (c.source || typeof c.score === "number") {
+    var src = document.createElement("span");
+    src.className = "qs-src";
+    src.textContent = (c.source || "") + (typeof c.score === "number" ? (c.source ? " " : "") + c.score.toFixed(2) : "");
+    b.appendChild(src);
+  }
+  b.title = "Use " + c.text + " (" + (i + 1) + ")";
+  b.addEventListener("click", function (e) {
+    e.stopPropagation();
+    pickSuggestion(w, i);
+  });
+  return b;
+}
+
+/* ---------------- queue crops ----------------
+   Each card shows the word in its line context, cut from the page scan with
+   CSS background-position on the EXISTING page image
+   (GET /jobs/{id}/pages/{n}/image - the same URL the scan pane uses; the
+   browser caches it, no new endpoint). The image's natural size is the bbox
+   space (see renderScan). The crop window is centred on the word, as tall as
+   its line plus a margin, and as wide as the card's aspect ratio allows. The
+   word itself gets a thin outline. Without a page image (offline demo, or the
+   image route failed) the crop shows the OCR word on the placeholder paper. */
+var CROP_MARGIN = 0.35; /* extra line height above + below, as a share of it */
+
+function layoutCrops() {
+  var first = null;
+  for (var i = 0; i < S.queue.length; i++) { if (S.queue[i].cropEl) { first = S.queue[i].cropEl; break; } }
+  if (!first) return;
+  var cw = first.clientWidth;
+  var ch = first.clientHeight;
+  if (!cw || !ch) return;
+  var hasImg = !!(S.imageLoaded && S.pageImageUrl && S.coordW && S.pageH);
+  S.queue.forEach(function (w) {
+    var c = w.cropEl;
+    if (!c) return;
+    c.innerHTML = "";
+    if (!hasImg) {
+      c.classList.add("is-placeholder");
+      c.style.backgroundImage = "";
+      var ph = document.createElement("span");
+      ph.className = "qcrop-word";
+      ph.textContent = w.orig;
+      c.appendChild(ph);
+      return;
+    }
+    c.classList.remove("is-placeholder");
+    var r = cropRect(w, cw, ch);
+    c.style.backgroundImage = "url(\"" + S.pageImageUrl + "\")";
+    c.style.backgroundSize = (S.coordW * r.k).toFixed(2) + "px " + (S.pageH * r.k).toFixed(2) + "px";
+    c.style.backgroundPosition = (-r.x * r.k).toFixed(2) + "px " + (-r.y * r.k).toFixed(2) + "px";
+    var m = document.createElement("span");
+    m.className = "qcrop-mark";
+    m.style.left = ((w.bbox[0] - r.x) * r.k).toFixed(1) + "px";
+    m.style.top = ((w.bbox[1] - r.y) * r.k).toFixed(1) + "px";
+    m.style.width = (w.bbox[2] * r.k).toFixed(1) + "px";
+    m.style.height = (w.bbox[3] * r.k).toFixed(1) + "px";
+    c.appendChild(m);
+  });
+}
+
+/* Crop window in bbox space for a cw x ch px crop box: {x, y, k} where k is
+   crop px per bbox px. Kept inside the page where the page is big enough. */
+function cropRect(w, cw, ch) {
+  var lb = w.line.bbox, wb = w.bbox;
+  var aspect = cw / ch;
+  var rh = Math.max(lb[3], wb[3], 1) * (1 + 2 * CROP_MARGIN);
+  var rw = rh * aspect;
+  if (rw < wb[2] * 1.15) { rw = wb[2] * 1.15; rh = rw / aspect; }
+  var x = wb[0] + wb[2] / 2 - rw / 2;
+  var y = lb[1] + lb[3] / 2 - rh / 2;
+  x = Math.max(0, Math.min(x, S.coordW - rw)); if (S.coordW < rw) x = (S.coordW - rw) / 2;
+  y = Math.max(0, Math.min(y, S.pageH - rh)); if (S.pageH < rh) y = (S.pageH - rh) / 2;
+  return { x: x, y: y, k: cw / rw };
 }
 
 function renderCounts() {
@@ -809,12 +994,23 @@ function renderCounts() {
   var fixed = fixedCount();
   var left = total - fixed;
   el.leftPill.textContent = left + " left";
-  var scope = S.mode === "auto" ? "doubt words only (Auto)" : "doubt + OK (Review)";
-  el.railSub.textContent = fixed + " of " + total + " fixed · " + scope +
-    (S.dictCount ? " · " + S.dictCount + " auto-applied" : "");
+  var r = routingSummary();
+  el.routeCount.innerHTML = "";
+  var n1 = document.createElement("b");
+  n1.textContent = String(r.auto);
+  var n2 = document.createElement("b");
+  n2.textContent = String(r.routed);
+  el.routeCount.appendChild(n1);
+  el.routeCount.appendChild(document.createTextNode(" of " + r.total + " lines auto-accepted · "));
+  el.routeCount.appendChild(n2);
+  el.routeCount.appendChild(document.createTextNode(r.routed === 1 ? " needs you" : " need you"));
+  el.fixedCount.textContent = fixed + "/" + total + " fixed";
+  var scope = S.mode === "auto" ? "Doubt words only (Auto)" : "Doubt + OK words (Review)";
+  el.railSub.textContent = scope + (S.dictCount ? " · " + S.dictCount + " auto-applied" : "");
   var pct = total ? Math.round(fixed / total * 100) : 100;
   el.progressFill.style.width = pct + "%";
   el.progressBar.setAttribute("aria-valuenow", String(pct));
+  if (el.snReviewCount) el.snReviewCount.textContent = left ? String(left) : "";
 }
 
 /* ---------------- top bar ---------------- */
@@ -951,6 +1147,14 @@ function openPopup() {
   el.pop.appendChild(head);
   el.pop.appendChild(input);
   el.pop.appendChild(preview);
+  if (w.sugg.length) {
+    var plist = document.createElement("div");
+    plist.className = "qsugg pop-sugg";
+    plist.setAttribute("role", "group");
+    plist.setAttribute("aria-label", "Suggestions - press 1 to " + w.sugg.length + " in an empty box");
+    w.sugg.forEach(function (c, i) { plist.appendChild(suggButton(w, c, i)); });
+    el.pop.appendChild(plist);
+  }
   el.pop.appendChild(evidence);
   el.pop.appendChild(actions);
 
@@ -958,6 +1162,13 @@ function openPopup() {
     preview.textContent = window.PC_Translit.transliterate(input.value);
   });
   input.addEventListener("keydown", function (e) {
+    /* Digits are not Tanglish: in an empty box 1-9 pick a suggestion. */
+    if (!input.value && /^[1-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey &&
+        parseInt(e.key, 10) <= w.sugg.length) {
+      e.preventDefault();
+      pickSuggestion(w, parseInt(e.key, 10) - 1);
+      return;
+    }
     if (e.key === "Enter") { e.preventDefault(); doAccept(); }
     else if (e.key === "Escape") { e.preventDefault(); doReject(); }
   });
@@ -1006,6 +1217,26 @@ function doAccept() {
   var preview = el.pop.querySelector(".pop-preview");
   var tamil = preview ? preview.textContent.trim() : "";
   if (!tamil) { closePopup(); return; }
+  acceptFix(w, tamil);
+  toast("Fix accepted · " + tamil + " marked human");
+  if (w.el) w.el.focus();
+}
+
+/* Number key / click on a suggestion: accept candidate i as a human fix,
+   then move to the next open item so a keyboard run stays 1 key per word. */
+function pickSuggestion(w, i) {
+  if (!w) return;
+  var c = w.sugg[i];
+  if (!c) return;
+  acceptFix(w, c.text);
+  toast("Fix accepted · " + c.text + " (suggestion " + (i + 1) + ") marked human");
+  var open = S.queue.some(function (q) { return !q.fixed; });
+  if (open) stepQueue(1);
+}
+
+/* Shared accept path: the word becomes a human fix, is saved back, and
+   teaches the dictionary. */
+function acceptFix(w, tamil) {
   w.text = tamil;
   w.prov = "human";
   w.target = false;
@@ -1025,8 +1256,6 @@ function doAccept() {
   renderQueue();
   renderCounts();
   renderBadges();
-  toast("Fix accepted · " + tamil + " marked human");
-  if (w.el) w.el.focus();
 }
 
 function doReject() {
@@ -1130,6 +1359,7 @@ function wireHotkeys() {
   document.addEventListener("keydown", function (e) {
     var t = e.target;
     var inField = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA");
+    if (S.exportOpen) return; /* the export dialog owns the keys while open */
     if (S.popupKey) {
       if (inField) return; /* the Tanglish input handles its own keys */
       if (t && t.closest && t.closest("button")) {
@@ -1142,7 +1372,11 @@ function wireHotkeys() {
     }
     if (inField) return;
     var key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-    if (key === "j") { e.preventDefault(); stepQueue(1); }
+    if (/^[1-9]$/.test(key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      var aw = S.byKey[S.activeKey];
+      if (aw && aw.sugg.length >= parseInt(key, 10)) { e.preventDefault(); pickSuggestion(aw, parseInt(key, 10) - 1); }
+    }
+    else if (key === "j") { e.preventDefault(); stepQueue(1); }
     else if (key === "k") { e.preventDefault(); stepQueue(-1); }
     else if (key === "Enter") {
       if (S.activeKey) { e.preventDefault(); openPopup(); }
@@ -1222,6 +1456,222 @@ function showFatal(err) {
   toast("Could not load job · " + err.message);
 }
 
+/* ---------------- export dialog ----------------
+   Export opens a small dialog. Its main action saves pending corrections
+   (flushSave) and only then opens export.html?job=<id> (built separately).
+   Corrections that could not reach the server keep the existing handling -
+   a corrected-text download built in the browser - and the dialog says
+   plainly that the PDF will not include them. */
+var exp = {};
+
+function nonAscii(name) { return /[^\x00-\x7F]/.test(name || ""); }
+
+function exportPageUrl() {
+  var q = "job=" + encodeURIComponent(S.jobId);
+  if (window.PC_API.API_BASE) q += "&api=" + encodeURIComponent(window.PC_API.API_BASE);
+  return "./export.html?" + q;
+}
+
+function fixCount() { return Object.keys(S.corrections).length; }
+
+function plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
+
+/* Where the fixes stand after a save attempt. */
+function exportState() {
+  if (window.PC_API.USE_MOCK || !S.jobId) return "demo";
+  if (S.saveMode === "local") return "local";            /* route missing: fixes live in this browser only */
+  if (S.saveError) return "error";                       /* server refused the last save (500/422) */
+  if (S.corrDirty && fixCount() > 0) return "unsynced";  /* backend unreachable: local copy only */
+  return "saved";
+}
+
+function setExpButton(btn, label, hidden) {
+  btn.hidden = !!hidden;
+  var span = btn.querySelector(".exp-lb");
+  if (span) span.textContent = label; else btn.textContent = label;
+}
+
+function renderExport(busy) {
+  var n = fixCount();
+  var st = busy ? "saving" : exportState();
+  exp.st = st;
+  exp.pages.textContent = String(S.pageCount || 1);
+  exp.fixes.textContent = n ? plural(n, "fix", "fixes") : "None yet";
+  var SAVED = {
+    saving: "Saving…",
+    demo: "Demo - stays in this browser",
+    saved: n ? "All on the server" : "Nothing to save",
+    local: "This browser only",
+    unsynced: "This browser only",
+    error: "Not saved on the server"
+  };
+  exp.saved.textContent = SAVED[st];
+  exp.saved.className = "exp-val" + (st === "local" || st === "unsynced" || st === "error" ? " is-warn" : "");
+  var note = "";
+  if (st === "local" || st === "unsynced") {
+    note = plural(n, "fix is", "fixes are") + " saved only in this browser" +
+      (st === "unsynced" ? " because the server can't be reached" : "") +
+      ". The PDF is built from the server's copy, so it will not include " + (n === 1 ? "it" : "them") +
+      ". Download the corrected text to keep " + (n === 1 ? "it." : "them.");
+  } else if (st === "error") {
+    note = "The server could not save the latest fixes. A PDF made now may not include them.";
+  } else if (st === "demo") {
+    note = "Demo mode: export runs on a live job.";
+  }
+  if (st !== "demo" && nonAscii(S.filename)) {
+    note += (note ? " " : "") + "Export works best with an English filename right now.";
+  }
+  exp.note.textContent = note;
+  exp.note.hidden = !note;
+  exp.go.disabled = st === "saving";
+  if (st === "local" || st === "unsynced") {
+    setExpButton(exp.go, "Download text");
+    setExpButton(exp.alt, "PDF without fixes", false);
+  } else if (st === "error") {
+    setExpButton(exp.go, "Retry save");
+    setExpButton(exp.alt, "Open export anyway", false);
+  } else if (st === "demo") {
+    setExpButton(exp.go, "Done");
+    setExpButton(exp.alt, "", true);
+  } else {
+    setExpButton(exp.go, st === "saving" ? "Saving…" : "Open export");
+    setExpButton(exp.alt, "", true);
+  }
+}
+
+function openExport() {
+  if (!S.page || el.exportBtn.disabled) return;
+  closePopup();
+  exp.lastFocus = document.activeElement;
+  S.exportOpen = true;
+  exp.root.hidden = false;
+  exp.root.classList.add("show");
+  el.exportBtn.setAttribute("aria-expanded", "true");
+  exp.card.focus();
+  if (window.PC_API.USE_MOCK || !S.jobId) { renderExport(false); return; }
+  /* Save pending fixes first, so the dialog reports the real state. */
+  renderExport(true);
+  flushSave().then(function () { if (S.exportOpen) renderExport(false); });
+}
+
+function closeExport() {
+  if (!S.exportOpen) return;
+  S.exportOpen = false;
+  exp.root.classList.remove("show");
+  exp.root.hidden = true;
+  el.exportBtn.setAttribute("aria-expanded", "false");
+  if (exp.lastFocus && exp.lastFocus.focus) exp.lastFocus.focus();
+}
+
+/* Existing local-fallback handling: this page's corrected text as a file. */
+function downloadCorrectedText() {
+  var blob = new Blob([S.page.text + "\n"], { type: "text/plain;charset=utf-8" });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = "pink-cloud-" + String(S.jobId || "demo").slice(0, 8) + "-p" + S.page.page + "-corrected.txt";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  toast("Corrected text downloaded · fixes applied in this browser");
+}
+
+function goExport() {
+  S.exportOpen = false;
+  window.location.href = exportPageUrl();
+}
+
+function onExportMain() {
+  var st = exp.st;
+  if (st === "saving") return;
+  if (st === "demo") { closeExport(); toast("Export ready · page " + S.page.page); return; }
+  if (st === "local" || st === "unsynced") { downloadCorrectedText(); return; }
+  if (st === "error") {
+    renderExport(true);
+    S.corrDirty = true;
+    flushSave().then(function () { if (S.exportOpen) renderExport(false); });
+    return;
+  }
+  /* saved: the server holds every fix - save once more (no-op if clean), then go. */
+  renderExport(true);
+  flushSave().then(function () {
+    if (exportState() === "saved") goExport();
+    else if (S.exportOpen) renderExport(false);
+  });
+}
+
+function wireExport() {
+  exp.root = $("exportModal");
+  if (!exp.root) return;
+  exp.card = exp.root.querySelector(".kb-card");
+  exp.pages = $("expPages");
+  exp.fixes = $("expFixes");
+  exp.saved = $("expSaved");
+  exp.note = $("expNote");
+  exp.go = $("expGo");
+  exp.alt = $("expAlt");
+  el.exportBtn.setAttribute("aria-haspopup", "dialog");
+  el.exportBtn.setAttribute("aria-expanded", "false");
+  exp.go.addEventListener("click", onExportMain);
+  exp.alt.addEventListener("click", function () { if (exp.st !== "demo") goExport(); });
+  $("expCancel").addEventListener("click", closeExport);
+  exp.root.addEventListener("click", function (e) { if (!exp.card.contains(e.target)) closeExport(); });
+  /* Capture phase: while open, the dialog owns the keyboard (Esc closes,
+     Enter runs the main action, Tab stays inside, editor hotkeys wait). */
+  window.addEventListener("keydown", function (e) {
+    if (!S.exportOpen) return;
+    if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); closeExport(); return; }
+    if (e.key === "Tab") {
+      var f = Array.prototype.filter.call(exp.card.querySelectorAll("button"), function (b) { return !b.hidden && !b.disabled; });
+      if (!f.length) return;
+      var i = f.indexOf(document.activeElement);
+      e.preventDefault();
+      var n = i === -1 ? (e.shiftKey ? f.length - 1 : 0) : (i + (e.shiftKey ? -1 : 1) + f.length) % f.length;
+      f[n].focus();
+      return;
+    }
+    if (e.key === "Enter") {
+      var onBtn = document.activeElement && document.activeElement.tagName === "BUTTON" && exp.card.contains(document.activeElement);
+      if (!onBtn) { e.preventDefault(); onExportMain(); }
+      e.stopImmediatePropagation();
+      return;
+    }
+    e.stopImmediatePropagation();
+  }, true);
+}
+
+/* ---------------- sidebar shell ---------------- */
+function wireSidenav() {
+  var snExport = $("snExport");
+  if (snExport) snExport.addEventListener("click", openExport);
+  var snUpload = $("snUpload");
+  if (snUpload && window.PC_API.USE_MOCK) snUpload.setAttribute("href", "./index.html?mock=1");
+  /* Library (Documents) lands with slice 3; until library.html is served the
+     item stays visible but inert instead of a dead link. */
+  var lib = $("snLibrary");
+  if (lib) {
+    fetch(lib.getAttribute("href"), { method: "HEAD", cache: "no-store" })
+      .then(function (res) { if (!res.ok) throw new Error(); })
+      .catch(function () {
+        lib.removeAttribute("href");
+        lib.setAttribute("aria-disabled", "true");
+        lib.classList.add("is-soon");
+        lib.title = "Documents library - coming with search";
+      });
+  }
+}
+
+/* MOCK suggestions for the offline Kural demo, in the proposed contract
+   shape (schema/suggestions-contract.md). The real source fills
+   page.suggestions[]; until then the demo shows what the queue does with it. */
+var MOCK_SUGGESTIONS = [
+  { line: "L3", word: 4, before: "வாழறிவன்", candidates: [
+    { text: "வாலறிவன்", score: 0.93, source: "lexicon" },
+    { text: "வாளறிவன்", score: 0.41, source: "lexicon" }
+  ] }
+];
+
 /* ---------------- boot ---------------- */
 
 var BOOT_QS = new URLSearchParams(location.search);
@@ -1249,9 +1699,11 @@ function loadPage(doc) {
 }
 
 function init() {
-  AUTO_MIN = cssNum("--pc-conf-auto-min", 0.9);
-  OK_MIN = cssNum("--pc-conf-ok-min", 0.75);
-  REVIEW_FLOOR = cssNum("--pc-conf-review-floor", 0.985);
+  AUTO_MIN = cssNum("--pc-conf-auto-min", 0.95);
+  OK_MIN = cssNum("--pc-conf-ok-min", 0.80);
+  REVIEW_FLOOR = cssNum("--pc-conf-review-floor", 0.95);
+  HEAT_CLEAN = cssNum("--pc-heat-clean", 0.98);
+  HEAT_BAD = cssNum("--pc-heat-bad", 0.60);
   MOTION_BASE = cssNum("--pc-motion-base", 160);
   TOAST_MS = cssNum("--pc-toast-duration", 2400);
 
@@ -1273,6 +1725,9 @@ function init() {
   el.queue = $("queue");
   el.queueEmpty = $("queueEmpty");
   el.toast = $("toast");
+  el.routeCount = $("routeCount");
+  el.fixedCount = $("fixedCount");
+  el.snReviewCount = $("snReviewCount");
 
   wireSeg($("modeToggle"), function (val) {
     if (S.mode === val) return;
@@ -1296,45 +1751,9 @@ function init() {
     renderLegend();
   });
 
-  el.exportBtn.addEventListener("click", function () {
-    if (!S.page) return;
-    /* Mock mode: unchanged demo toast. */
-    if (window.PC_API.USE_MOCK || !S.jobId) {
-      toast("Export ready · page " + S.page.page);
-      return;
-    }
-    /* Flush any pending debounced save BEFORE exporting: the PDF is built
-       from the server's correction map, and a fix accepted in the last
-       800ms would otherwise be missing from it. flushSave never throws. */
-    flushSave().then(function () {
-      if (S.saveMode === "local") {
-        /* This backend predates the corrections route (or is unreachable), so
-           its export would use raw OCR. Apply the corrections client-side to
-           this page's text and hand it over as a download instead. */
-        var blob = new Blob([S.page.text + "\n"], { type: "text/plain;charset=utf-8" });
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement("a");
-        a.href = url;
-        a.download = "pink-cloud-" + S.jobId.slice(0, 8) + "-p" + S.page.page + "-corrected.txt";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-        toast("Exported with corrections applied locally");
-        return;
-      }
-      /* A server-side save/read failed earlier (500 etc.): the PDF is built
-         from the server's correction map, so it may miss the latest fixes. */
-      if (S.saveError) {
-        toast("Warning: the latest fixes were not saved on the server · the PDF may not include them");
-      }
-      /* Live mode: open the backend's searchable-PDF export for the whole job
-         (GET /jobs/{job_id}/export.pdf, same origin unless ?api= overrides).
-         New tab: the browser shows or downloads the PDF. */
-      window.open(window.PC_API.API_BASE + "/jobs/" + encodeURIComponent(S.jobId) + "/export.pdf",
-        "_blank", "noopener");
-    });
-  });
+  el.exportBtn.addEventListener("click", openExport);
+  wireExport();
+  wireSidenav();
 
   wireHotkeys();
   probeConn();
@@ -1365,9 +1784,11 @@ function init() {
 function loadJob(doc, meta) {
   S.jobId = meta.jobId || null;
   S.pageCount = meta.pageCount || 1;
-  S.pageImageUrl = (meta.jobId && window.PC_API.pageImageUrl)
+  S.pageImageUrl = meta.imageUrl || ((meta.jobId && window.PC_API.pageImageUrl)
     ? window.PC_API.pageImageUrl(meta.jobId, doc.page)
-    : null;
+    : null);
+  S.mockId = meta.mockId || null;
+  S.filename = meta.filename || "";
   S.imageTried = false;
   S.imageLoaded = false;
   S.imageFailed = false;
@@ -1410,15 +1831,31 @@ function pollJob(depth) {
     }
     var idx = Math.min(PAGE_NO, pages.length) - 1;
     hideOverlay();
-    loadJob(pages[idx], { jobId: JOB_ID, pageCount: pages.length });
+    loadJob(pages[idx], { jobId: JOB_ID, pageCount: pages.length, filename: job.filename || "" });
   }).catch(showFatal);
 }
 
 function bootData() {
   if (window.PC_API.USE_MOCK) {
-    /* Demo path, untouched: the Kural page from schema/doc_demo.json. */
+    var fixture = BOOT_QS.get("fixture");
+    if (fixture && /^[a-z0-9_-]+$/i.test(fixture)) {
+      /* Mock fixture from real Sarvam sample output (samples/editor/, built
+         by samples/editor/make_fixtures.py) drawn on its real scan
+         (raw/<name>.png) - exercises the queue crops offline. */
+      fetch("./samples/editor/" + fixture + ".json", { cache: "no-store" })
+        .then(function (res) { if (!res.ok) throw new Error("fixture " + fixture + " (" + res.status + ")"); return res.json(); })
+        .then(function (doc) { loadJob(doc, { imageUrl: "./raw/" + fixture + ".png", mockId: "demo-" + fixture }); })
+        .catch(function (err) { toast("Could not load fixture · " + err.message); });
+      return;
+    }
+    /* Demo path: the Kural page from schema/doc_demo.json, plus MOCK
+       suggestions in the proposed contract shape (the real lexical source is
+       not built yet). */
     window.PC_API.getPage(1)
-      .then(function (doc) { loadJob(doc, {}); })
+      .then(function (doc) {
+        if (!Array.isArray(doc.suggestions)) doc.suggestions = MOCK_SUGGESTIONS;
+        loadJob(doc, {});
+      })
       .catch(function (err) { toast("Could not load page · " + err.message); });
     return;
   }
