@@ -4,6 +4,9 @@
    Vanilla JS. No packages, no network beyond the API seam.
 
    Status flow per page: queued -> uploading -> processing -> done|error
+   Design: v2 (stepper, gradient drop zone, file rows, Prev/Next), brand orange.
+   Files upload as soon as they are added. Done rows offer: open in editor,
+   Download result PDF (GET /jobs/{id}/export.pdf), remove.
    ========================================================= */
 (() => {
   'use strict';
@@ -26,12 +29,26 @@
      ======================================================= */
   const MOCK_DEFAULT = false;
   const QS = new URLSearchParams(location.search);
-  const MOCK = QS.has('mock') ? QS.get('mock') !== '0' : MOCK_DEFAULT;
+  const DEMO = QS.has('demo'); // scripted drag-over -> drop demo; always runs on the mock engine
+  const MOCK = DEMO || (QS.has('mock') ? QS.get('mock') !== '0' : MOCK_DEFAULT);
   const API_BASE = (QS.get('api') || '').replace(/\/+$/, '');
 
   const HEALTH = API_BASE + '/health';
   const POST_JOBS = API_BASE + '/jobs';
   const POLL_JOB = (id) => `${API_BASE}/jobs/${encodeURIComponent(id)}`;
+  /* Result PDF, page-for-page (route from the backend side; lands on main). */
+  const EXPORT_PDF = (id) => `${API_BASE}/jobs/${encodeURIComponent(id)}/export.pdf`;
+  /* Upload -> editor handoff. The editor loads GET /jobs/{job_id}
+     (result.pages) itself; we only pass the ids. */
+  function EDITOR_URL(jobIds) {
+    const q = new URLSearchParams();
+    if (MOCK) q.set('mock', '1');
+    if (jobIds.length) q.set('job', jobIds[0]);
+    if (jobIds.length > 1) q.set('jobs', jobIds.join(','));
+    if (API_BASE) q.set('api', API_BASE);
+    const s = q.toString();
+    return './editor.html' + (s ? '?' + s : '');
+  }
   const POLL_MS = 400;
   const POLL_MAX = 600; // depth cap ≈ 4 min per job
   const LIVE_PARALLEL = 2; // OCR runs inside POST: keep the server load small
@@ -154,6 +171,8 @@
       };
       xhr.upload.onload = () => { if (opts.onProgress) opts.onProgress('processing', 100); };
       xhr.onerror = () => reject(new ApiError('Backend unreachable (POST /jobs)', 'down'));
+      xhr.onabort = () => reject(new ApiError('Upload cancelled', 'cancel'));
+      if (opts.onXhr) opts.onXhr(xhr);
       xhr.ontimeout = () => reject(new ApiError('Backend timed out (POST /jobs)', 'down'));
       xhr.onload = () => {
         let body = null;
@@ -218,13 +237,15 @@
   }
 
   /* -------------------------------------------------------
-     UI
+     UI — v2 design (stepper, gradient drop zone, file rows,
+     Remove all, Previous/Next). Files upload as soon as they
+     are added; Next step opens the editor with the job ids.
      ------------------------------------------------------- */
   const root = document.getElementById('upload-root');
-  if (!root) { console.warn('[upload] mount #upload-root not found — slice 3 not rendered'); return; }
-  root.classList.add('up-active'); // page 1 takes the viewport; the router slice hands over later
+  if (!root) { console.warn('[upload] mount #upload-root not found — upload screen not rendered'); return; }
+  root.classList.add('up-active');
 
-  const state = { pages: new Map(), running: false };
+  const state = { pages: new Map(), inFlight: 0, queue: [] };
   let order = []; // display order of page keys
   let uid = 0;
 
@@ -234,120 +255,231 @@
     if (text !== undefined) el.textContent = text;
     return el;
   }
+  function svgEl(markup) {
+    const t = document.createElement('template');
+    t.innerHTML = markup.trim();
+    return t.content.firstChild;
+  }
   function fmtSize(bytes) {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   }
 
-  /* --- static skeleton (layout plan zones 2 + 3) --- */
+  /* --- icons (static markup, brand orange) --- */
+  const CHECK = (c) => `<svg width="16" height="16" viewBox="0 0 16 16"><path d="M2.6 8.4l3.4 3.3 7.3-7.3" fill="none" stroke="${c}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const EYE = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M1.2 9s2.9-5.2 7.8-5.2S16.8 9 16.8 9s-2.9 5.2-7.8 5.2S1.2 9 1.2 9z" stroke-linejoin="round"/><circle cx="9" cy="9" r="2.4"/></svg>';
+  const BIN = '<svg width="16" height="17" viewBox="0 0 16 17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 3.5h13M5.5 3.5V2a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1.5M3 3.5l.8 11a1.5 1.5 0 0 0 1.5 1.4h5.4a1.5 1.5 0 0 0 1.5-1.4l.8-11"/></svg>';
+  const XC = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="9" cy="9" r="7.6"/><path d="M6.3 6.3l5.4 5.4M11.7 6.3l-5.4 5.4"/></svg>';
+  const DL = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2.2v9.2M5.2 7.8L9 11.6l3.8-3.8M2.5 12.6v1.6a1.6 1.6 0 0 0 1.6 1.6h9.8a1.6 1.6 0 0 0 1.6-1.6v-1.6"/></svg>';
+  const BDG_OK = '<span class="up-bdg"><svg viewBox="0 0 10 10" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M1.8 5.3l2.1 2.1 4.3-4.6"/></svg></span>';
+  let icoSeq = 0;
+  function fileIcon(name) {
+    const id = 'upi' + (++icoSeq);
+    if (/\.(png|jpe?g|tiff?)$/i.test(name)) {
+      return `<svg width="36" height="30" viewBox="0 0 36 30" aria-hidden="true"><defs><linearGradient id="g${id}" x1="0" y1="0" x2="0.6" y2="1"><stop offset="0" stop-color="#FB8D69"/><stop offset="1" stop-color="#F94612"/></linearGradient><clipPath id="c${id}"><rect width="36" height="30" rx="4"/></clipPath></defs><g clip-path="url(#c${id})"><rect width="36" height="30" fill="url(#g${id})"/><circle cx="10" cy="9" r="4.2" fill="#FFC9B3"/><path d="M-2 30 L12 17 L24 30z" fill="#FFF4EF"/><path d="M8 30 L24 13 L40 30z" fill="#D93A0B"/></g></svg>`;
+    }
+    return `<svg width="34" height="40" viewBox="0 0 34 40" aria-hidden="true"><defs><linearGradient id="g${id}" x1="0" y1="0" x2="0.35" y2="1"><stop offset="0" stop-color="#FB8D69"/><stop offset="1" stop-color="#F94612"/></linearGradient></defs><path d="M5 0h15l14 14v21a5 5 0 0 1-5 5H5a5 5 0 0 1-5-5V5a5 5 0 0 1 5-5z" fill="url(#g${id})"/><path d="M20 0l14 14h-10a4 4 0 0 1-4-4z" fill="#D93A0B"/></svg>`;
+  }
+
+  /* --- static skeleton --- */
   function buildSkeleton() {
-    const layout = h('div', 'up-layout');
-    root.appendChild(layout);
+    const page = h('div', 'up-page');
+    root.appendChild(page);
 
-    const card = h('section', 'card up-card');
+    /* stepper: the app's real flow; this screen is step 3 */
+    const stepper = h('ol', 'up-stepper');
+    stepper.setAttribute('aria-label', 'Progress');
+    ['a', 'b', 'c'].forEach((s) => stepper.appendChild(h('li', 'up-seg ' + s)));
+    [
+      { lbl: 'Scan pages', x: 64, cls: 'is-done', c: '#FB8D69' },
+      { lbl: 'Prepare files', x: 278.5, cls: 'is-done d2', c: '#F94612' },
+      { lbl: 'Upload scans', x: 494, cls: 'is-current', n: 3 },
+      { lbl: 'Tamil OCR', x: 708.5, cls: '', n: 4 },
+      { lbl: 'Review & export PDF', x: 924, cls: '', n: 5 }
+    ].forEach((s) => {
+      const li = h('li', 'up-step ' + s.cls);
+      li.style.left = s.x + 'px';
+      if (s.c) li.style.setProperty('--c', s.c);
+      if (s.cls === 'is-current') li.setAttribute('aria-current', 'step');
+      const dot = h('div', 'up-dot', s.n ? String(s.n) : undefined);
+      if (!s.n) dot.appendChild(svgEl(CHECK(s.c)));
+      li.appendChild(dot);
+      li.appendChild(h('div', 'up-lbl', s.lbl));
+      stepper.appendChild(li);
+    });
+    page.appendChild(stepper);
+
+    const card = h('section', 'up-card');
     card.setAttribute('aria-label', 'Upload scans');
-    card.appendChild(h('h2', null, 'Upload scans'));
 
-    /* 2a dropzone */
+    /* drop zone */
     const dz = h('div', 'up-dz');
     dz.id = 'up-dz';
-    const dzHead = h('div', 'up-dz-head');
-    dzHead.appendChild(h('span', 'up-glyph', '⇪'));
-    dzHead.appendChild(h('span', null, 'Drag files here'));
-    dz.appendChild(dzHead);
-    const browse = h('button', 'btn btn--soft', 'Browse');
+    dz.appendChild(svgEl('<svg class="up-dz-border" preserveAspectRatio="none" aria-hidden="true"><rect x="0.7" y="0.7" rx="8.5" ry="8.5" width="calc(100% - 1.4px)" height="calc(100% - 1.4px)"/></svg>'));
+    const idle = h('div', 'up-idle');
+    const tile = h('div', 'up-tile');
+    tile.appendChild(svgEl('<svg width="32" height="37" viewBox="0 0 32 37" aria-hidden="true"><defs><linearGradient id="up-tg" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#FB8D69"/><stop offset="1" stop-color="#F94612"/></linearGradient></defs><path d="M5 0h14l13 13v19a5 5 0 0 1-5 5H5a5 5 0 0 1-5-5V5a5 5 0 0 1 5-5z" fill="url(#up-tg)"/><path d="M19 0l13 13H23a4 4 0 0 1-4-4z" fill="#D93A0B"/></svg>'));
+    idle.appendChild(tile);
+    idle.appendChild(h('h3', null, 'Drag & drop your scans here'));
+    idle.appendChild(h('div', 'up-or', 'or'));
+    const browse = h('button', 'up-browse', 'Browse files');
     browse.type = 'button';
     browse.setAttribute('aria-label', 'Browse for scans');
-    dz.appendChild(browse);
+    idle.appendChild(browse);
+    const note = h('div', 'up-note');
+    note.appendChild(document.createTextNode('Supported files: PDF (multi-page), JPG, PNG and TIFF'));
+    note.appendChild(h('br'));
+    note.appendChild(h('span', 'ta', 'தமிழ் ஆவணங்களுக்கான OCR'));
+    idle.appendChild(note);
+    dz.appendChild(idle);
+
+    const over = h('div', 'up-over');
+    over.setAttribute('aria-hidden', 'true');
+    over.appendChild(svgEl('<svg class="up-ob" preserveAspectRatio="none"><rect x="0.8" y="0.8" rx="8.5" ry="8.5" width="calc(100% - 1.6px)" height="calc(100% - 1.6px)"/></svg>'));
+    const fx = h('div', 'up-fx');
+    fx.appendChild(svgEl('<svg viewBox="0 0 140 74" width="140" height="74"><path d="M64 30h8l6 6v14a2.5 2.5 0 0 1-2.5 2.5h-11.5a2.5 2.5 0 0 1-2.5-2.5V32.5A2.5 2.5 0 0 1 64 30z" fill="none" stroke="#fff" stroke-width="2.2" stroke-linejoin="round"/><path d="M72 30v4.5a1.5 1.5 0 0 0 1.5 1.5H78" fill="none" stroke="#fff" stroke-width="2.2" stroke-linejoin="round"/><path class="up-arc" pathLength="1" d="M40 8 C 30 16, 29 32, 38 40 C 42 44, 46 46, 51 47"/><path class="up-head" d="M45.5 41.5 L51 47 L44 50"/><path class="up-arc" pathLength="1" d="M100 8 C 110 16, 111 32, 102 40 C 98 44, 94 46, 89 47"/><path class="up-head" d="M94.5 41.5 L89 47 L96 50"/></svg>'));
+    over.appendChild(fx);
+    over.appendChild(h('h4', null, 'Drop your scans here'));
+    dz.appendChild(over);
+
     const input = h('input');
     input.type = 'file';
     input.multiple = true;
     input.accept = ACCEPT_ATTR;
     input.id = 'up-input';
+    input.hidden = true;
     input.tabIndex = -1;
     input.setAttribute('aria-hidden', 'true');
     dz.appendChild(input);
     card.appendChild(dz);
 
-    /* 2b hint */
-    card.appendChild(h('p', 'up-hint', 'PDF · JPG · PNG · TIFF · multi-page OK'));
-
-    /* rejection notices — ui.css toast, error variant */
+    /* rejection notices */
     const notices = h('div', 'up-notices');
     notices.id = 'up-notices';
+    notices.setAttribute('role', 'status');
     card.appendChild(notices);
 
-    /* 2c file list */
+    /* files */
+    const fhead = h('div', 'up-fhead');
+    const title = h('h5', null, 'Files');
+    const count = h('span', null, '');
+    title.appendChild(count);
+    fhead.appendChild(title);
+    const rmall = h('button', 'up-rmall');
+    rmall.type = 'button';
+    rmall.id = 'up-rmall';
+    rmall.appendChild(document.createTextNode('Remove all '));
+    rmall.appendChild(svgEl(BIN));
+    fhead.appendChild(rmall);
+    card.appendChild(fhead);
+
     const list = h('ul', 'up-list');
     list.id = 'up-list';
     list.setAttribute('aria-live', 'polite');
     list.setAttribute('aria-label', 'Scans and their status');
     card.appendChild(list);
+    const empty = h('p', 'up-empty', 'No scans yet. Each file uploads and runs OCR as soon as you add it.');
+    card.appendChild(empty);
 
-    /* 2d primary action — the only filled button on the page */
-    const start = h('button', 'btn btn--primary up-start', 'Start OCR →');
-    start.type = 'button';
-    start.id = 'up-start';
-    start.disabled = true;
-    card.appendChild(start);
+    /* footer */
+    const foot = h('div', 'up-foot');
+    const prev = h('button', 'up-prev', 'Previous step');
+    prev.type = 'button';
+    prev.id = 'up-prev';
+    const canGoBack = document.referrer && (() => { try { return new URL(document.referrer).origin === location.origin; } catch (e) { return false; } })();
+    prev.disabled = !canGoBack;
+    prev.title = canGoBack ? 'Back' : 'Upload is the first screen';
+    foot.appendChild(prev);
+    const offline = h('p', 'up-offline', '● Checking backend…');
+    foot.appendChild(offline);
+    const next = h('button', 'up-next', 'Next step');
+    next.type = 'button';
+    next.id = 'up-next';
+    next.disabled = true;
+    foot.appendChild(next);
+    card.appendChild(foot);
 
-    /* zone 3 help panel */
-    const help = h('section', 'card up-help');
-    help.setAttribute('aria-label', 'How to use');
-    const ol1 = h('ol', 'up-steps');
-    ['Drop your scans', 'Start OCR', 'Review flagged words'].forEach((t) => ol1.appendChild(h('li', null, t)));
-    const ol2 = h('ol', 'up-steps');
-    ['Fast OCR pass → page badge', 'Repair only damaged pages', 'Side-by-side review', 'Searchable Tamil PDF'].forEach((t) => ol2.appendChild(h('li', null, t)));
-    help.appendChild(h('h3', null, 'How to use'));
-    help.appendChild(ol1);
-    help.appendChild(h('hr', 'up-rule'));
-    help.appendChild(h('h3', null, 'How it works'));
-    help.appendChild(ol2);
-    const offline = h('p', 'up-offline', '● Runs fully offline');
-    help.appendChild(offline);
-
-    layout.appendChild(card);
-    layout.appendChild(help);
-    return { dz, browse, input, list, start, notices, offline };
+    page.appendChild(card);
+    return { dz, browse, input, list, empty, notices, offline, rmall, count, prev, next };
   }
 
   const el = buildSkeleton();
 
-  /* --- status vocabulary: ui.css pill, dot-or-spinner + icon + word --- */
-  const STATUS_META = {
-    queued:     { word: 'Queued',     cls: 'pill pill--tinted pill--default',    dot: 'pill__dot', ico: null },
-    uploading:  { word: 'Uploading',  cls: 'pill pill--tinted up-pill-live',    dot: null,        ico: null },  /* spinner */
-    processing: { word: 'Processing', cls: 'pill pill--tinted pill--processing', dot: null,       ico: null },  /* spinner */
-    done:       { word: 'Done',       cls: 'pill pill--tinted pill--success',   dot: 'pill__dot', ico: '✓' },
-    error:      { word: 'Error',      cls: 'pill pill--tinted pill--error',     dot: 'pill__dot', ico: '✕' }
-  };
+  /* --- row rendering --- */
+  const PCT_TEXT = { queued: 'Waiting', processing: 'Reading…' };
 
   function applyPage(key, data) {
     const p = state.pages.get(key);
     if (!p) return;
+    const was = p.status;
     if (data.status) p.status = data.status;
     if (typeof data.progress === 'number') p.progress = data.progress;
     if (data.result) p.result = data.result;
     if (data.pages) p.pages = data.pages;
     if (data.error) p.error = data.error;
 
-    p.els.row.dataset.status = p.status;
-    const meta = STATUS_META[p.status] || STATUS_META.queued;
-    p.els.badge.className = meta.cls;
-    p.els.badge.title = meta.word;
-    p.els.badge.replaceChildren();
-    if (meta.dot) p.els.badge.appendChild(h('span', meta.dot));
-    else p.els.badge.appendChild(h('span', 'up-spin'));
-    if (meta.ico) p.els.badge.appendChild(h('span', 'up-glyph', meta.ico));
-    p.els.badge.appendChild(h('span', null, meta.word));
+    const { row, fill, pct, why, size, ic, acts } = p.els;
+    row.dataset.status = p.status;
 
-    if (p.status === 'uploading') p.els.fill.style.width = Math.max(4, p.progress || 0) + '%';
-    else if (p.status === 'processing' || p.status === 'done') p.els.fill.style.width = '100%';
+    if (p.status === 'uploading') {
+      const v = Math.max(4, Math.min(100, p.progress || 0));
+      fill.style.width = v + '%';
+      pct.textContent = Math.round(v) + '%';
+    } else if (p.status === 'processing') {
+      fill.style.width = '100%';
+      pct.textContent = PCT_TEXT.processing;
+    } else if (p.status === 'queued') {
+      fill.style.width = '0%';
+      pct.textContent = PCT_TEXT.queued;
+    }
+    why.textContent = p.status === 'error' ? (p.error || 'OCR failed') : '';
+    size.textContent = fmtSize(p.size) + (p.status === 'done' ? pageSummary(p.pages) : '');
 
-    p.els.why.textContent = p.status === 'error' ? (p.error || 'OCR failed') : '';
-    p.els.size.textContent = fmtSize(p.size) + (p.status === 'done' ? pageSummary(p.pages) : '');
-    refreshStart();
+    if (p.status !== was && (p.status === 'done' || p.status === 'error')) {
+      ic.querySelector('.up-bdg')?.remove();
+      if (p.status === 'done') {
+        ic.insertAdjacentHTML('beforeend', BDG_OK);
+        row.classList.remove('is-flash'); void row.offsetWidth; row.classList.add('is-flash');
+      } else {
+        const b = h('span', 'up-bdg is-err', '!');
+        ic.appendChild(b);
+      }
+      renderActs(p);
+    }
+    refreshFooter();
+  }
+
+  function iconButton(a, label, svg) {
+    const b = h('button', 'up-ib');
+    b.type = 'button';
+    b.dataset.a = a;
+    b.title = label;
+    b.setAttribute('aria-label', label);
+    b.appendChild(svgEl(svg));
+    return b;
+  }
+  function renderActs(p) {
+    const acts = p.els.acts;
+    acts.replaceChildren();
+    if (p.status === 'done') {
+      acts.appendChild(iconButton('view', 'Open ' + p.name + ' in the editor', EYE));
+      if (!MOCK && p.jobId) {
+        const a = h('a', 'up-ib');
+        a.href = EXPORT_PDF(p.jobId);
+        a.setAttribute('download', p.name.replace(/\.[^.]+$/, '') + '-tamil-ocr.pdf');
+        a.title = 'Download result PDF';
+        a.setAttribute('aria-label', 'Download result PDF for ' + p.name);
+        a.dataset.a = 'pdf';
+        a.appendChild(svgEl(DL));
+        acts.appendChild(a);
+      }
+      acts.appendChild(iconButton('del', 'Remove ' + p.name, BIN));
+    } else if (p.status === 'error') {
+      acts.appendChild(iconButton('del', 'Remove ' + p.name, BIN));
+    } else {
+      acts.appendChild(iconButton('cancel', 'Cancel ' + p.name, XC));
+    }
   }
 
   /* "· 3 pages · 1 to review" from result.pages[] */
@@ -362,10 +494,12 @@
     if (!files.length) return;
     const rejected = files.filter((f) => !isAccepted(f));
     const accepted = files.filter(isAccepted);
-    rejected.slice(0, 3).forEach((f) => addNotice(f.name + ': unsupported type — PDF, JPG, PNG or TIFF only'));
+    rejected.slice(0, 3).forEach((f) => addNotice(f.name + ': unsupported type. Use PDF, JPG, PNG or TIFF'));
     if (rejected.length > 3) addNotice((rejected.length - 3) + ' more files skipped (unsupported type)');
-    accepted.forEach((f) => addPage(f));
-    refreshStart();
+    const keys = accepted.map((f) => addPage(f));
+    // Mock only: the last file of a multi-file drop comes back damaged (error-state demo).
+    if (MOCK && keys.length > 1) state.pages.get(keys[keys.length - 1]).mockFail = true;
+    enqueue(keys);
   }
 
   function isAccepted(f) {
@@ -375,147 +509,163 @@
 
   function addPage(file) {
     const key = 'up' + (++uid);
-    file.__upKey = key;
-
-    const row = h('li', 'up-row');
+    const row = h('li', 'up-row is-enter');
     row.dataset.status = 'queued';
     row.dataset.key = key;
 
-    const meta = h('div', 'up-meta');
-    meta.appendChild(h('span', 'up-name', file.name));
+    const ic = h('div', 'up-ic');
+    ic.insertAdjacentHTML('beforeend', fileIcon(file.name));
+    row.appendChild(ic);
+
+    const body = h('div', 'up-body');
+    const top = h('div', 'up-top');
+    top.appendChild(h('span', 'up-name', file.name));
     const size = h('span', 'up-size', fmtSize(file.size));
-    meta.appendChild(size);
-    row.appendChild(meta);
-
+    top.appendChild(size);
+    body.appendChild(top);
+    const pct = h('span', 'up-pct', PCT_TEXT.queued);
+    body.appendChild(pct);
     const bar = h('div', 'up-bar');
-    const fill = h('span', 'up-fill');
+    const fill = h('i', 'up-fill');
     bar.appendChild(fill);
-    row.appendChild(bar);
-
+    body.appendChild(bar);
     const why = h('span', 'up-why');
-    row.appendChild(why);
+    body.appendChild(why);
+    row.appendChild(body);
 
-    const badge = h('span', STATUS_META.queued.cls);
-    badge.appendChild(h('span', 'pill__dot'));
-    badge.appendChild(h('span', null, STATUS_META.queued.word));
-    row.appendChild(badge);
-
-    const del = h('button', 'btn btn--icon btn--sm btn--ghost', '×');
-    del.type = 'button';
-    del.setAttribute('aria-label', 'Remove ' + file.name);
-    row.appendChild(del);
+    const acts = h('div', 'up-acts');
+    row.appendChild(acts);
 
     el.list.appendChild(row);
-    state.pages.set(key, {
+    requestAnimationFrame(() => requestAnimationFrame(() => row.classList.remove('is-enter')));
+    const p = {
       key, file, name: file.name, size: file.size,
-      status: 'queued', progress: 0, jobId: null, result: null, error: null,
-      pages: null,
-      els: { row, fill, why, badge, size }
-    });
+      status: 'queued', progress: 0, jobId: null, result: null, error: null, pages: null, xhr: null,
+      els: { row, fill, pct, why, size, ic, acts }
+    };
+    state.pages.set(key, p);
     order.push(key);
-    del.addEventListener('click', () => removePage(key));
+    renderActs(p);
+    refreshFooter();
+    return key;
   }
 
   function removePage(key) {
     const p = state.pages.get(key);
     if (!p) return;
-    p.els.row.remove();
+    if (p.xhr && p.status === 'uploading') { try { p.xhr.abort(); } catch (e) { /* already done */ } }
     state.pages.delete(key);
+    state.queue = state.queue.filter((k) => k !== key);
     const i = order.indexOf(key);
     if (i >= 0) order.splice(i, 1);
-    refreshStart();
+    const row = p.els.row;
+    row.style.height = row.getBoundingClientRect().height + 'px';
+    requestAnimationFrame(() => row.classList.add('is-leaving'));
+    setTimeout(() => row.remove(), 240);
+    refreshFooter();
   }
 
-  function refreshStart() {
-    const anyQueued = order.some((k) => state.pages.get(k).status === 'queued');
-    el.start.disabled = state.running || !anyQueued;
-    el.start.textContent = state.running ? 'OCR running…' : 'Start OCR →';
+  el.list.addEventListener('click', (e) => {
+    const b = e.target.closest('.up-ib');
+    if (!b || b.tagName === 'A') return;
+    const row = b.closest('.up-row');
+    const key = row && row.dataset.key;
+    if (!key) return;
+    if (b.dataset.a === 'del' || b.dataset.a === 'cancel') removePage(key);
+    else if (b.dataset.a === 'view') {
+      const p = state.pages.get(key);
+      if (p && p.jobId) location.href = EDITOR_URL([p.jobId]);
+    }
+  });
+  el.rmall.addEventListener('click', () => {
+    order.slice().forEach((key, i) => setTimeout(() => removePage(key), i * 40));
+  });
+
+  function doneJobIds() {
+    return order.map((k) => state.pages.get(k)).filter((p) => p && p.status === 'done' && p.jobId).map((p) => p.jobId);
   }
+  function refreshFooter() {
+    const n = order.length;
+    const busy = order.some((k) => { const s = state.pages.get(k).status; return s === 'queued' || s === 'uploading' || s === 'processing'; });
+    const done = doneJobIds().length;
+    el.next.disabled = busy || !done;
+    el.next.title = busy ? 'Waiting for OCR to finish' : (done ? 'Open the editor' : 'Add a scan first');
+    el.rmall.disabled = !n;
+    el.count.textContent = n ? String(n) : '';
+    el.empty.hidden = n > 0;
+  }
+  el.next.addEventListener('click', () => {
+    const ids = doneJobIds();
+    if (ids.length) location.href = EDITOR_URL(ids);
+  });
+  el.prev.addEventListener('click', () => history.back());
 
   function addNotice(text) {
-    const t = h('div', 'toast toast--error');
-    t.setAttribute('role', 'status');
-    t.appendChild(h('span', 'toast__icon', '!'));
-    t.appendChild(h('span', 'toast__message', text));
+    const t = h('div', 'up-notice');
+    t.appendChild(h('b', null, '!'));
+    t.appendChild(h('span', null, text));
     el.notices.appendChild(t);
     while (el.notices.children.length > 3) el.notices.firstElementChild.remove();
   }
 
-  /* --- Start OCR: POST /jobs per file, then poll GET /jobs/{id} --- */
-  function startBatch() {
-    const keys = order.filter((k) => state.pages.get(k).status === 'queued');
-    if (!keys.length || state.running) return;
-    state.running = true;
-    refreshStart();
-    if (MOCK) { startMockBatch(keys); return; }
-    probeHealth().then((h) => {
-      if (h.state === 'down') {
-        keys.forEach((key) => applyPage(key, { status: 'error', error: 'Backend unreachable: nothing was uploaded' }));
-        addNotice('Backend unreachable at ' + (API_BASE || location.origin) + ' - start the API, or open ?mock=1 for the demo');
-        state.running = false; refreshStart();
+  /* --- runner: POST /jobs per file (LIVE_PARALLEL at once), then poll GET /jobs/{id} --- */
+  let healthGate = null; // live: one /health check per idle->busy transition
+  function enqueue(keys) {
+    if (!keys.length) return;
+    state.queue.push(...keys);
+    if (MOCK) { pump(); return; }
+    if (state.inFlight > 0) { pump(); return; }
+    if (!healthGate) {
+      healthGate = probeHealth().then((hs) => { healthGate = null; return hs; });
+    }
+    healthGate.then((hs) => {
+      if (hs.state === 'down') {
+        const failed = state.queue.splice(0);
+        failed.forEach((key) => applyPage(key, { status: 'error', error: 'Backend unreachable: nothing was uploaded' }));
+        if (failed.length) addNotice('Backend unreachable at ' + (API_BASE || location.origin) + '. Start the API, or open ?mock=1 for the demo');
         return;
       }
-      runLive(keys);
+      pump();
     });
   }
 
-  /* Mock: unchanged demo timing (all files start, then poll). */
-  function startMockBatch(keys) {
-    let pending = keys.length;
-    keys.forEach((key, i) => {
-      const p = state.pages.get(key);
-      startPage(p.file, { fail: keys.length > 1 && i === keys.length - 1, delay: 250 + i * 350 })
-        .then(({ job_id }) => { p.jobId = job_id; })
-        .catch((err) => applyPage(key, { status: 'error', error: err.message }))
-        .finally(() => { if (--pending === 0) pollLoop(keys, 0); });
-    });
-  }
-
-  /* Live: at most LIVE_PARALLEL uploads at once; each row goes
-     uploading (real bytes) -> processing (server OCR) -> done|error. */
-  function runLive(keys) {
-    const queue = keys.slice();
-    let inFlight = 0;
-    let wentDown = false;
-    const next = () => {
-      if (!queue.length) { if (inFlight === 0) pollLoop(keys, 0); return; }
-      const key = queue.shift();
-      const p = state.pages.get(key);
-      if (!p) { next(); return; } // removed meanwhile
-      inFlight++;
-      startPage(p.file, { onProgress: (status, progress) => applyPage(key, { status, progress }) })
-        .then(({ job_id }) => { p.jobId = job_id; applyPage(key, { status: 'processing', progress: 100 }); return pollPage(job_id); })
-        .then((pg) => { if (pg) applyPage(key, pg); })
-        .catch((err) => {
-          applyPage(key, { status: 'error', error: err.message });
-          if (err.kind === 'down' && !wentDown) { wentDown = true; setHealth({ state: 'down' }); addNotice(p.name + ': ' + err.message); }
-          else if (err.kind !== 'down') addNotice(p.name + ': ' + err.message);
-        })
-        .finally(() => { inFlight--; next(); });
-    };
-    for (let i = 0; i < LIVE_PARALLEL; i++) next();
-  }
-
-  function pollLoop(keys, depth) {
-    const active = keys.filter((k) => {
-      const p = state.pages.get(k);
-      return p && p.jobId && p.status !== 'done' && p.status !== 'error';
-    });
-    if (!active.length || depth >= POLL_MAX) {
-      // Never leave a spinner behind: anything still open has timed out.
-      active.forEach((k) => applyPage(k, { status: 'error', error: 'Timed out waiting for OCR' }));
-      state.running = false; refreshStart(); return;
+  function pump() {
+    const limit = MOCK ? 3 : LIVE_PARALLEL;
+    while (state.inFlight < limit && state.queue.length) {
+      const key = state.queue.shift();
+      if (!state.pages.has(key)) continue;
+      state.inFlight++;
+      runOne(key).finally(() => { state.inFlight--; pump(); refreshFooter(); });
     }
-    let left = active.length;
-    active.forEach((key) => {
-      pollPage(state.pages.get(key).jobId)
-        .then((pg) => applyPage(key, pg))
-        .catch((err) => applyPage(key, { status: 'error', error: err.message }))
-        .finally(() => { if (--left === 0) setTimeout(() => pollLoop(keys, depth + 1), POLL_MS); });
-    });
   }
 
-  /* --- connection state: the help panel's "offline" line tells the truth --- */
+  async function runOne(key) {
+    const p = state.pages.get(key);
+    try {
+      const { job_id } = await startPage(p.file, {
+        fail: p.mockFail, delay: 0,
+        onXhr: (xhr) => { p.xhr = xhr; },
+        onProgress: (status, progress) => applyPage(key, { status, progress })
+      });
+      p.jobId = job_id;
+      if (!MOCK) applyPage(key, { status: 'processing', progress: 100 });
+      for (let i = 0; i < POLL_MAX; i++) {
+        if (!state.pages.has(key)) return; // removed meanwhile
+        const pg = await pollPage(job_id);
+        applyPage(key, pg);
+        if (pg.status === 'done' || pg.status === 'error') return;
+        await wait(MOCK ? 120 : POLL_MS);
+      }
+      applyPage(key, { status: 'error', error: 'Timed out waiting for OCR' });
+    } catch (err) {
+      if (err.kind === 'cancel' || !state.pages.has(key)) return;
+      applyPage(key, { status: 'error', error: err.message });
+      if (err.kind === 'down') { setHealth({ state: 'down' }); addNotice(p.name + ': ' + err.message); }
+      else addNotice(p.name + ': ' + err.message);
+    }
+  }
+
+  /* --- connection state: the footer line tells the truth --- */
   const HEALTH_TEXT = {
     mock: '● Demo mode: mock data, runs fully offline',
     paddle: '● Connected: OCR engine ready',
@@ -525,40 +675,53 @@
     unknown: '● Connected',
     checking: '● Checking backend…'
   };
-  function setHealth(h) {
+  function setHealth(hs) {
     const line = el.offline;
-    if (!line) return;
-    const state_ = HEALTH_TEXT[h.state] ? h.state : 'unknown';
-    line.dataset.state = state_;
-    line.textContent = HEALTH_TEXT[state_];
-    line.title = h.state === 'down'
+    const s = HEALTH_TEXT[hs.state] ? hs.state : 'unknown';
+    line.dataset.state = s;
+    line.textContent = HEALTH_TEXT[s];
+    line.title = hs.state === 'down'
       ? 'No response from ' + (API_BASE || location.origin) + '/health. Start the API or open with ?mock=1.'
-      : (h.error ? 'OCR engine: ' + h.error : '');
+      : (hs.error ? 'OCR engine: ' + hs.error : '');
   }
   function probeHealth() {
     setHealth({ state: 'checking' });
-    return realHealth().then((h) => { setHealth(h); return h; });
+    return realHealth().then((hs) => { setHealth(hs); return hs; });
   }
 
-  /* --- dropzone wiring --- */
+  /* --- drop zone: enter = instant swap (1 frame), leave/drop = 200ms fade --- */
   let dragDepth = 0;
-  el.dz.addEventListener('dragenter', (e) => { e.preventDefault(); dragDepth++; el.dz.classList.add('is-drag'); });
-  el.dz.addEventListener('dragover', (e) => { e.preventDefault(); });
-  el.dz.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; el.dz.classList.remove('is-drag'); } });
+  const hasFiles = (e) => e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') > -1;
+  el.dz.addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; el.dz.classList.add('is-drag'); });
+  el.dz.addEventListener('dragover', (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+  el.dz.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) el.dz.classList.remove('is-drag'); });
   el.dz.addEventListener('drop', (e) => {
     e.preventDefault();
     dragDepth = 0;
     el.dz.classList.remove('is-drag');
     if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
   });
+  window.addEventListener('dragover', (e) => e.preventDefault()); // a missed drop never navigates away
+  window.addEventListener('drop', (e) => e.preventDefault());
   el.dz.addEventListener('click', (e) => {
-    if (e.target.closest('button, input, label')) return; // Browse handles itself
+    if (e.target.closest('button, input, label')) return;
     el.input.click();
   });
   el.browse.addEventListener('click', (e) => { e.stopPropagation(); el.input.click(); });
   el.input.addEventListener('change', () => { addFiles(el.input.files); el.input.value = ''; });
-  el.start.addEventListener('click', startBatch);
 
-  refreshStart();
+  refreshFooter();
   if (MOCK) setHealth({ state: 'mock' }); else probeHealth();
+
+  /* ?demo : scripted drag-over -> drop on the mock engine (generic sample names). */
+  if (DEMO) {
+    setTimeout(() => el.dz.classList.add('is-drag'), 600);
+    setTimeout(() => {
+      el.dz.classList.remove('is-drag');
+      addFiles([
+        new File([new Uint8Array(412000)], 'thirukkural-chapter-01.pdf', { type: 'application/pdf' }),
+        new File([new Uint8Array(238000)], 'page-014.jpg', { type: 'image/jpeg' })
+      ]);
+    }, 3400);
+  }
 })();

@@ -6,7 +6,8 @@
 <title>Pink Cloud · Upload</title>
 <!--
   Pink Cloud - product shell, page 1 of 3 (layout plan: upload -> editor -> export).
-  upload.js (data-upload slice) mounts the upload screen into #upload-root.
+  upload.js mounts the upload screen into #upload-root; files upload on add
+  (POST /jobs, poll GET /jobs/{id}) and Next step hands the job ids to the editor.
   The correction editor (page 2) is editor.html. Fonts load from ./fonts/ via ui.css.
 -->
 <link rel="stylesheet" href="./tokens.css">
@@ -15,10 +16,8 @@
 </head>
 <body>
 
-<!-- Page 1 -> page 2 until the router slice hands over. -->
-<a class="btn btn--soft btn--sm shell-next" href="./editor.html"><span class="lb"><span>Open editor</span><span aria-hidden="true">Open editor</span></span></a>
-
-<!-- Layout plan, page 1 zone 2: upload.js fills this slot. -->
+<!-- upload.js renders the whole upload screen here (stepper, drop zone,
+     file list, Previous/Next). "Next step" opens editor.html?job=<job_id>. -->
 <div id="upload-root"></div>
 
 <!-- Offline fallback payload for upload.js (used when fetch of schema/doc_demo.json is blocked, e.g. file://). -->
