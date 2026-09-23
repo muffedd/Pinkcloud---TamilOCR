@@ -4,67 +4,43 @@
    ===================================================== */
 
 /* ---------- 1. LOCAL FONTS (@font-face) ---------- */
-/* Expected files inside ../../fonts/. Satoshi: 400/500/600/700.
-   Noto Sans Tamil: 400/600. Mendel: 400 (code only). */
+/* Files live in /fonts at the repo root (../../fonts/ from here).
+   Satoshi: satoshi-regular (400), satoshi-medium (500), satoshi-bold (600/700).
+   Noto Sans Tamil: 400/600. Code uses Menlo (system font, no file). */
 
 @font-face {
   font-family: "Satoshi";
-  src: url("../../fonts/Satoshi-Regular.woff2") format("woff2"),
-       url("../../fonts/satoshi-regular.woff2") format("woff2"),
-       url("../../fonts/Satoshi-400.woff2") format("woff2");
+  src: url("../../fonts/satoshi-regular.woff2") format("woff2");
   font-weight: 400; font-style: normal; font-display: swap;
 }
 @font-face {
   font-family: "Satoshi";
-  src: url("../../fonts/Satoshi-Medium.woff2") format("woff2"),
-       url("../../fonts/satoshi-medium.woff2") format("woff2"),
-       url("../../fonts/Satoshi-500.woff2") format("woff2");
+  src: url("../../fonts/satoshi-medium.woff2") format("woff2");
   font-weight: 500; font-style: normal; font-display: swap;
 }
 @font-face {
   font-family: "Satoshi";
-  src: url("../../fonts/Satoshi-Bold.woff2") format("woff2"),
-       url("../../fonts/satoshi-bold.woff2") format("woff2"),
-       url("../../fonts/Satoshi-600.woff2") format("woff2");
+  src: url("../../fonts/satoshi-bold.woff2") format("woff2");
   font-weight: 600; font-style: normal; font-display: swap;
 }
-/* Satoshi ships Black (900) in some packs; map it to 700 so
-   --type-display (700) still resolves to a local file. */
+/* No Black file ships; map 700 to bold so --type-display (700)
+   still resolves to a local file. */
 @font-face {
   font-family: "Satoshi";
-  src: url("../../fonts/Satoshi-Black.woff2") format("woff2"),
-       url("../../fonts/satoshi-black.woff2") format("woff2"),
-       url("../../fonts/Satoshi-700.woff2") format("woff2"),
-       url("../../fonts/Satoshi-Bold.woff2") format("woff2");
+  src: url("../../fonts/satoshi-bold.woff2") format("woff2");
   font-weight: 700; font-style: normal; font-display: swap;
 }
+/* No italic file ships; italic falls back to the regular file. */
 @font-face {
   font-family: "Satoshi";
-  src: url("../../fonts/Satoshi-Italic.woff2") format("woff2"),
-       url("../../fonts/satoshi-italic.woff2") format("woff2"),
-       url("../../fonts/Satoshi-Regular.woff2") format("woff2");
+  src: url("../../fonts/satoshi-regular.woff2") format("woff2");
   font-weight: 400; font-style: italic; font-display: swap;
 }
+/* Noto Sans Tamil ships as one variable TTF (wght 100-900) covering 400/600. */
 @font-face {
   font-family: "Noto Sans Tamil";
-  src: url("../../fonts/NotoSansTamil-Regular.woff2") format("woff2"),
-       url("../../fonts/notosanstamil-regular.woff2") format("woff2"),
-       url("../../fonts/NotoSansTamil-400.woff2") format("woff2");
-  font-weight: 400; font-style: normal; font-display: swap;
-}
-@font-face {
-  font-family: "Noto Sans Tamil";
-  src: url("../../fonts/NotoSansTamil-SemiBold.woff2") format("woff2"),
-       url("../../fonts/notosanstamil-semibold.woff2") format("woff2"),
-       url("../../fonts/NotoSansTamil-600.woff2") format("woff2");
-  font-weight: 600; font-style: normal; font-display: swap;
-}
-@font-face {
-  font-family: "Mendel";
-  src: url("../../fonts/Mendel-Regular.woff2") format("woff2"),
-       url("../../fonts/mendel-regular.woff2") format("woff2"),
-       url("../../fonts/Mendel-400.woff2") format("woff2");
-  font-weight: 400; font-style: normal; font-display: swap;
+  src: url("../../fonts/noto-sans-tamil.ttf") format("truetype");
+  font-weight: 100 900; font-style: normal; font-display: swap;
 }
 
 /* ---------- 2. TYPE SYSTEM + TOKENS (:root) ---------- */
@@ -82,7 +58,7 @@
   /* -- Font stacks -- */
   --stack-latin: "Satoshi", -apple-system, "Inter", sans-serif;
   --stack-tamil: "Noto Sans Tamil", "Satoshi", sans-serif;
-  --stack-code: "Mendel", "JetBrains Mono", monospace;
+  --stack-code: Menlo, "JetBrains Mono", monospace;
 
   /* -- Type scale (1.25 ratio; fluid display) -- */
   --type-display: 700 clamp(2.5rem, 6vw, 4.5rem)/1.05 var(--stack-latin);
