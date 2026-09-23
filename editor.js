@@ -237,9 +237,14 @@ function fixedCount() {
 function pageState() {
   var doc = S.page;
   if (!doc) return "queued";
-  if (doc.profile === "HEAVY" && doc.preprocessed) return "repaired";
+  /* The editor only loads a page once its job is done, so a page with its
+     lines present is finished. The backend never sends doc.preprocessed for
+     HEAVY pages, so a loaded HEAVY page counts as repaired (exportable). */
+  var loaded = Array.isArray(doc.lines);
+  if (doc.profile === "HEAVY" && (doc.preprocessed || loaded)) return "repaired";
   if (doc.profile === "FAST" && !doc.needs_review) return "clean";
   if (doc.preprocessed) return "precomputed";
+  if (loaded) return "ready"; /* finished, just not repaired/clean: never "Queued" */
   return "queued";
 }
 
@@ -415,6 +420,7 @@ function applyDictionary() {
     w.target = false;
     w.fixed = true;
     w.autoApplied = true;
+    recordCorrection(w); /* persist auto-fixes like manual ones so export.pdf gets them */
     S.dictCount++;
   });
   if (S.dictCount) retext();
@@ -1023,7 +1029,7 @@ function renderBadges() {
   b.type = "button";
   b.className = "pill pill--bar is-" + state + " pill--current";
   /* Label and icon follow the real page state (was hardcoded "Repaired"). */
-  var STATE_LABEL = { repaired: "Repaired", clean: "Clean", precomputed: "Precomputed", queued: "Queued" };
+  var STATE_LABEL = { repaired: "Repaired", clean: "Clean", precomputed: "Precomputed", ready: "Ready", queued: "Queued" };
   var icon = state === "repaired" ? ICONS.wrench
     : state === "clean" ? ICONS.checkCircle
     : '<i class="pdot" aria-hidden="true"></i>';
@@ -1038,7 +1044,7 @@ function renderBadges() {
   });
   el.pageBadges.appendChild(b);
   el.scanSub.textContent = "page " + S.page.page + " of " + (S.pageCount || 1) + " · " + S.page.profile + " · " + state;
-  var open = state === "clean" || state === "repaired" || state === "precomputed";
+  var open = state === "clean" || state === "repaired" || state === "precomputed" || state === "ready";
   el.exportBtn.disabled = !open;
 }
 
@@ -1280,6 +1286,13 @@ function doUndoAuto() {
   w.fixed = false;
   w.autoApplied = false;
   w.autoPrev = null;
+  /* The auto-fix was recorded as a correction; drop it so the server copy
+     (and export) goes back to the OCR text too. */
+  if (S.corrections[w.key]) {
+    delete S.corrections[w.key];
+    S.corrDirty = true;
+    scheduleSave();
+  }
   skipAdd(w.key);
   if (S.dictCount > 0) S.dictCount--;
   retext();
@@ -1464,8 +1477,6 @@ function showFatal(err) {
    plainly that the PDF will not include them. */
 var exp = {};
 
-function nonAscii(name) { return /[^\x00-\x7F]/.test(name || ""); }
-
 function exportPageUrl() {
   var q = "job=" + encodeURIComponent(S.jobId);
   if (window.PC_API.API_BASE) q += "&api=" + encodeURIComponent(window.PC_API.API_BASE);
@@ -1517,9 +1528,6 @@ function renderExport(busy) {
     note = "The server could not save the latest fixes. A PDF made now may not include them.";
   } else if (st === "demo") {
     note = "Demo mode: export runs on a live job.";
-  }
-  if (st !== "demo" && nonAscii(S.filename)) {
-    note += (note ? " " : "") + "Export works best with an English filename right now.";
   }
   exp.note.textContent = note;
   exp.note.hidden = !note;

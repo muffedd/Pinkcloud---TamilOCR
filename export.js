@@ -155,6 +155,76 @@
       });
   }
 
+  /* PDF download: fetch it here instead of a bare link, so a slow multi-page
+     build shows a visible busy state and a failure shows the server's real
+     status/detail instead of a silent or generic browser error. */
+  var pdfBusy = false;
+  function pdfStatus(msg, isErr) {
+    var p = $("pdfStatus");
+    p.textContent = msg || "";
+    p.hidden = !msg;
+    p.style.color = isErr ? "var(--pc-color-error)" : "";
+  }
+  function pdfLabel(label) {
+    var spans = $("dlPdf").querySelectorAll(".lb > span");
+    for (var i = 0; i < spans.length; i++) spans[i].textContent = label;
+  }
+  function pdfFilename(res) {
+    var cd = res.headers.get("Content-Disposition") || "";
+    var m = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    if (m) { try { return decodeURIComponent(m[1]); } catch (e) { /* fall through */ } }
+    m = /filename="?([^";]+)"?/i.exec(cd);
+    return m ? m[1] : "pinkcloud-" + JOB + ".pdf";
+  }
+  function pdfError(res) {
+    return res.text().then(function (body) {
+      var detail = "";
+      try {
+        var j = JSON.parse(body);
+        detail = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail || j);
+      } catch (e) { detail = (body || "").slice(0, 200); }
+      throw new Error("HTTP " + res.status + (detail ? " - " + detail : ""));
+    });
+  }
+  $("dlPdf").addEventListener("click", function (e) {
+    e.preventDefault();
+    if (pdfBusy) return;
+    var btn = $("dlPdf");
+    pdfBusy = true;
+    btn.setAttribute("aria-busy", "true");
+    btn.setAttribute("aria-disabled", "true");
+    btn.style.opacity = "0.6";
+    btn.style.cursor = "progress";
+    pdfLabel("Preparing PDF…");
+    pdfStatus("Building the PDF - multi-page scans can take a minute.");
+    fetch(btn.href, { cache: "no-store" })
+      .then(function (res) {
+        if (!res.ok) return pdfError(res);
+        var name = pdfFilename(res);
+        return res.blob().then(function (blob) {
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement("a");
+          a.href = url; a.download = name;
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+          pdfStatus("PDF downloaded.");
+        });
+      })
+      .catch(function (err) {
+        var msg = err && err.message ? err.message : String(err);
+        if (err instanceof TypeError) msg = "Could not reach the backend (" + msg + ")";
+        pdfStatus("PDF export failed: " + msg, true);
+      })
+      .then(function () {
+        pdfBusy = false;
+        btn.removeAttribute("aria-busy");
+        btn.removeAttribute("aria-disabled");
+        btn.style.opacity = "";
+        btn.style.cursor = "";
+        pdfLabel("Download PDF");
+      });
+  });
+
   /* copy the full hash */
   $("copySha").addEventListener("click", function () {
     var sha = $("rSha").textContent;
