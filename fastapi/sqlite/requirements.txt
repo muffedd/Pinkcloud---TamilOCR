@@ -9,6 +9,7 @@ pypdfium2==5.13.0
 numpy==2.3.5
 pillow==12.3.0
 httpx==0.28.1   # needed by tests (starlette TestClient)
+pytest==9.1.1    # backend test runner
 
 # ---- Optional: real OCR ----------------------------------------------------
 # Install these only if you want actual Tamil OCR instead of the stub result.
