@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pink Cloud — Components</title>
+<style>
+/* =========================
+   TOKENS
+   ========================= */
+:root{
+  /* Brand — orange accent from the colour scheme */
+  --brand:#F25A1A;
+  --brand-hover:#D94A0F;
+  --brand-active:#BF3F0C;
+  --brand-soft:#FDE7DD;
+  --brand-ink:#FFF7F2;
+
+  /* Text */
+  --text:#252321;
+  --text-muted:#706B65;
+
+  /* Lines + surfaces (warm neutrals) */
+  --border:#DDD9D3;
+  --border-hover:#B8B3AB;
+  --surface:#FAF8F4;
+  --surface-hover:#F1EFEA;
+  --surface-sunken:#ECEAE6;
+  --page:#F4F3F0;
+
+  /* States */
+  --danger:#C83A3A;
+  --danger-soft:#F8E2E2;
+  --disabled-bg:#D7D3CC;
+  --disabled-text:#9A948C;
+
+  /* Shape */
+  --radius:10px;
+  --ring:0 0 0 3px rgba(242,90,26,.35);
+
+  /* Type */
+  --font:'Satoshi',system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"Cascadia Code",Consolas,monospace;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--page);
+  color:var(--text);
+  font-family:var(--font);
+  font-size:15px;
+  line-height:1.5;
+  -webkit-text-size-adjust:100%;
+}
+.page{max-width:960px;margin:0 auto;padding:40px 40px 64px}
+
+/* Page head */
+.eyebrow{
+  display:inline-block;font-size:12px;font-weight:600;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--text-muted);
+  border:1px solid var(--border);background:var(--surface);
+  border-radius:999px;padding:4px 12px;margin-bottom:16px;
+}
+h1{margin:0 0 8px;font-size:30px;font-weight:700;letter-spacing:-.01em}
+.lede{margin:0;max-width:64ch;color:var(--text-muted);font-size:15px}
+
+/* Group label + card */
+.group{margin-top:32px}
+.group-label{
+  display:block;font-size:12px;font-weight:600;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;
+}
+.card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;padding:20px;
+}
+
+/* State grid — every state visible in one screenshot */
+.states{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+  gap:20px 16px;align-items:start;
+}
+.state{display:flex;flex-direction:column;align-items:flex-start;gap:8px;min-width:0}
+.state .cap{font-size:11px;letter-spacing:.04em;color:var(--text-muted);font-family:var(--font-mono)}
+
+/* =========================
+   BUTTON — base
+   ========================= */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  padding:12px 24px;border:1px solid transparent;border-radius:var(--radius);
+  font-family:inherit;font-size:15px;font-weight:600;line-height:1;
+  text-decoration:none;white-space:nowrap;cursor:pointer;
+  transition:background .15s ease,border-color .15s ease,color .15s ease,transform .06s ease;
+}
+.btn:focus-visible{outline:none;box-shadow:var(--ring)}
+.btn[disabled],.btn.is-disabled{cursor:not-allowed;transform:none}
+
+/* =========================
+   BUTTON — primary (filled)
+   ========================= */
+.btn-primary{background:var(--brand);color:var(--brand-ink)}
+.btn-primary:hover,.btn-primary.is-hover{background:var(--brand-hover)}
+.btn-primary:active,.btn-primary.is-active{background:var(--brand-active);transform:scale(.98)}
+.btn-primary.is-focus,.btn-primary:focus-visible{box-shadow:var(--ring)}
+.btn-primary[disabled],.btn-primary.is-disabled{background:var(--disabled-bg);color:var(--disabled-text)}
+
+/* =========================
+   BUTTON — secondary (outlined)
+   ========================= */
+.btn-secondary{background:var(--surface);border-color:var(--border);color:var(--text)}
+.btn-secondary:hover,.btn-secondary.is-hover{background:var(--surface-hover);border-color:var(--border-hover)}
+.btn-secondary:active,.btn-secondary.is-active{background:var(--surface-sunken);transform:scale(.98)}
+.btn-secondary.is-focus,.btn-secondary:focus-visible{box-shadow:var(--ring)}
+.btn-secondary[disabled],.btn-secondary.is-disabled{
+  background:var(--disabled-bg);border-color:var(--disabled-bg);color:var(--disabled-text)}
+
+/* =========================
+   BUTTON — ghost (text)
+   ========================= */
+.btn-ghost{background:transparent;color:var(--brand)}
+.btn-ghost:hover,.btn-ghost.is-hover{background:var(--brand-soft)}
+.btn-ghost:active,.btn-ghost.is-active{background:var(--brand-soft);transform:scale(.98)}
+.btn-ghost.is-focus,.btn-ghost:focus-visible{box-shadow:var(--ring)}
+.btn-ghost[disabled],.btn-ghost.is-disabled{background:transparent;color:var(--text-muted)}
+
+/* =========================
+   BUTTON — loading (spinner + label)
+   ========================= */
+.btn-loading{pointer-events:none}
+.btn .spinner{
+  width:14px;height:14px;flex:none;border-radius:50%;
+  border:2px solid rgba(255,247,242,.4);border-top-color:var(--brand-ink);
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){
+  .btn{transition:none}
+  .btn .spinner{animation-duration:1.6s}
+}
+
+/* =========================
+   BUTTON — block (grows to fill)
+   ========================= */
+.btn-block{width:100%}
+
+/* =========================
+   BUTTON — icon (close / delete)
+   ========================= */
+.btn-icon{
+  width:32px;height:32px;padding:0;flex:none;
+  background:transparent;border:1px solid transparent;border-radius:var(--radius);
+  color:var(--text-muted);font-size:16px;line-height:1;font-weight:600;
+  display:inline-flex;align-items:center;justify-content:center;cursor:pointer;
+}
+.btn-icon:hover,.btn-icon.is-hover{background:var(--surface-sunken);color:var(--text)}
+.btn-icon:active,.btn-icon.is-active{background:var(--surface-sunken);transform:scale(.96)}
+.btn-icon.is-focus,.btn-icon:focus-visible{outline:none;box-shadow:var(--ring)}
+.btn-icon[disabled],.btn-icon.is-disabled{color:var(--disabled-text);cursor:not-allowed}
+
+/* Icon — danger variant (delete a file row) */
+.btn-danger{color:var(--danger)}
+.btn-danger:hover,.btn-danger.is-hover{background:var(--danger-soft);color:var(--danger)}
+.btn-danger:active,.btn-danger.is-active{background:var(--danger-soft);transform:scale(.96)}
+.btn-danger.is-focus,.btn-danger:focus-visible{box-shadow:var(--ring)}
+
+/* =========================
+   USAGE — modal footer
+   ========================= */
+.modal{
+  background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  box-shadow:0 1px 2px rgba(37,35,33,.06),0 12px 32px rgba(37,35,33,.08);
+  overflow:hidden;
+}
+.modal-head{padding:20px 20px 0}
+.modal-head h2{margin:0 0 4px;font-size:17px;font-weight:700}
+.modal-head p{margin:0;font-size:13px;color:var(--text-muted)}
+.modal-body{padding:16px 20px 20px;display:flex;flex-direction:column;gap:8px}
+.row{
+  display:flex;align-items:center;gap:10px;
+  border:1px solid var(--border);border-radius:var(--radius);
+  background:var(--surface-hover);padding:8px 8px 8px 12px;font-size:13px;
+}
+.row .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .size{font-size:12px;color:var(--text-muted);font-family:var(--font-mono)}
+.modal-foot{
+  display:flex;gap:10px;padding:16px 20px;border-top:1px solid var(--border);
+  background:var(--surface-hover);
+}
+.modal-foot .btn-secondary{flex:none}
+.modal-foot .btn-primary{flex:1}
+
+/* Mobile */
+@media (max-width:560px){
+  .page{padding:24px 16px 48px}
+  h1{font-size:24px}
+  .card{padding:16px}
+  .states{grid-template-columns:repeat(2,1fr);gap:16px 12px}
+  .modal-foot{flex-direction:column-reverse}
+  .modal-foot .btn-secondary,.modal-foot .btn-primary{width:100%}
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <span class="eyebrow">Pink Cloud / Components</span>
+  <h1>Buttons</h1>
+  <p class="lede">Every state is drawn side by side, so one screenshot shows the whole set. Classes here copy straight into <code>ui.css</code>.</p>
+</header>
+
+<main>
+
+<!-- ============ 1. PRIMARY ============ -->
+<section class="group">
+  <span class="group-label">01 — Primary</span>
+  <div class="card">
+    <div class="states">
+      <div class="state"><button class="btn btn-primary" type="button">Upload</button><span class="cap">default</span></div>
+      <div class="state"><button class="btn btn-primary is-hover" type="button">Upload</button><span class="cap">hover</span></div>
+      <div class="state"><button class="btn btn-primary is-active" type="button">Upload</button><span class="cap">active</span></div>
+      <div class="state"><button class="btn btn-primary is-focus" type="button">Upload</button><span class="cap">focus</span></div>
+      <div class="state"><button class="btn btn-primary" type="button" disabled>Upload</button><span class="cap">disabled</span></div>
+      <div class="state"><button class="btn btn-primary btn-loading" type="button"><span class="spinner" aria-hidden="true"></span>Uploading…</button><span class="cap">loading</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2. SECONDARY ============ -->
+<section class="group">
+  <span class="group-label">02 — Secondary</span>
+  <div class="card">
+    <div class="states">
+      <div class="state"><button class="btn btn-secondary" type="button">Cancel</button><span class="cap">default</span></div>
+      <div class="state"><button class="btn btn-secondary is-hover" type="button">Cancel</button><span class="cap">hover</span></div>
+      <div class="state"><button class="btn btn-secondary is-active" type="button">Cancel</button><span class="cap">active</span></div>
+      <div class="state"><button class="btn btn-secondary is-focus" type="button">Cancel</button><span class="cap">focus</span></div>
+      <div class="state"><button class="btn btn-secondary" type="button" disabled>Cancel</button><span class="cap">disabled</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3. GHOST ============ -->
+<section class="group">
+  <span class="group-label">03 — Ghost</span>
+  <div class="card">
+    <div class="states">
+      <div class="state"><button class="btn btn-ghost" type="button">View log</button><span class="cap">default</span></div>
+      <div class="state"><button class="btn btn-ghost is-hover" type="button">View log</button><span class="cap">hover</span></div>
+      <div class="state"><button class="btn btn-ghost is-active" type="button">View log</button><span class="cap">active</span></div>
+      <div class="state"><button class="btn btn-ghost is-focus" type="button">View log</button><span class="cap">focus</span></div>
+      <div class="state"><button class="btn btn-ghost" type="button" disabled>View log</button><span class="cap">disabled</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4. ICON + DANGER ============ -->
+<section class="group">
+  <span class="group-label">04 — Icon button</span>
+  <div class="card">
+    <div class="states">
+      <div class="state"><button class="btn-icon" type="button" aria-label="Close">✕</button><span class="cap">default</span></div>
+      <div class="state"><button class="btn-icon is-hover" type="button" aria-label="Close">✕</button><span class="cap">hover</span></div>
+      <div class="state"><button class="btn-icon is-focus" type="button" aria-label="Close">✕</button><span class="cap">focus</span></div>
+      <div class="state"><button class="btn-icon" type="button" disabled aria-label="Close">✕</button><span class="cap">disabled</span></div>
+      <div class="state"><button class="btn-icon btn-danger is-hover" type="button" aria-label="Delete file">✕</button><span class="cap">danger · hover</span></div>
+      <div class="state"><button class="btn-icon btn-danger is-focus" type="button" aria-label="Delete file">✕</button><span class="cap">danger · focus</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5. USAGE — MODAL FOOTER ============ -->
+<section class="group">
+  <span class="group-label">05 — Usage example · modal footer</span>
+  <div class="modal">
+    <div class="modal-head">
+      <h2>Upload pages</h2>
+      <p>Tamil or English scan. JPG, PNG or PDF, up to 20 MB each.</p>
+    </div>
+    <div class="modal-body">
+      <div class="row">
+        <span class="name">invoice-1042-page-1.jpg</span>
+        <span class="size">1.4 MB</span>
+        <button class="btn-icon btn-danger" type="button" aria-label="Delete invoice-1042-page-1.jpg">✕</button>
+      </div>
+      <div class="row">
+        <span class="name">invoice-1042-page-2.jpg</span>
+        <span class="size">1.1 MB</span>
+        <button class="btn-icon btn-danger" type="button" aria-label="Delete invoice-1042-page-2.jpg">✕</button>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" type="button">Cancel</button>
+      <button class="btn btn-primary btn-block" type="button">Upload</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6. BLOCK VARIANT ============ -->
+<section class="group">
+  <span class="group-label">06 — Block variant</span>
+  <div class="card">
+    <div class="states">
+      <div class="state" style="grid-column:1/-1">
+        <button class="btn btn-primary btn-block" type="button">Upload 2 files</button>
+        <span class="cap">.btn-block — fills the row</span>
+      </div>
+      <div class="state" style="grid-column:1/-1">
+        <button class="btn btn-primary btn-block btn-loading" type="button"><span class="spinner" aria-hidden="true"></span>Uploading…</button>
+        <span class="cap">.btn-block + .btn-loading</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer style="margin-top:40px;padding-top:16px;border-top:1px solid var(--border);color:var(--text-muted);font-size:12px">
+  Pink Cloud — component sheet v1.0 · comps.html · no scripts
+</footer>
+
+</div>
+</body>
+</html>

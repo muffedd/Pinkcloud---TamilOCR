@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Color — Foundations</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+
+<header>
+<span class="eyebrow">Foundations / Color</span>
+<h1>Color</h1>
+<p class="lede">Color shows rank, trust, source, and state. Neutrals carry the page. Orange marks brand and live scan only. Green, amber, red, and blue follow known use.</p>
+<div class="meta-row">
+<span>Product: OCR / scan</span>
+<span>·</span>
+<span>Users: India, incl. Tamil users</span>
+<span>·</span>
+<span>No pure black or white</span>
+</div>
+</header>
+
+<main>
+
+<!-- 01 Brand -->
+<section class="card" aria-labelledby="t-brand">
+<div class="sec-head"><span class="sec-num">01</span><div><h2 id="t-brand">Brand</h2><p class="sec-desc">One clear accent. Use orange for main acts and live scan. Keep all else calm.</p></div></div>
+<div class="grid g-brand">
+<article class="token"><div class="swatch" style="background:#F25A1A"></div><div class="token-body"><h3>Brand Primary</h3><span class="var">--color-brand-primary</span><span class="hex">#F25A1A</span><p>Main acts, live scan, key focus.</p></div></article>
+<article class="token"><div class="swatch" style="background:#D94A0F"></div><div class="token-body"><h3>Brand Hover</h3><span class="var">--color-brand-primary-hover</span><span class="hex">#D94A0F</span><p>Hover and press state for main acts.</p></div></article>
+<article class="token"><div class="swatch" style="background:#FDE7DD"></div><div class="token-body"><h3>Brand Soft</h3><span class="var">--color-brand-primary-soft</span><span class="hex">#FDE7DD</span><p>Soft tint behind brand marks.</p></div></article>
+<article class="token"><div class="swatch" style="background:#252321"></div><div class="token-body"><h3>Brand Ink</h3><span class="var">--color-brand-ink</span><span class="hex">#252321</span><p>Text on light brand tint. Warm charcoal.</p></div></article>
+</div>
+</section>
+
+<!-- 02 Confidence -->
+<section class="card" aria-labelledby="t-conf">
+<div class="sec-head"><span class="sec-num">02</span><div><h2 id="t-conf">Confidence</h2><p class="sec-desc">Three fixed levels. Each level pairs color with text and icon. Never use color alone.</p></div></div>
+<div class="grid g-conf">
+<div class="conf-card">
+<div class="conf-top"><span class="dot" style="background:#6E7680"></span> Auto <span class="var">--color-confidence-auto</span></div>
+<span class="hex" style="font-family:var(--font-mono);font-size:var(--font-size-xs);color:var(--color-text-secondary)">#6E7680</span>
+<div class="conf-ex"><strong>○ AUTO — System found</strong>Value from machine. No check yet.</div>
+</div>
+<div class="conf-card">
+<div class="conf-top"><span class="dot" style="background:#27865A"></span> OK <span class="var">--color-confidence-ok</span></div>
+<span class="hex" style="font-family:var(--font-mono);font-size:var(--font-size-xs);color:var(--color-text-secondary)">#27865A · = --color-success</span>
+<div class="conf-ex"><strong>● OK — High trust</strong>Value passed checks. Safe to use.</div>
+</div>
+<div class="conf-card">
+<div class="conf-top"><span class="dot" style="background:#B67816"></span> Doubt <span class="var">--color-confidence-doubt</span></div>
+<span class="hex" style="font-family:var(--font-mono);font-size:var(--font-size-xs);color:var(--color-text-secondary)">#B67816 · = --color-warning</span>
+<div class="conf-ex"><strong>◐ DOUBT — Check needed</strong>Low trust. A person must check.</div>
+</div>
+</div>
+</section>
+
+<!-- 03 Provenance -->
+<section class="card" aria-labelledby="t-prov">
+<div class="sec-head"><span class="sec-num">03</span><div><h2 id="t-prov">Provenance</h2><p class="sec-desc">Source is side data. Keep it quiet: small dot, plain text, thin edge. Not a loud badge.</p></div></div>
+<div class="grid g-prov"><div class="prov-list">
+<span class="prov-chip"><span class="dot" style="background:#777C82"></span>Raw <small>--color-provenance-raw · #777C82</small></span>
+<span class="prov-chip"><span class="dot" style="background:#526E84"></span>Rules <small>--color-provenance-rules · #526E84</small></span>
+<span class="prov-chip"><span class="dot" style="background:#2F7D75"></span>SWAB <small>--color-provenance-swab · #2F7D75</small></span>
+<span class="prov-chip"><span class="dot" style="background:#A66B2C"></span>LLM <small>--color-provenance-llm · #A66B2C</small></span>
+<span class="prov-chip"><span class="dot" style="background:#78704F"></span>Human <small>--color-provenance-human · #78704F</small></span>
+</div></div>
+<p class="sec-desc">Use: <code>Raw</code> = plain scan · <code>Rules</code> = fixed check · <code>SWAB</code> = trained test · <code>LLM</code> = model read · <code>Human</code> = typed by staff.</p>
+</section>
+
+<!-- 04 Semantic -->
+<section class="card" aria-labelledby="t-sem">
+<div class="sec-head"><span class="sec-num">04</span><div><h2 id="t-sem">Semantic</h2><p class="sec-desc">Known map: green = pass, amber = care, red = fault, blue = note. Light fill, dark text.</p></div></div>
+<div class="grid g-sem">
+<div class="sem-block">
+<article class="token"><div class="swatch" style="background:#27865A"></div><div class="token-body"><h3>Success</h3><span class="var">--color-success</span><span class="hex">#27865A</span><p>Pass, saved, fit to use.</p></div></article>
+<span class="badge b-success">✓ Pass</span>
+<div class="notice n-success"><strong>Saved</strong>Invoice 1042 is set. No more work.</div>
+</div>
+<div class="sem-block">
+<article class="token"><div class="swatch" style="background:#B67816"></div><div class="token-body"><h3>Warning</h3><span class="var">--color-warning</span><span class="hex">#B67816</span><p>Doubt, care, need check.</p></div></article>
+<span class="badge b-warning">◐ Check</span>
+<div class="notice n-warning"><strong>Check date</strong>Date reads 2024 or 2029. Fix it.</div>
+</div>
+<div class="sem-block">
+<article class="token"><div class="swatch" style="background:#C83A3A"></div><div class="token-body"><h3>Error</h3><span class="var">--color-error</span><span class="hex">#C83A3A</span><p>Fault, fail, loss of data.</p></div></article>
+<span class="badge b-error">✕ Fault</span>
+<div class="notice n-error"><strong>Scan failed</strong>Page 3 is blurred. Scan once more.</div>
+</div>
+<div class="sem-block">
+<article class="token"><div class="swatch" style="background:#356FA8"></div><div class="token-body"><h3>Info</h3><span class="var">--color-info</span><span class="hex">#356FA8</span><p>Note, focus, chosen zone.</p></div></article>
+<span class="badge b-info">i Note</span>
+<div class="notice n-info"><strong>Tip</strong>Blue edge means chosen scan zone.</div>
+</div>
+</div>
+</section>
+
+<!-- 05 Neutrals -->
+<section class="card" aria-labelledby="t-neu">
+<div class="sec-head"><span class="sec-num">05</span><div><h2 id="t-neu">Neutrals</h2><p class="sec-desc">Warm base for 80–90% of the view. This page itself uses these tokens.</p></div></div>
+<div class="grid g-neu">
+<div class="neu-group"><h3>Surfaces</h3><div class="neu-row">
+<div class="neu-item"><span class="neu-box" style="background:#F4F3F0"></span><div><strong>Canvas</strong><span>--color-bg-canvas · #F4F3F0</span></div></div>
+<div class="neu-item"><span class="neu-box" style="background:#ECEAE6"></span><div><strong>Surface</strong><span>--color-bg-surface · #ECEAE6</span></div></div>
+<div class="neu-item"><span class="neu-box" style="background:#FAF8F4"></span><div><strong>Elevated</strong><span>--color-bg-elevated · #FAF8F4</span></div></div>
+</div></div>
+<div class="neu-group"><h3>Borders</h3><div class="neu-row">
+<div class="neu-item"><span class="neu-box" style="background:#DDD9D3"></span><div><strong>Subtle</strong><span>--color-border-subtle · #DDD9D3</span></div></div>
+<div class="neu-item"><span class="neu-box" style="background:#D7D3CC"></span><div><strong>Default</strong><span>--color-border-default · #D7D3CC</span></div></div>
+<div class="neu-item"><span class="neu-box" style="background:#B8B3AB"></span><div><strong>Strong</strong><span>--color-border-strong · #B8B3AB</span></div></div>
+</div></div>
+<div class="neu-group"><h3>Text</h3><div class="neu-row">
+<div class="neu-item"><span class="neu-box" style="background:#252321"></span><div><strong>Primary</strong><span>--color-text-primary · #252321</span></div></div>
+<div class="neu-item"><span class="neu-box" style="background:#5F5A55"></span><div><strong>Secondary</strong><span>--color-text-secondary · #5F5A55</span></div></div>
+<div class="neu-item"><span class="neu-box" style="background:#706B65"></span><div><strong>Muted</strong><span>--color-text-muted · #706B65</span></div></div>
+</div></div>
+</div>
+</section>
+
+<!-- 06 Scan -->
+<section class="card" aria-labelledby="t-scan">
+<div class="sec-head"><span class="sec-num">06</span><div><h2 id="t-scan">Scan Highlighting</h2><p class="sec-desc">Boxes mark live read zones. Each box has edge + soft fill + word tag. Never edge alone.</p></div></div>
+<div class="doc-layout">
+<div class="doc" aria-label="Sample scanned invoice">
+<h3>Invoice INV-1042</h3>
+<div class="sub">Sample scan · Chennai Traders · Tamil / English</div>
+<div class="field"><div class="label">Invoice Number</div><div class="box box-active"><span class="tag">● Active</span><span class="value">INV-1042 — reading…</span></div></div>
+<div class="field"><div class="label">Seller GSTIN</div><div class="box box-selected"><span class="tag">▣ Chosen</span><span class="value">33AABCT1234F1Z5</span></div></div>
+<div class="field"><div class="label">Total</div><div class="box box-success"><span class="tag">✓ Set</span><span class="value">₹ 48,250.00</span></div></div>
+<div class="field"><div class="label">Date</div><div class="box box-warning"><span class="tag">◐ Check</span><span class="value">12 / 08 / 2024 (?)</span></div></div>
+<div class="field" style="margin-bottom:0"><div class="label">Bill To</div><div class="box box-error"><span class="tag">✕ Fault</span><span class="value">Unreadable — blur</span></div></div>
+</div>
+<div class="legend">
+<div class="legend-item"><span class="sq" style="border-color:#F25A1A;background:rgba(242,90,26,.1)"></span><div><strong>Active Scan</strong><span class="var">--color-scan-active</span> #F25A1A · live read. Orange only here.</div></div>
+<div class="legend-item"><span class="sq" style="border-color:#356FA8;background:rgba(53,111,168,.1)"></span><div><strong>Chosen Zone</strong><span class="var">--color-scan-selected</span> #356FA8 · user focus or cursor.</div></div>
+<div class="legend-item"><span class="sq" style="border-color:#27865A;background:rgba(39,134,90,.1)"></span><div><strong>Set</strong><span class="var">--color-scan-success</span> #27865A · passed. Safe.</div></div>
+<div class="legend-item"><span class="sq" style="border-color:#B67816;background:rgba(182,120,22,.12);border-style:dashed"></span><div><strong>Check</strong><span class="var">--color-scan-warning</span> #B67816 · dashed edge + doubt tag.</div></div>
+<div class="legend-item"><span class="sq" style="border-color:#C83A3A;background:rgba(200,58,58,.1)"></span><div><strong>Fault</strong><span class="var">--color-scan-error</span> #C83A3A · failed read.</div></div>
+</div>
+</div>
+</section>
+
+<!-- 07 Components -->
+<section class="card" aria-labelledby="t-comp">
+<div class="sec-head"><span class="sec-num">07</span><div><h2 id="t-comp">Component Examples</h2><p class="sec-desc">Small proofs. Same tokens, real use. All taps ≥ 44px.</p></div></div>
+<div class="comp-grid">
+<div class="comp-box"><h3>Buttons</h3>
+<div class="chip-row"><a class="btn btn-primary" href="#t-comp">Save scan</a><a class="btn btn-secondary" href="#t-comp">Cancel</a><a class="btn btn-text" href="#t-comp">View log</a></div>
+<p class="sec-desc">Main = <code>--button-primary-bg</code> · Next = edge + light fill · Text = plain link.</p></div>
+<div class="comp-box"><h3>Badges + Chips</h3>
+<div class="chip-row"><span class="badge b-success">✓ Set</span><span class="badge b-warning">◐ Check</span><span class="badge b-error">✕ Fault</span><span class="badge b-info">i Note</span></div>
+<div class="chip-row"><span class="prov-chip"><span class="dot" style="background:#2F7D75"></span>SWAB</span><span class="conf-chip"><span class="dot" style="background:#B67816"></span>DOUBT — check</span></div>
+</div>
+<div class="comp-box"><h3>Toggle + Input</h3>
+<label class="toggle"><input type="checkbox" checked><span class="track" aria-hidden="true"></span>Auto-read Tamil</label>
+<label class="toggle"><input type="checkbox"><span class="track" aria-hidden="true"></span>Keep raw image</label>
+<div class="focus-demo" tabindex="0">Focus me — blue ring shows (Tab key).</div>
+</div>
+<div class="comp-box"><h3>Type + Space</h3>
+<p style="margin:0;font-size:var(--font-size-sm)">Body 15px / 1.55. Code uses <code>--font-mono</code>. Gaps use <code>--space-1…12</code>. Cards use <code>--radius-md</code>, pills for tags.</p>
+<p class="sec-desc" style="margin:0">No gradients. No glow. Edge + tone change only.</p></div>
+</div>
+</section>
+
+<!-- 08 Principles -->
+<section class="card" aria-labelledby="t-use">
+<div class="sec-head"><span class="sec-num">08</span><div><h2 id="t-use">Usage Principles</h2><p class="sec-desc">Rules to keep the system calm and clear.</p></div></div>
+<div class="prin">
+<div><strong>1. Hick — less choice</strong><p>Show few colors at once. Gray first, color for need only.</p></div>
+<div><strong>2. Jakob — known map</strong><p>Green = pass. Amber = care. Red = fault. Blue = note.</p></div>
+<div><strong>3. Von Restorff — guard orange</strong><p>Orange = brand + live scan. Not for heads, trims, or all picks.</p></div>
+<div><strong>4. Orange ≠ amber</strong><p>#F25A1A starts work. #B67816 asks for check. Keep them apart.</p></div>
+<div><strong>5. Softness, not pale text</strong><p>Use warm base and thin edges. Keep text dark and clear.</p></div>
+<div><strong>6. Never color alone</strong><p>Add icon + word: ✓ Set, ◐ Check, ✕ Fault, ● Active.</p></div>
+<div><strong>7. Provenance stays quiet</strong><p>Dot + gray word. It is side data, not state.</p></div>
+<div><strong>8. Touch + sight</strong><p>≥44px taps. Clear focus ring. Good at 360px width.</p></div>
+</div>
+</section>
+
+</main>
+
+<footer><span>Pinkcloud TamilOCR — Color tokens v1.0</span><span>index.html + styles.css · no scripts</span></footer>
+
+</div>
+</body>
+</html>
