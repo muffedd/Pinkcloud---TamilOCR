@@ -4,6 +4,7 @@
 fastapi==0.141.1
 starlette==1.7.0   # fastapi only floors starlette (>=0.46.0); pin the tested version so @app.on_event startup keeps working
 uvicorn==0.53.0
+python-dotenv==1.2.3   # uvicorn --env-file: loads the git-ignored repo-root .env
 python-multipart==0.0.32
 opencv-python-headless==5.0.0.93
 pypdfium2==5.13.0

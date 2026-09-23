@@ -54,11 +54,11 @@ def _upload_pdf(client, n=3):
 def _fail_on_call(n, real):
     calls = {"n": 0}
 
-    def fn(img):
+    def fn(*args, **kwargs):
         calls["n"] += 1
         if calls["n"] == n:
             raise RuntimeError("engine blew up sk-secret-123")
-        return real(img)
+        return real(*args, **kwargs)
     return fn
 
 
@@ -97,7 +97,7 @@ def test_sarvam_failure_on_one_page_keeps_job(client, monkeypatch):
 def test_sarvam_raising_past_ocr_page_keeps_job(client, monkeypatch):
     monkeypatch.setenv("SARVAM_API_KEY", "sk-secret-123")
     monkeypatch.setattr(main, "ocr_page", _fail_on_call(
-        2, lambda img: (ocr._stub_lines(img), 1.0)))
+        2, lambda img, profile=None: (ocr._stub_lines(img), 1.0)))
     _check_page2_failed(_upload_pdf(client))
 
 

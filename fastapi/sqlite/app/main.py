@@ -40,6 +40,7 @@ from . import db, storage
 from .ocr import (_safe_error, engine_status, failed_page_lines, ocr_page,
                   warn_legacy_env)
 from .pdfutil import load_pages, probe_decode, to_gray
+from .preprocess import prepare
 from .router import choose_profile, compute_scores
 from .schema_out import (build_job_result, build_page_result, enrich_page,
                          parse_job_result, score_ocr_lines)
@@ -195,12 +196,20 @@ def _pipeline(job_id: str, master: Path | list[Path]) -> list[dict]:
         scores = compute_scores(gray)
         profile, scores = choose_profile(scores)
 
-        # (6) OCR fast pass (clearly-marked stub lines if Sarvam is
-        #     unavailable). A failure on ONE page that escapes ocr_page()
-        #     must not sink the job: that page gets a marked stub
-        #     line (-> needs_review) and the other pages still run.
+        # (5b) Safe-wins preprocessing on a COPY (crop dark borders,
+        #      deskew, grayscale background flatten, low-res upscale).
+        #      The mapper puts OCR boxes back on the 1600px page, so the
+        #      bbox contract is unchanged.
+        prepared, mapper = prepare(img)
+
+        # (6) OCR, routed by profile: FAST -> Gemini, HEAVY -> Sarvam
+        #     (the other engine is the fallback). A failure on ONE page
+        #     that escapes ocr_page() must not sink the job: that page
+        #     gets a marked stub line (-> needs_review) and the other
+        #     pages still run.
         try:
-            ocr_lines, ocr_ms = ocr_page(img)
+            ocr_lines, ocr_ms = ocr_page(prepared, profile)
+            ocr_lines = mapper.to_page(ocr_lines)
         except Exception as exc:
             logging.getLogger("pinkcloud.job").exception(
                 "job %s: OCR failed on page %d", job_id, page_number)

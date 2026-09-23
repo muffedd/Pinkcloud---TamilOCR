@@ -22,15 +22,34 @@ uvicorn app.main:app --reload
 - http://127.0.0.1:8000/health → `{"ok": true}`
 - http://127.0.0.1:8000/docs → auto-generated Swagger UI
 
-## OCR engine: Sarvam
+## OCR routing: Gemini (FAST) + Sarvam (HEAVY)
 
-The OCR pass calls the **Sarvam Document AI Digitise API** (Sarvam Vision,
-`ta-IN`). It is the only OCR engine. Set the key as an environment variable on the machine
-that runs the server. Never commit it and never paste it into chat.
+Pages are routed by the `router.py` FAST/HEAVY badge:
+
+- **FAST** -> **Gemini** (`gemini-3.5-flash-lite` by default), the fast route.
+- **HEAVY** -> **Sarvam** Document AI Digitise (Sarvam Vision, `ta-IN`).
+- If the routed engine fails (missing key, rate limit, RECITATION, network) the
+  other engine is tried; if both fail the page gets marked `[stub]` lines
+  (confidence 0, flagged for review) and the rest of the job still runs.
+- There is no local/offline OCR engine. `SARVAM_FALLBACK` from the old PaddleOCR
+  setup is ignored (a warning is logged at startup).
+
+Before OCR, `preprocess.py` applies safe-wins cleanup on a copy: crop dark scan
+borders, deskew, grayscale background flattening, and upscale only when the scan
+is low-res. Boxes are mapped back to the page, so the contract is unchanged.
+
+Set keys as environment variables on the machine that runs the server. Never
+commit them. The git-ignored repo-root `.env` is supported via uvicorn's
+`--env-file`; a variable already present in the environment always wins.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `SARVAM_API_KEY` | (none) | Sarvam API subscription key. Required for Sarvam. |
+| `GEMINI_API_KEY` | (none) | Gemini API key. Required for the FAST route. |
+| `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Gemini vision model for OCR. |
+| `GEMINI_LANGUAGE` | `Tamil` | Language name used in the OCR prompt. |
+| `GEMINI_TIMEOUT_S` | `120` | Per-page HTTP budget. |
+| `SARVAM_API_KEY` | (none) | Sarvam API subscription key. Required for the HEAVY route. |
+| `OCR_ENGINE` | `sarvam` | `sarvam` or `gemini` when no page profile is given. |
 | `SARVAM_LANGUAGE` | `ta-IN` | Document language sent to Sarvam. |
 | `SARVAM_TIMEOUT_S` | `120` | Time budget per page (submit + poll + download). |
 | `SARVAM_POLL_S` | `3` | Seconds between status polls. |
@@ -38,25 +57,25 @@ that runs the server. Never commit it and never paste it into chat.
 
 ```bat
 :: Windows (current terminal only)
+set GEMINI_API_KEY=<paste key here, locally>
 set SARVAM_API_KEY=<paste key here, locally>
-uvicorn app.main:app
+uvicorn app.main:app --env-file ..\..\.env
 ```
 
 ```bash
-# macOS / Linux
+# macOS / Linux - load the git-ignored .env (from fastapi/sqlite/)
+uvicorn app.main:app --env-file ../../.env
+
+# or export explicitly
+export GEMINI_API_KEY='<paste key here, locally>'
 export SARVAM_API_KEY='<paste key here, locally>'
 uvicorn app.main:app
 ```
 
-If the key is missing or a Sarvam call fails, that page gets marked `[stub]`
-lines (confidence 0, flagged for review) and the rest of the job still runs.
-There is no local/offline OCR engine. `OCR_ENGINE` and `SARVAM_FALLBACK` from
-the old PaddleOCR setup are ignored (a warning is logged at startup).
-
-`GET /health` shows which engine ran the last page (`ocr_engine`: `sarvam`
-or `stub`), what was selected (`ocr_engine_selected`, always `sarvam`), whether a key
-is present (`sarvam_key_set`, never the key itself), and the last Sarvam
-error (`sarvam_error`).
+`GET /health` shows which engine ran the last page (`ocr_engine`: `gemini`,
+`sarvam` or `stub`), what was selected (`ocr_engine_selected`), whether each key
+is present (`gemini_key_set` / `sarvam_key_set`, never the keys themselves), and
+the last per-engine error (`gemini_error` / `sarvam_error`).
 
 How Sarvam output maps onto the contract:
 
@@ -76,7 +95,7 @@ How Sarvam output maps onto the contract:
   uses several requests (submit, status polls, download link), so multi-page
   PDFs are slow; 429s are retried with backoff.
 
-Tests never call Sarvam: `tests/conftest.py` removes `SARVAM_API_KEY` and
+Tests never call Sarvam or Gemini: `tests/conftest.py` removes both keys and
 `tests/test_sarvam_ocr.py` uses a mocked HTTP transport.
 
 ## AI fix (optional, Gemini)

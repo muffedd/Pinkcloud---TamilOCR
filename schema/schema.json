@@ -23,7 +23,7 @@
         "FAST",
         "HEAVY"
       ],
-      "description": "Quality badge chosen by the router. FAST = clean page. HEAVY = damaged page, flagged for review. Both are read by Sarvam Document AI."
+      "description": "Quality badge chosen by the router. FAST = clean page, read by Gemini (gemini-3.5-flash-lite). HEAVY = damaged page, flagged for review, read by Sarvam Document AI (ta-IN)."
     },
     "quality": {
       "$ref": "#/$defs/quality"

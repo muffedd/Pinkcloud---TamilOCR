@@ -1026,7 +1026,8 @@
   /* --- connection state: the footer line tells the truth --- */
   const HEALTH_TEXT = {
     mock: '● Demo mode: mock data, runs fully offline',
-    sarvam: '● Connected: Sarvam OCR ready',
+    gemini: '● Connected: Gemini OCR ready (fast route)',
+    sarvam: '● Connected: Sarvam OCR ready (heavy route)',
     stub: '● Connected: stub OCR, text is placeholder',
     down: '● Backend unreachable',
     reconnecting: '● Waking the server… retrying on its own',
