@@ -199,6 +199,7 @@ UI_FILES = {
     "index.html", "editor.html",
     "api.js", "upload.js", "editor.js", "translit.js",
     "tokens.css", "ui.css", "upload.css", "editor.css",
+    "demo.mp4",  # watch-demo modal on index.html + editor.html
 }
 
 # Sub-path assets the UI actually references. Whitelisted per directory —
@@ -207,6 +208,7 @@ UI_FILES = {
 # unreachable even though they sit next to the served files.
 UI_SUB_FILES = {
     "schema": {"doc_demo.json"},
+    "samples": {"sample-page.png"},  # upload.js "Try a sample page"
     "fonts": {
         "satoshi-regular.woff2",
         "satoshi-medium.woff2",
