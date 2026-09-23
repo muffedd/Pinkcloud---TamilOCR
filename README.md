@@ -149,6 +149,35 @@ Open the HTML design files in a browser. No build step is needed.
 - Wire the editor to the TXT export and processing receipt that ship with the export branch.
 - Keep runtime assets local. Any hosted OCR route remains a project decision.
 
+## Heavy repair and OCR provider evaluation
+
+The experimental CPU repair pipeline and OCR comparisons are in `repair/`, `text_filter.py`, and `ocr_outputs/`. This evaluation does **not** change the webapp backend: the app still uses its configured PaddleOCR path; Sarvam has been tested as a hosted alternative, not wired into the app.
+
+`repair/repair.py` now routes per page using input ink contrast (threshold `0.25`, matching the repair pipeline's fadedness threshold) and paper brightness (90th percentile threshold `240`). Clean pages use the raw image; damaged pages use the repaired grayscale `_g.png`. The binary PNG is for display only and must not be sent to OCR.
+
+| Page | Gate decision | Ink contrast | Background p90 | Selected OCR image |
+| --- | --- | ---: | ---: | --- |
+| sample1 | CLEAN | 0.773 | 255.0 | `raw/sample1.png` |
+| sample2 | DAMAGED | 0.518 | 138.0 | `repair/out/sample2_g.png` |
+
+### OCR evaluation highlights
+
+CER is measured against `gt_cict_narrinai_p3.txt`, which matches sample1 only. Tamil ratio and garbage rate are fractions; confidence is the mean layout-box score, not recognition certainty. Segmentation differs between OCR providers.
+
+| Page / input | OCR path | Tamil ratio | Garbage rate | Repeat-loop lines | Mean confidence | CER | API latency |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| sample1 raw | PaddleOCR-VL-1.6 | 0.845 | 0.060 | 0 | 0.717 | 33.87% | Not recorded |
+| sample1 raw | Sarvam Document AI | 0.978 | 0.000 | 0 | 0.742 | **1.54%** | 12.54 s |
+| sample1 raw + filter | PaddleOCR-VL-1.6 | 0.979 | 0.001 | 0 | 0.712 | 27.22% | — |
+| sample2 raw | PaddleOCR-VL-1.6 | 0.920 | 0.055 | 1 | 0.808 | N/A | Not recorded |
+| sample2 raw | Sarvam Document AI | 0.920 | 0.000 | 0 | 0.759 | N/A | 9.51 s |
+| sample2 repaired grayscale | PaddleOCR-VL-1.6 | 0.974 | 0.007 | 0 | 0.744 | N/A | 267.34 s POST; ~305.47 s to saved result |
+| sample2 repaired grayscale | Sarvam Document AI | 0.986 | 0.000 | 0 | 0.798 | N/A | 17.03 s |
+
+Sarvam sample2 raw includes a false English “no legible text” preamble despite transcribing Tamil; its zero garbage rate does not capture this semantic error. Sample2 lacks matching ground truth, so no CER winner is established. These small tests suggest Sarvam performed better on the measured sample1 CER, but are not a general accuracy guarantee.
+
+Detailed tables, OCR artifacts, and runnable checks: [`OCR_API_COMPARISON.md`](OCR_API_COMPARISON.md), [`OCR_TEST_SCORES.md`](OCR_TEST_SCORES.md), and [`OCR_PROGRESS_PROOF.md`](OCR_PROGRESS_PROOF.md). API credentials belong in deployment secrets, never in Git; the Sarvam API key is not part of this repository.
+
 ## License
 
 MIT. See [`LICENSE`](LICENSE).
