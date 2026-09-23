@@ -1,0 +1,56 @@
+{
+  "page": 1,
+  "profile": "HEAVY",
+  "preprocessed": true,
+  "needs_review": true,
+  "quality": {
+    "blur": 38.4,
+    "contrast": 0.27,
+    "noise": 0.63,
+    "skew_deg": 3.4,
+    "damage_flags": ["yellowed", "stained"],
+    "ink_density": 0.14,
+    "estimated_lines": 3,
+    "quality_score": 34
+  },
+  "lines": [
+    {
+      "id": "L1",
+      "seq": 1,
+      "body": "அகர முதல எழுத்தெல்லாம் ஆதி",
+      "bbox": [180, 320, 1240, 90],
+      "confidence": 0.93,
+      "kural": 1
+    },
+    {
+      "id": "L2",
+      "seq": 2,
+      "body": "பகவன் முதற்றே உலகு",
+      "bbox": [200, 470, 1180, 88],
+      "confidence": 0.88,
+      "kural": 1
+    },
+    {
+      "id": "L3",
+      "seq": 3,
+      "body": "கற்றதனால் ஆய பயனென்கொல் வாழறிவன்",
+      "bbox": [170, 620, 1270, 92],
+      "confidence": 0.41,
+      "kural": 2
+    }
+  ],
+  "corrections": [
+    {
+      "before": "வாழறிவன்",
+      "after": "வாலறிவன்",
+      "tier": "T1",
+      "evidence": "ழ/ல glyph confusion on a stained, low-contrast stroke: the ல in வால் was misread as the looped ழ, yielding வாழறிவன் instead of வாலறிவன் (Kural 2)."
+    }
+  ],
+  "text": "அகர முதல எழுத்தெல்லாம் ஆதி பகவன் முதற்றே உலகு கற்றதனால் ஆய பயனென்கொல் வாலறிவன்",
+  "processing_ms": 4820,
+  "work": "திருக்குறள்",
+  "chapter": 1,
+  "script": "Tamil",
+  "material": "paper"
+}
