@@ -186,7 +186,8 @@ body:has(#upload-root.up-active) { margin: 0; }
 .up-rmall svg { transition: transform var(--t-fast) var(--ease-spring); }
 .up-rmall:hover:not(:disabled) svg { transform: rotate(6deg) scale(1.1); }
 .up-list { list-style: none; margin: 8px 0 0; padding: 0; max-height: 316px; overflow-y: auto; }
-.up-empty { padding: 16px 3px 6px; font-size: 13.5px; color: var(--up-muted); }
+.up-empty { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 16px 3px 6px; }
+.up-empty p { margin: 0; font-size: 13.5px; color: var(--up-muted); }
 .up-row { position: relative; display: flex; align-items: flex-start; min-height: 53.5px; border-bottom: 1px solid var(--up-row-line); padding-left: 3px; overflow: hidden;
   transition: height 220ms cubic-bezier(.4,0,.2,1), opacity 180ms ease, transform var(--t-base) var(--ease-spring), background var(--t-fast) ease; }
 .up-row:last-child { border-bottom: 0; }
@@ -273,3 +274,30 @@ body:has(#upload-root.up-active) { margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   #upload-root *, #upload-root *::before, #upload-root *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
 }
+
+/* ---------- watch demo: empty-state button + modal (markup in index.html) ---------- */
+#upload-root .up-demo { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 11px;
+  border-radius: var(--pc-radius-full, 999px); border: 1px solid var(--up-soft-border); background: var(--up-soft-bg);
+  color: var(--up-solid); font-family: var(--up-font-btn); font-size: 12.5px; font-weight: 500; cursor: pointer;
+  transition: background var(--t-fast) ease, color var(--t-fast) ease, transform var(--t-fast) var(--ease-spring); }
+#upload-root .up-demo:hover { background: var(--up-solid); color: #fff; transform: translateY(-1px); }
+#upload-root .up-demo:active { transform: scale(.96); transition-duration: var(--t-press); }
+#upload-root .up-demo:focus-visible { outline: none; box-shadow: var(--pc-shadow-input, 0 0 0 3px #F946121F); }
+.up-demo svg { display: block; }
+
+body.demo-open { overflow: hidden; }
+.demo-modal { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: var(--pc-space-6, 24px); }
+.demo-modal[hidden] { display: none; }
+.demo-modal-backdrop { position: absolute; inset: 0; background: rgba(30, 26, 24, .52); animation: demo-fade var(--t-fast, 160ms) ease; }
+.demo-modal-card { position: relative; width: min(880px, 100%); border-radius: var(--pc-radius-panel, 10px); overflow: hidden;
+  background: var(--pc-color-inverse, #312C29); box-shadow: 0 18px 50px rgba(30, 26, 24, .35);
+  animation: demo-pop var(--t-base, 240ms) var(--ease-out, cubic-bezier(.2, .8, .2, 1)); }
+.demo-modal-video { display: block; width: 100%; aspect-ratio: 16 / 9; background: #000; }
+.demo-modal-close { position: absolute; top: 10px; right: 10px; z-index: 1; display: grid; place-items: center;
+  width: 28px; height: 28px; border-radius: var(--pc-radius-full, 999px); border: 0; cursor: pointer;
+  background: rgba(255, 255, 255, .92); color: var(--pc-color-text-secondary, #655E58);
+  transition: background var(--t-fast, 160ms) ease, color var(--t-fast, 160ms) ease, transform var(--t-fast, 160ms) ease; }
+.demo-modal-close:hover { background: var(--pc-color-primary-solid, #D93A0B); color: #fff; transform: scale(1.06); }
+.demo-modal-close:focus-visible { outline: none; box-shadow: var(--pc-shadow-input, 0 0 0 3px #F946121F); }
+@keyframes demo-fade { from { opacity: 0; } }
+@keyframes demo-pop { from { opacity: 0; transform: translateY(8px) scale(.98); } }

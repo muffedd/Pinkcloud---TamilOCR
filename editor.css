@@ -500,3 +500,37 @@ body {
 .legend .sw.pv-human {
   text-underline-offset: 0.22em;
 }
+
+/* ---------- watch demo: rail-foot button + modal (markup in editor.html) ---------- */
+.rail-foot .demo-open-btn {
+  border: 1px solid var(--pc-color-primary-soft-border);
+  background: var(--pc-color-primary-soft);
+  color: var(--pc-color-primary-solid);
+  border-radius: var(--pc-radius-full);
+  padding: 3px 11px;
+  font: inherit;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+.rail-foot .demo-open-btn:hover { background: var(--pc-color-primary-solid); color: var(--pc-color-on-primary); transform: translateY(-1px); }
+.rail-foot .demo-open-btn:active { transform: scale(.96); }
+.rail-foot .demo-open-btn:focus-visible { outline: none; box-shadow: var(--pc-shadow-input); }
+.rail-foot .demo-open-btn svg { display: block; }
+
+body.demo-open { overflow: hidden; }
+.demo-modal { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: var(--pc-space-6); }
+.demo-modal[hidden] { display: none; }
+.demo-modal-backdrop { position: absolute; inset: 0; background: rgba(30, 26, 24, .52); animation: demo-fade 160ms ease; }
+.demo-modal-card { position: relative; width: min(880px, 100%); border-radius: var(--pc-radius-panel); overflow: hidden;
+  background: var(--pc-color-inverse); box-shadow: 0 18px 50px rgba(30, 26, 24, .35);
+  animation: demo-pop 240ms cubic-bezier(.2, .8, .2, 1); }
+.demo-modal-video { display: block; width: 100%; aspect-ratio: 16 / 9; background: #000; }
+.demo-modal-close { position: absolute; top: 10px; right: 10px; z-index: 1; display: grid; place-items: center;
+  width: 28px; height: 28px; border-radius: var(--pc-radius-full); border: 0; cursor: pointer;
+  background: rgba(255, 255, 255, .92); color: var(--pc-color-text-secondary);
+  transition: background 160ms ease, color 160ms ease, transform 160ms ease; }
+.demo-modal-close:hover { background: var(--pc-color-primary-solid); color: var(--pc-color-on-primary); transform: scale(1.06); }
+.demo-modal-close:focus-visible { outline: none; box-shadow: var(--pc-shadow-input); }
+@keyframes demo-fade { from { opacity: 0; } }
+@keyframes demo-pop { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+.rail-foot .spacer { flex: 1; }

@@ -380,7 +380,15 @@
     list.setAttribute('aria-live', 'polite');
     list.setAttribute('aria-label', 'Scans and their status');
     card.appendChild(list);
-    const empty = h('p', 'up-empty', 'No scans yet. Each file uploads and runs OCR as soon as you add it.');
+    const empty = h('div', 'up-empty');
+    empty.appendChild(h('p', null, 'No scans yet. Each file uploads and runs OCR as soon as you add it.'));
+    const demo = h('button', 'up-demo');
+    demo.type = 'button';
+    demo.id = 'up-demo';
+    demo.setAttribute('aria-haspopup', 'dialog');
+    demo.appendChild(svgEl('<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.7 4.7v4.6L9.9 7z" fill="currentColor"/></svg>'));
+    demo.appendChild(h('span', null, 'Watch demo'));
+    empty.appendChild(demo);
     card.appendChild(empty);
 
     /* footer */
@@ -402,7 +410,7 @@
     card.appendChild(foot);
 
     page.appendChild(card);
-    return { dz, browse, input, list, empty, notices, offline, rmall, count, prev, next };
+    return { dz, browse, input, list, empty, notices, offline, rmall, count, prev, next, demo };
   }
 
   const el = buildSkeleton();
@@ -713,6 +721,30 @@
 
   refreshFooter();
   if (MOCK) setHealth({ state: 'mock' }); else probeHealth();
+
+  /* Watch-demo modal (markup in index.html): opens from the empty-state
+     button; closes on backdrop, the X, or Esc. Pauses on close. */
+  const demoModal = document.getElementById('demo-modal');
+  if (demoModal) {
+    const demoVideo = demoModal.querySelector('video');
+    const demoClose = demoModal.querySelector('.demo-modal-close');
+    const openDemo = () => {
+      demoModal.hidden = false;
+      document.body.classList.add('demo-open');
+      if (demoVideo) { demoVideo.currentTime = 0; demoVideo.play().catch(() => {}); }
+      if (demoClose) demoClose.focus();
+    };
+    const closeDemo = () => {
+      if (demoModal.hidden) return;
+      if (demoVideo) demoVideo.pause();
+      demoModal.hidden = true;
+      document.body.classList.remove('demo-open');
+      el.demo.focus();
+    };
+    el.demo.addEventListener('click', openDemo);
+    demoModal.addEventListener('click', (e) => { if (e.target.closest('[data-demo-close]')) closeDemo(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDemo(); });
+  }
 
   /* ?demo : scripted drag-over -> drop on the mock engine (generic sample names). */
   if (DEMO) {

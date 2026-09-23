@@ -95,6 +95,10 @@
         <span class="hint"><span class="kbd">J</span>next</span>
         <span class="hint"><span class="kbd">K</span>prev</span>
         <span class="hint"><span class="kbd">↵</span>fix</span>
+        <span class="spacer"></span>
+        <button type="button" class="hint demo-open-btn" id="demoOpenBtn" aria-haspopup="dialog">
+          <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.7 4.7v4.6L9.9 7z" fill="currentColor"/></svg>demo
+        </button>
       </div>
     </section>
 
@@ -102,6 +106,53 @@
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- Watch-demo modal: same clip as the upload page (demo.mp4, repo root).
+     Styles in editor.css (.demo-modal*); the inline wiring below is
+     self-contained - editor.js logic is untouched. -->
+<div class="demo-modal" id="demo-modal" hidden>
+  <div class="demo-modal-backdrop" data-demo-close></div>
+  <div class="demo-modal-card" role="dialog" aria-modal="true" aria-label="Pink Cloud demo video">
+    <button type="button" class="demo-modal-close" data-demo-close aria-label="Close demo video">
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2.2 2.2l9.6 9.6M11.8 2.2l-9.6 9.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
+    <video class="demo-modal-video" src="./demo.mp4" preload="metadata" playsinline muted loop controls></video>
+  </div>
+</div>
+
+<script>
+(function () {
+  var modal = document.getElementById('demo-modal');
+  var openBtn = document.getElementById('demoOpenBtn');
+  if (!modal || !openBtn) return;
+  var video = modal.querySelector('video');
+  var closeBtn = modal.querySelector('.demo-modal-close');
+  function openDemo() {
+    modal.hidden = false;
+    document.body.classList.add('demo-open');
+    if (video) { video.currentTime = 0; var p = video.play(); if (p && p.catch) p.catch(function () {}); }
+    if (closeBtn) closeBtn.focus();
+  }
+  function closeDemo() {
+    if (modal.hidden) return;
+    if (video) video.pause();
+    modal.hidden = true;
+    document.body.classList.remove('demo-open');
+    openBtn.focus();
+  }
+  openBtn.addEventListener('click', openDemo);
+  modal.addEventListener('click', function (e) { if (e.target.closest('[data-demo-close]')) closeDemo(); });
+  /* Registered before editor.js init: while the modal is open, keep the
+     editor hotkeys (J/K/Enter) from stepping the queue behind it. */
+  document.addEventListener('keydown', function (e) {
+    if (modal.hidden) return;
+    var k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); closeDemo(); }
+    else if (e.key === 'Enter' && document.activeElement === closeBtn) { e.preventDefault(); e.stopImmediatePropagation(); closeDemo(); }
+    else if (k === 'j' || k === 'k' || e.key === 'Enter') { e.preventDefault(); e.stopImmediatePropagation(); }
+  });
+})();
+</script>
 
 <script src="./api.js"></script>
 <script src="./translit.js"></script>
