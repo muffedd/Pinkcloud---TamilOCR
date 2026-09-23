@@ -1,0 +1,280 @@
+BUILD PROMPT - PINK CLOUD CORRECTION EDITOR (page 2 of 3)
+Paste everything below into your coding agent.
+================================================================
+
+You are building the correction editor page of Pink Cloud. Pink Cloud is an offline Tamil OCR web app: Vanilla JS, HTML, CSS. No frameworks. No build step. No CDNs. No internet calls at runtime.
+
+Goal: one screen with the scan on the left, Unicode Tamil text in the middle and a review queue on the right. Clicking a word highlights its box on the scan. Doubtful words are easy to find, fix and accept.
+Done when: the page loads schema/doc_demo.json offline, draws every line box on the scan, links clicks both ways, J jumps to the next doubt word, and the fix popup turns வாழறிவன் into வாலறிவன் on Accept, marks it "human" and shows a toast.
+
+----------------------------------------------------------------
+0. FILES AND BASE
+----------------------------------------------------------------
+- Read first: schema/schema.json, schema/doc_demo.json, design system/foundations/pink-cloud-color-system-v2-rename-to-.html, design system/layout/pink-cloud-layout-plan-rename-to-.html.
+- Base: use tokens.css, ui.css and the static index.html from the repo. If they are not in the repo yet, create them now from the values in this prompt. Put every color, size, radius, shadow and duration in tokens.css as a CSS variable. Put component classes in ui.css. Do not hard-code a hex value anywhere else.
+- Create these files: editor.html (or a section in index.html), editor.css, editor.js, api.js.
+- api.js: const USE_MOCK = true; getPage(n) returns doc_demo.json when USE_MOCK is true. With USE_MOCK = false it will call the live API later. The UI code must not change when this flag flips.
+- UI font: Suisse Intl is canonical (the user chose it on Sep 23). It is installed system-wide as "Suisse Intl Trial" (OTF), so it gets NO @font-face. Satoshi is the bundled fallback for machines without Suisse. Tamil is Noto Sans Tamil, code is Menlo.
+- Fonts are local files in ./fonts/: satoshi-regular.woff2 (400), satoshi-medium.woff2 (500), satoshi-bold.woff2 (700), noto-sans-tamil.ttf (variable, 100-900). Load them with @font-face. Noto Sans Tamil is ONE rule: src: url("./fonts/noto-sans-tamil.ttf") format("truetype"); font-weight: 100 900; font-display: swap. There are no NotoSansTamil woff2 files: the current repo index.html points at woff2 files that do not exist, so fix its @font-face to the ttf. Menlo is a system font; do not add an @font-face for it.
+- Polish rules (read before styling anything): one elevation language. Surfaces are separated by a 1px hairline (#E6E2DE) and whitespace, not by shadows. The only shadow on the whole page is --pc-shadow-sm, and only on the fix popup, the toast and the toggle thumb. No stacked shadows, no colored shadows, no inset glows, no text-shadow. Fewer boxes: no chips, dividers or badges unless this prompt names them.
+- Never use purple anywhere. Avoid pure #000000 for text.
+
+----------------------------------------------------------------
+1. TOKENS (tokens.css :root)
+----------------------------------------------------------------
+Brand
+  --pc-color-primary: #F94612
+  --pc-color-primary-gradient-end: #FA683D
+  --pc-gradient-primary: linear-gradient(180deg, #F94612, #FA683D)   /* only for bold labels of 19px or more */
+  --pc-color-primary-solid: #D93A0B      /* compact buttons: white text 4.6:1 */
+  --pc-color-primary-active: #B32E08     /* hover of solid, pressed */
+  --pc-color-primary-soft: #FFF4EF
+  --pc-color-primary-soft-border: #FFC9B3
+  --pc-gradient-destructive: linear-gradient(180deg, #E36323, #DF5A18)
+  --pc-color-destructive-solid: #C4380C
+  --pc-color-focus-ring: #F94612
+Neutrals
+  --pc-color-bg-canvas: #FDFCFB   --pc-color-bg-surface: #FFFFFF
+  --pc-color-bg-subtle: #F8F6F4   --pc-color-bg-hover: #F1EEEB
+  --pc-color-border-subtle: #E6E2DE   --pc-color-border: #D2CCC6   --pc-color-border-strong: #ADA69F
+  --pc-color-text-primary: #1E1A18   --pc-color-text-secondary: #655E58   --pc-color-text-disabled: #8A827B
+  --pc-color-inverse: #312C29     /* toast bg, scan viewer bg */
+Confidence
+  --pc-color-conf-auto: #0B7A55    --pc-color-conf-auto-bg: #DDF3EA
+  --pc-color-conf-ok: #1F5FAE      --pc-color-conf-ok-bg: #E3EDFA
+  --pc-color-conf-doubt: #7A5200   --pc-color-conf-doubt-bg: #FFE27A   --pc-color-conf-doubt-soft: #FFF1B8 (text-pane doubt fill)   --pc-color-conf-doubt-line: #A86A00
+  --pc-conf-auto-min: 0.90   --pc-conf-ok-min: 0.75   (auto >= 0.90; ok 0.75-0.8999; doubt < 0.75. Read these from CSS in JS; keep them in one place.)
+Provenance
+  --pc-color-prov-raw: #9A948F   --pc-color-prov-rule: #1A4E96   --pc-color-prov-swap: #006D63
+  --pc-color-prov-llm: #8A5A2B   --pc-color-prov-human: #D93A0B
+Semantic
+  --pc-color-success: #17754A  bg #E6F4EC
+  --pc-color-warning: #8F5200  bg #FFF3D6
+  --pc-color-error:   #BE123C  bg #FDECEF
+  --pc-color-info:    #1F5FAE  bg #E7F0FB
+Scan boxes
+  --pc-color-scan-viewer-bg: #312C29
+  --pc-color-scan-region-stroke: #7F7A76                                        (1px dashed, no fill)
+  --pc-color-scan-auto-stroke: #0B7A55   --pc-color-scan-auto-fill: #0B7A551A    (1px)
+  --pc-color-scan-doubt-stroke: #A86A00  --pc-color-scan-doubt-fill: #FFD23D4D   (1px)
+  --pc-color-scan-hover-stroke: #1F5FAE  --pc-color-scan-hover-fill: #1F5FAE1F   (1px)
+  --pc-color-scan-active-stroke: #D93A0B --pc-color-scan-active-fill: #F9461224  (1.5px)
+Heatmap
+  --pc-heat-auto: #0B7A5514   --pc-heat-ok: #1F5FAE29   --pc-heat-doubt: #FFD23D66
+Spacing (8px scale)
+  --pc-space-1: 4px  --pc-space-2: 8px  --pc-space-3: 12px  --pc-space-4: 16px  --pc-space-6: 24px  --pc-space-8: 32px  --pc-space-12: 48px
+Radius
+  --pc-radius-word: 3px  --pc-radius-sm: 6px  --pc-radius-pill-state: 9px  --pc-radius-control: 8px  --pc-radius-panel: 10px  --pc-radius-full: 999px
+Elevation (the whole set - remove shadow-btn, shadow-panel, shadow-pop, shadow-toggle-track and shadow-toggle-thumb if they exist)
+  --pc-hairline: 1px solid #E6E2DE          panes, popup, outline button, Precomputed pill
+  --pc-shadow-sm: 0 1px 2px #1E1A180F       ONLY on: fix popup, toast, toggle thumb
+Motion
+  --pc-motion-fast: 100ms  --pc-motion-base: 160ms  --pc-motion-slow: 200ms
+  --pc-ease-out: cubic-bezier(.23,1,.32,1)
+  Highlights and provenance flips are instant. Animate only: button press (transform scale(.97), 100ms), toggle thumb slide (160ms), popup enter (opacity 0 + scale(.96) -> 1, 160ms, transform-origin at the active word), toast enter (opacity + translateY(6px), 200ms). All use --pc-ease-out. Respect prefers-reduced-motion (no transforms).
+Layout
+  --pc-topbar-h: 52px  --pc-scan-w: 580px  --pc-text-w: 506px  --pc-rail-w: 280px
+
+----------------------------------------------------------------
+2. TYPE
+----------------------------------------------------------------
+Root: font-kerning: normal; -webkit-font-smoothing: antialiased. Reset h1-h6 and p margins to 0.
+Stacks
+  --pc-font-sans: "Suisse Intl Trial", "Suisse Intl", "Satoshi", -apple-system, system-ui, sans-serif
+  --pc-font-tamil: "Noto Sans Tamil", "Latha", "Tamil Sangam MN", sans-serif
+  --pc-font-mono: Menlo, "JetBrains Mono", monospace
+  --pc-font-code: Menlo, "JetBrains Mono", monospace   (the repo tokens.css says "Mendel" here - that is wrong, replace it)
+Roles (font / weight / size / line-height / tracking)
+  .tamil-editor   Noto Sans Tamil 400, 15px / 1.8, 0           text pane words
+  .tamil-h        Noto Sans Tamil 600, 16px / 1.5, 0           popup preview word
+  .tamil-row      Noto Sans Tamil 500, 13px / 1.5, 0           queue rows
+  .pane-title     Suisse Intl 700, 13px / 1, 0.01em                pane headers
+  .button         Suisse Intl 700, 14px / 20px, 0.01em             Export, Accept, Reject
+  .small          Suisse Intl 500, 12-13px / 1.45, 0.01em          metadata, legend, toast
+  .eyebrow        Suisse Intl 700, 11px / 1, 0.10em, uppercase     "FIX WORD"
+  .h3             Suisse Intl 700, 20px / 1.25, -0.01em            empty states
+  .code           Menlo 400, 11-13px / 1.3-1.6, 0, font-variant-numeric: tabular-nums   line ids, confidences, Tanglish input, kbd chips
+Rules: Tamil never gets negative letter-spacing or uppercase. Tamil line-height stays at 1.7 or more. All numbers use tabular-nums. Negative tracking only on .h3 and larger UI-font headings.
+
+----------------------------------------------------------------
+3. LAYOUT (fixed 1366 x 768, the page never scrolls)
+----------------------------------------------------------------
+body: bg --pc-color-bg-canvas. App grid: rows 52px / 1fr. Below the top bar: columns 580px | 506px | 280px. Each pane scrolls on its own. 1px --pc-color-border-subtle between panes.
+Pane header (all 3 panes): 44px high, bg --pc-color-bg-subtle, 1px subtle bottom border, padding 0 14px, gap 10px, title in .pane-title, sub-label Suisse Intl 500 12px secondary.
+No modals. No drawers. Transient UI is only the fix popup and the toast.
+
+3.1 TOP BAR (52px, bg surface, 1px subtle bottom border, padding 0 16px, gap 12px). Left to right, nothing else:
+  a) Wordmark "Pink Cloud": Suisse Intl 700 20px, -0.02em, color --pc-color-primary-solid. A 22px square logo tile before it: radius 7px, --pc-gradient-primary, inset 0 1px 0 #FFFFFF54.
+  b) Page badges: one state pill per page (section 4.2) at 26px high. Label "P{n} · {state}". Click = jump to that page. The current page gets an inset 1px ring in its own text color (box-shadow: inset 0 0 0 1px currentColor). No drop shadow. Over 8 pages: show 7, then a "+N" outline pill.
+  c) flex spacer
+  d) Auto / Review toggle (section 4.3).
+  e) Offline badge: 7px round dot in --pc-color-success + "Offline", Suisse Intl 500 13px secondary. No fill, no border. "Groq OFF" is not shown here; it goes in the export receipt.
+  f) Export button (section 4.1). This is the only filled button on the page. Label only: "Export", no icon. It is disabled until one page finishes OCR, and it goes to page 3.
+
+3.2 SCAN PANE (580px)
+  Header: "Scan" + "page {n} of {N} · {profile} · {repaired|clean}" + spacer + small toggle "Plain | Heatmap" (section 4.3, 28px size, default Plain).
+  Viewer: bg --pc-color-scan-viewer-bg, padding 22px 30px. Page image fit to width, 2px radius, no shadow.
+  Overlay: an absolutely positioned layer the same size as the rendered image. Draw boxes as divs.
+  Scale: bbox is [x, y, w, h] in pixels of the 1600px image the backend serves. scale = renderedWidth / naturalWidth. left = x*scale, top = y*scale, and so on. Never guess the scale. Recompute on resize.
+  Pad each box 3px outside its bbox. Radius 2px.
+  Box states (bottom to top): region -> auto -> doubt -> hover -> active.
+    region: 1px dashed #7F7A76, no fill. Show the line box on line hover.
+    auto:   1px #0B7A55 + 10% fill. Off by default.
+    ok:     no box.
+    doubt:  1px #A86A00 + #FFD23D at 30%. Always visible.
+    hover:  1px #1F5FAE + 12% fill.
+    active: 1.5px #D93A0B + #F94612 at 14%. The doubt fill hides while a word is active.
+  Do not draw provenance on the scan.
+  Mock page: if no image exists yet, render a placeholder paper (bg linear-gradient(180deg,#F1E6D1,#EADCC2)) and place each line body as text at its bbox, so boxes still line up.
+
+3.3 TEXT PANE (506px)
+  Header: "Text" + "Unicode Tamil" + spacer + small lens toggle "Confidence | Provenance" (default Confidence).
+  Body: padding 24px 28px. One row per line: a 30px gutter with the line id (Menlo 11px, --pc-color-text-disabled), then the words in .tamil-editor, color --pc-color-text-primary in every state.
+  Each word is a <span class="w"> with data-key. Word styles: radius 3px, padding 0 1px, text-underline-offset 0.42em, text-decoration-skip-ink none.
+  Legend: one quiet line pinned at the bottom, no background, hairline top border, padding 8px 14px, gap 16px, Suisse Intl 500 12px, --pc-color-text-disabled. It shows a short sample mark + label only for the marks visible right now (Confidence + Auto mode: "Doubt", "OK", and on the right "Auto words hidden in Auto mode"; Review mode adds "Auto"; Provenance lens: "Raw", "Rule", "Swap", "LLM", "Human"). Always visible. Never put it in a tooltip.
+
+3.4 REVIEW RAIL (280px)
+  Header: "Review" + spacer + plain text "{N} left" (Suisse Intl 500 12px secondary). No pill.
+  Sub-header: padding 14px 14px 10px, Suisse Intl 500 12px secondary: "{x} of {y} fixed · {doubt words only (Auto) | doubt + OK (Review)}". Put the progress bar first: 4px high, radius 99px, track --pc-color-bg-hover, fill --pc-color-primary (flat, no gradient), width = x/y. Then the text "{x} of {y} fixed".
+  Rows: grid 3px | 1fr | auto, gap 10px, padding 9px 14px 9px 10px. No dividers: whitespace separates rows.
+    col 1: 3px x 28px bar, radius 2px, transparent. It turns --pc-color-primary-solid on the active row.
+    col 2: Tamil word (.tamil-row), then meta in Menlo 11px --pc-color-text-disabled: "L3". Add " · swap" (or rule/LLM/human) when provenance is not raw.
+    col 3: confidence as plain text, no chip: Menlo 12px tabular-nums, color --pc-color-conf-doubt ("0.41"). Use --pc-color-conf-ok for OK words.
+    Active row: bg --pc-color-primary-soft.
+    Fixed row: word in --pc-color-text-disabled with line-through, col 3 shows plain text "done" in text-disabled. It stays in place and leaves the "left" count immediately.
+  Order: reading order only: page, then line seq, then word index. Provide no other sort.
+  Empty: success check + "Nothing left to review" (.h3).
+  Footer pinned: no background, hairline top border, padding 10px 14px, gap 10px: [J] next error  [K] prev  [↵] fix.
+  kbd chip: min-width 22px, height 22px, padding 0 6px, radius 5px, bg surface, border --pc-hairline, no shadow, Menlo 500 11px, text-secondary.
+
+----------------------------------------------------------------
+4. COMPONENTS (ui.css)
+----------------------------------------------------------------
+4.1 Buttons
+  .btn: inline-flex, gap 8px, height 34px, padding 0 16px, radius 8px, border 0, .button type, white text. Flat: no shadow, no gradient, no inset highlight. transition: transform 100ms --pc-ease-out, background-color 100ms.
+  .btn--solid (Export, Accept): bg --pc-color-primary-solid, no shadow. Hover bg #B32E08. Pressed (:active): transform scale(.97). Disabled: opacity 0.4, no pointer events. :focus-visible: 2px solid #F94612 outline, 2px offset.
+  Export label: "Export" only, no icon.
+  .btn--sm: height 30px, padding 0 12px, 13px text, radius 8px.
+  .btn--outline (Reject): bg surface, text-primary, border --pc-hairline, no shadow. Hover bg --pc-color-bg-hover.
+  .btn--ghost: transparent, text-secondary.
+  Use --pc-gradient-primary only for bold labels of 19px or more (Start OCR on page 1, Download PDF on page 3). It is never used on the editor page.
+
+4.2 State pill (OCR and repair job status, page badges)
+  Full size: height 34px, padding 0 12px, gap 9px, radius 9px, Suisse Intl 500 15px, 7px dot or 18px icon. Flat: no shadow, no border (except Precomputed).
+  Top bar size: height 26px, padding 0 9px, gap 6px, radius 7px, 13px text, 6px dot or 14px icon.
+  States (bg / text) - the icon shape changes too, so color is never alone:
+    Queued      #F8F6F4 / #655E58   dot
+    Fast OCR    #E7F0FB / #1F5FAE   spinner (rotate 900ms linear infinite)
+    Repairing   #E7F0FB / #1F5FAE   spinner
+    Clean       #E6F4EC / #17754A   check-circle
+    Repaired    #FFF3D6 / #8F5200   wrench, label "Repaired · {n} doubt"
+    Failed      #FDECEF / #BE123C   x-circle
+    Precomputed white + 1px #E6E2DE ring / text-primary, warning dot (the repair fallback: page swaps to precomputed output)
+  A page opens in the editor once it is Clean, Repaired or Precomputed.
+
+4.3 Segmented toggle (Auto/Review, Plain/Heatmap, Lens) - flat
+  Track: inline-grid, 2 equal columns, height 36px, padding 3px, radius 8px, bg --pc-color-bg-hover (#F1EEEB), no shadow, no inset.
+  Option: Suisse Intl 500 13px, text-secondary, padding 0 14px.
+  Active option (thumb): text-primary, flat bg #FFFFFF, radius 6px, box-shadow --pc-shadow-sm, no border, no gradient, no text-shadow. The thumb slides 160ms --pc-ease-out.
+  Small size (pane headers): height 28px, padding 2px, 12px text, padding 0 10px.
+  Build it as a radio group: arrow keys move, and it must work with the keyboard.
+
+4.4 Toast
+  Bottom center, 60px above the bottom edge. bg #312C29, white Suisse Intl 500 13px, padding 10px 14px, radius 10px, --pc-shadow-sm, green check (#7FD4A8). It auto-hides after 2.4s. Only one toast at a time.
+
+----------------------------------------------------------------
+5. UNDERLINE LANGUAGE (text pane)
+----------------------------------------------------------------
+Confidence and provenance both use underline style, so show one layer at a time with the lens toggle. Class the parent .lens-conf or .lens-prov.
+Confidence lens
+  auto  (>= 0.90):     text-decoration: underline solid 1px #0B7A55
+  ok    (0.75-0.8999): underline dotted 2px #1F5FAE
+  doubt (< 0.75):      background #FFF1B8 (--pc-color-conf-doubt-soft) + underline wavy 1.5px #A86A00   (the only filled state)
+Provenance lens
+  raw:   underline dashed 1.5px #9A948F   (untouched OCR)
+  rule:  underline solid 2px #1A4E96      (deterministic rule / dictionary)
+  swap:  underline dotted 3px #006D63     (confusable glyph swap, e.g. ழ/ல, ள/ழ)
+  llm:   underline wavy 1.5px #8A5A2B     (model suggestion, pending Accept)
+  human: underline double 3px #D93A0B     (person accepted or typed it)
+Word states (both lenses, on top of the underline)
+  hover:  neutral fill bg --pc-color-bg-hover (#F1EEEB). No ring.
+  active: bg #F9461224 + inset bottom bar box-shadow inset 0 -2px 0 #D93A0B. No outer ring.
+  focus-visible: active style + 2px #F94612 outline, 2px offset
+
+----------------------------------------------------------------
+6. MODES
+----------------------------------------------------------------
+Auto: auto words show no underline and no box. Queue = doubt words only.
+Review: every word shows its underline. Queue = doubt + ok words.
+The mode never changes the data. It only changes what is shown and queued.
+
+----------------------------------------------------------------
+7. CLICK-TO-SYNC (one selection model for all panes)
+----------------------------------------------------------------
+- There is exactly one active word, or none.
+- Word key: "p{page}:{lineId}:w{index}". index = the 1-based position of the word in its line.
+- Click a word in the text pane: it becomes active. The scan shows the active box for the same key. If the box is outside the viewer, scroll the viewer so the box sits at 1/3 of its height (160ms). If the word is in the queue, mark that row active and scroll it into view.
+- Click a box on the scan: the same result, mirrored. The text pane scrolls the word to 1/3 height.
+- Click a queue row: the same as clicking the word. Both panes scroll.
+- Hover a word or box: the hover style shows on both sides. Hover never scrolls and never changes the active word.
+- Click on empty space: nothing changes.
+- Esc: closes the popup first. A second Esc clears the active word.
+- Page badge click: clear the active word and scroll all panes to the top.
+
+----------------------------------------------------------------
+8. HOTKEYS (ignored while focus is in a text input, except Enter/Esc inside the popup)
+----------------------------------------------------------------
+  J      next queue item after the active one. At the end of a page, go to the first item on the next page. At the very end, toast "Queue done".
+  K      previous queue item.
+  Enter  open the fix popup on the active word. Inside the popup: Accept.
+  Esc    inside the popup: Reject and close. Otherwise: clear the active word.
+
+----------------------------------------------------------------
+9. FIX POPUP
+----------------------------------------------------------------
+- It opens under the active word in the text pane, 8px gap, with no arrow (the active word is already marked). Keep it inside the pane.
+- Box: width 288px, bg surface, border --pc-hairline, radius 10px, padding 14px, box-shadow --pc-shadow-sm (very minimal - nothing heavier). Enter: opacity 0 + scale(.96) -> 1 over 160ms --pc-ease-out.
+- Row 1: "FIX WORD" (.eyebrow, secondary) + spacer + a provenance chip: plain text (no pill) with a 6px dot in the provenance color + "{provenance} · {tier}" (e.g. "swap · T1").
+- Row 2: Tanglish input: height 36px, radius 8px, Menlo 14px, border 1px #F94612, focus ring box-shadow 0 0 0 3px #F946121F (a focus ring, not a shadow). It is autofocused.
+- Row 3: live Tamil preview in .tamil-h, updated on every keystroke (Tanglish -> Tamil via the eKalappai-style mapping table in translit.js). If a correction exists for the word, prefill the preview with corrections[].after.
+- Row 4: evidence line in Suisse Intl 400 12px secondary: "OCR read {before} · {evidence}".
+- Row 5, right aligned: [Reject Esc] .btn--outline.btn--sm and [Accept ↵] .btn--solid.btn--sm. Each shows a small kbd chip.
+- Nothing is applied without Accept.
+- Accept: replace the word text, set provenance = human, update lines[].body and the page text (stitch line bodies in seq order), mark the queue row as fixed, update the counts, close the popup, show the toast "Fix accepted · {word} marked human", move focus back to the word.
+- Reject: close the popup and change nothing.
+
+----------------------------------------------------------------
+10. HEATMAP
+----------------------------------------------------------------
+- The toggle is in the scan pane header. It is off by default.
+- On: give every line (or every word, when words[] exists) a fill for its bin: auto --pc-heat-auto, ok --pc-heat-ok, doubt --pc-heat-doubt. No edges, no strokes, no shadow: fills only.
+- Hover and active boxes still draw on top. The underlines and queue do not change.
+- While the heatmap is on, show a 3-swatch mini legend in the viewer's bottom-left corner.
+
+----------------------------------------------------------------
+11. DATA CONTRACT (render exactly this shape)
+----------------------------------------------------------------
+The root object has required fields page (int), profile ("FAST" | "HEAVY"), quality, lines, text. additionalProperties is false.
+  quality: blur, contrast, noise, skew_deg (required); damage_flags[], ink_density, estimated_lines, quality_score (optional).
+  lines[]: { id "L1", seq (1-based reading order), body (Tamil text), bbox [x,y,w,h] in px on the 1600px image, confidence 0-1, kural? }
+  text: the corrected line bodies stitched in seq order.
+  Optional: preprocessed (bool), needs_review (bool), words[] { text, bbox, confidence }, corrections[] { before, after, tier, evidence }, verdicts[], processing_ms, work, chapter, script, material, specimen, manuscript_id, license, doi.
+Mock: schema/doc_demo.json has page 1, profile HEAVY, preprocessed true, needs_review true, and 3 lines:
+  L1 "அகர முதல எழுத்தெல்லாம் ஆதி" 0.93 · L2 "பகவன் முதற்றே உலகு" 0.88 · L3 "கற்றதனால் ஆய பயனென்கொல் வாழறிவன்" 0.41
+  corrections: [{ before "வாழறிவன்", after "வாலறிவன்", tier "T1", evidence "ழ/ல glyph confusion ..." }]
+Rules for rendering:
+- Words: if words[] is present, use it. Assign each word to the line whose bbox contains the word's bbox center. Otherwise split lines[].body on spaces. Give each word the line's confidence, and a box made by splitting the line bbox in proportion to character count. Label these boxes as approximate in code.
+- Confidence bin = the word's confidence, or its line's confidence.
+- Provenance: default raw. A word equal to a corrections[].before (the OCR text) is a correction target: show "before" on the scan tooltip and "after" as the suggestion in the popup. Tier map (confirm with the team): T1 = swap, T2 = rule, T3 = llm. After Accept, the word becomes human.
+- The page badge state comes from profile + preprocessed + needs_review: FAST and not needs_review = Clean; HEAVY with preprocessed = Repaired.
+- Do not add fields to the contract. If you need one, stop and ask. Only new optional fields are allowed, added to schema and mock in the same commit.
+
+----------------------------------------------------------------
+12. RULES
+----------------------------------------------------------------
+- Style only through tokens.css and ui.css. No inline hex values. No new packages. No network calls.
+- Color is never the only cue: every state also has an underline style, an icon or a label.
+- There is one filled button on the page: Export (Accept lives in a transient popup).
+- Keep all key actions above y = 640 on a 1366 x 768 screen.
+- Work on branch slice/ui-editor-core. Run scripts/smoke.sh before you finish, if it exists.
+- Finish by adding 4 lines to the end of docs/handoff.md: what works, how to test, files touched, known gaps.

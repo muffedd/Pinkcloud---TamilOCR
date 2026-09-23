@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pink Cloud - Correction Editor Design System</title>
+<style>
+/* ==========================================================
+   PINK CLOUD - CORRECTION EDITOR SPEC
+   Source of truth for colors: design system/foundations/
+   pink-cloud-color-system-v2 (repo). Type: Suisse Intl (fallback Satoshi) / Noto Sans
+   Tamil / Menlo. Components: delete button, get-started toggle,
+   processing-state pills, button sheet (today). No purple.
+   ========================================================== */
+@font-face{font-family:"Satoshi";font-weight:400;font-display:swap;src:url("./fonts/satoshi-regular.woff2") format("woff2")}
+@font-face{font-family:"Satoshi";font-weight:500;font-display:swap;src:url("./fonts/satoshi-medium.woff2") format("woff2")}
+@font-face{font-family:"Satoshi";font-weight:700;font-display:swap;src:url("./fonts/satoshi-bold.woff2") format("woff2")}
+@font-face{font-family:"Noto Sans Tamil";font-weight:100 900;font-display:swap;src:url("./fonts/noto-sans-tamil.ttf") format("truetype")}
+
+:root{
+  /* ---- Brand (v2) ---- */
+  --pc-color-primary:#F94612; --pc-color-primary-gradient-end:#FA683D;
+  --pc-gradient-primary:linear-gradient(180deg,#F94612 0%,#FA683D 100%);
+  --pc-gradient-destructive:linear-gradient(180deg,#E36323 0%,#DF5A18 100%);
+  --pc-color-primary-solid:#D93A0B;      /* compact buttons, labels < 19px bold: 4.6:1 with white */
+  --pc-color-primary-active:#B32E08;
+  --pc-color-primary-soft:#FFF4EF; --pc-color-primary-soft-border:#FFC9B3;
+  --pc-color-destructive-solid:#C4380C;
+  --pc-color-focus-ring:#F94612;
+  /* ---- Neutrals (v2) ---- */
+  --pc-color-bg-canvas:#FDFCFB; --pc-color-bg-surface:#FFFFFF; --pc-color-bg-subtle:#F8F6F4; --pc-color-bg-hover:#F1EEEB;
+  --pc-color-border-subtle:#E6E2DE; --pc-color-border:#D2CCC6; --pc-color-border-strong:#ADA69F;
+  --pc-color-text-primary:#1E1A18; --pc-color-text-secondary:#655E58; --pc-color-text-disabled:#8A827B;
+  --pc-color-inverse:#312C29;
+  /* ---- Confidence (v2) ---- */
+  --pc-color-conf-auto:#0B7A55;  --pc-color-conf-auto-bg:#DDF3EA;
+  --pc-color-conf-ok:#1F5FAE;    --pc-color-conf-ok-bg:#E3EDFA;
+  --pc-color-conf-doubt:#7A5200; --pc-color-conf-doubt-bg:#FFE27A; --pc-color-conf-doubt-soft:#FFF1B8; --pc-color-conf-doubt-line:#A86A00;
+  /* ---- Provenance (v2) ---- */
+  --pc-color-prov-raw:#9A948F; --pc-color-prov-rule:#1A4E96; --pc-color-prov-swap:#006D63;
+  --pc-color-prov-llm:#8A5A2B; --pc-color-prov-human:#D93A0B;
+  /* ---- Semantic (v2) ---- */
+  --pc-color-success:#17754A; --pc-color-success-bg:#E6F4EC;
+  --pc-color-warning:#8F5200; --pc-color-warning-bg:#FFF3D6;
+  --pc-color-error:#BE123C;   --pc-color-error-bg:#FDECEF;
+  --pc-color-info:#1F5FAE;    --pc-color-info-bg:#E7F0FB;
+  /* ---- Scan boxes (v2) ---- */
+  --pc-color-scan-viewer-bg:#312C29; --pc-color-scan-paper:#F3EBDC;
+  --pc-color-scan-region-stroke:#7F7A76;
+  --pc-color-scan-auto-stroke:#0B7A55;   --pc-color-scan-auto-fill:#0B7A551A;
+  --pc-color-scan-doubt-stroke:#A86A00;  --pc-color-scan-doubt-fill:#FFD23D4D;
+  --pc-color-scan-hover-stroke:#1F5FAE;  --pc-color-scan-hover-fill:#1F5FAE1F;
+  --pc-color-scan-active-stroke:#D93A0B; --pc-color-scan-active-fill:#F9461224;
+  /* ---- Heatmap (new, built from confidence tokens) ---- */
+  --pc-heat-auto:#0B7A5514; --pc-heat-ok:#1F5FAE29; --pc-heat-doubt:#FFD23D66;
+  /* ---- Type ---- */
+  --pc-font-sans:"Suisse Intl Trial","Suisse Intl","Satoshi",-apple-system,system-ui,sans-serif;
+  --pc-font-tamil:"Noto Sans Tamil","Latha","Tamil Sangam MN",sans-serif;
+  --pc-font-mono:Menlo,"JetBrains Mono",monospace;
+  --pc-ink:#0E0E10;
+  /* ---- Space (8px scale from layout plan) ---- */
+  --pc-space-1:4px; --pc-space-2:8px; --pc-space-3:12px; --pc-space-4:16px; --pc-space-6:24px; --pc-space-8:32px; --pc-space-12:48px;
+  --pc-space-xs:.5rem; --pc-space-sm:1rem; --pc-space-md:1.5rem; --pc-space-lg:3rem;
+  /* ---- Radius ---- */
+  --pc-radius-word:3px; --pc-radius-sm:6px; --pc-radius-control:8px; --pc-radius-panel:10px; --pc-radius-full:999px;
+  /* ---- Shadows (delete-button recipe, toggle recipe) ---- */
+  /* ONE elevation language: hairline border + one faint shadow. Nothing else casts a shadow. */
+  --pc-hairline:1px solid #E6E2DE;
+  --pc-shadow-sm:0 1px 2px #1E1A180F;   /* popup, toast, toggle thumb only */
+  /* ---- Motion ---- */
+  --pc-motion-fast:100ms; --pc-motion-base:160ms; --pc-motion-slow:200ms;
+  --pc-ease-out:cubic-bezier(.23,1,.32,1);
+  /* ---- Editor grid (layout plan, 1366x768) ---- */
+  --pc-topbar-h:52px; --pc-scan-w:580px; --pc-text-w:506px; --pc-rail-w:280px;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{font-kerning:normal;-webkit-font-smoothing:antialiased}
+body{background:var(--pc-color-bg-canvas);color:var(--pc-color-text-primary);font:400 16px/1.6 var(--pc-font-sans)}
+.page{width:1440px;margin:0 auto;padding:56px 37px 80px}
+.eyebrow{font:700 12px/1 var(--pc-font-sans);letter-spacing:.12em;text-transform:uppercase;color:var(--pc-color-text-secondary)}
+.display{font:700 56px/1.05 var(--pc-font-sans);letter-spacing:-.03em;color:var(--pc-ink)}
+.h2{font:700 32px/1.15 var(--pc-font-sans);letter-spacing:-.02em;color:var(--pc-ink)}
+.h3{font:700 20px/1.25 var(--pc-font-sans);letter-spacing:-.01em}
+.lead{font:400 20px/1.5 var(--pc-font-sans);letter-spacing:-.005em;color:var(--pc-color-text-secondary)}
+.small{font:500 14px/1.45 var(--pc-font-sans);letter-spacing:.01em;color:var(--pc-color-text-secondary)}
+code,.code{font:400 13px/1.6 var(--pc-font-mono);font-variant-numeric:tabular-nums}
+code{background:var(--pc-color-bg-hover);border-radius:4px;padding:1px 5px}
+.ta{font-family:var(--pc-font-tamil);letter-spacing:0}
+header.doc{display:grid;grid-template-columns:1fr 420px;gap:48px;align-items:end;padding-bottom:40px;border-bottom:1px solid var(--pc-color-border-subtle)}
+header.doc .display{margin:12px 0 16px}
+.meta{border:1px solid var(--pc-color-border-subtle);border-radius:var(--pc-radius-panel);background:var(--pc-color-bg-surface);padding:16px 18px;font-size:14px;line-height:1.55}
+.meta dt{font:700 11px/1 var(--pc-font-sans);letter-spacing:.1em;text-transform:uppercase;color:var(--pc-color-text-secondary);margin-top:10px}
+.meta dt:first-child{margin-top:0}
+.meta dd{margin-top:4px}
+section{padding:56px 0 8px}
+.sec-h{display:flex;gap:16px;align-items:baseline;margin-bottom:8px}
+.sec-n{font:500 14px/1 var(--pc-font-mono);color:var(--pc-color-text-secondary)}
+.sec-p{max-width:860px;color:var(--pc-color-text-secondary);margin-bottom:24px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.card{background:var(--pc-color-bg-surface);border:var(--pc-hairline);border-radius:var(--pc-radius-panel);padding:20px}
+.card h4{font:700 15px/1.3 var(--pc-font-sans);margin-bottom:10px}
+.card p,.card li{font-size:14px;line-height:1.6;color:var(--pc-color-text-secondary)}
+.card ul,.card ol{padding-left:18px}
+.card li+li{margin-top:4px}
+table.spec{width:100%;border-collapse:collapse;font-size:14px;background:var(--pc-color-bg-surface);border:1px solid var(--pc-color-border-subtle);border-radius:var(--pc-radius-panel);overflow:hidden}
+table.spec th{font:700 11px/1 var(--pc-font-sans);letter-spacing:.1em;text-transform:uppercase;color:var(--pc-color-text-secondary);text-align:left;padding:12px 14px;background:var(--pc-color-bg-subtle);border-bottom:1px solid var(--pc-color-border-subtle)}
+table.spec td{padding:11px 14px;border-bottom:1px solid var(--pc-color-border-subtle);vertical-align:middle}
+table.spec tr:last-child td{border-bottom:0}
+.sw{display:inline-block;width:14px;height:14px;border-radius:4px;vertical-align:-2px;margin-right:6px;border:1px solid #0000001A}
+.note{border-left:3px solid var(--pc-color-border-strong);padding:8px 14px;font-size:14px;color:var(--pc-color-text-secondary);background:var(--pc-color-bg-subtle);border-radius:0 6px 6px 0;margin-top:16px}
+.note.warn{border-color:var(--pc-color-conf-doubt-line);background:var(--pc-color-warning-bg);color:var(--pc-color-warning)}
+
+/* ================= COMPONENTS ================= */
+/* Compact solid button (Export, Accept). Delete-button recipe, v2 solid fill. */
+.btn{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 14px;border-radius:var(--pc-radius-control);border:0;transition:transform var(--pc-motion-base) var(--pc-ease-out),background-color var(--pc-motion-fast);font:700 14px/20px var(--pc-font-sans);letter-spacing:.01em;color:#fff;cursor:pointer;white-space:nowrap}
+.btn--solid{background:var(--pc-color-primary-solid)}
+.btn:active{transform:scale(.97)}
+.btn--solid:hover{background:var(--pc-color-primary-active)}
+.btn--solid:focus-visible{outline:2px solid var(--pc-color-focus-ring);outline-offset:2px}
+.btn--sm{height:30px;padding:0 12px;font-size:13px}
+.btn--outline{background:var(--pc-color-bg-surface);color:var(--pc-color-text-primary);border:var(--pc-hairline)}
+.btn--ghost{background:transparent;color:var(--pc-color-text-secondary)}
+.btn svg{width:16px;height:16px;flex:none}
+
+/* Processing-state pill (from processing-states-pills.html, scaled: 34px -> 26px) */
+.pill{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:7px;font:500 12.5px/1 var(--pc-font-sans);white-space:nowrap}
+.pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.pill svg{width:14px;height:14px;flex:none}
+.pill--queued{background:#F8F6F4;color:#655E58}
+.pill--run{background:var(--pc-color-info-bg);color:var(--pc-color-info)}
+.pill--ok{background:var(--pc-color-success-bg);color:var(--pc-color-success)}
+.pill--warn{background:var(--pc-color-warning-bg);color:var(--pc-color-warning)}
+.pill--err{background:var(--pc-color-error-bg);color:var(--pc-color-error)}
+.pill--outline{background:var(--pc-color-bg-surface);border:var(--pc-hairline);color:var(--pc-color-text-primary)}
+.pill.is-current{box-shadow:inset 0 0 0 1px currentColor}
+.pill--lg{height:34px;padding:0 12px;gap:9px;border-radius:9px;font-size:15px}
+.pill--lg .dot{width:7px;height:7px}
+.spin{animation:spin 900ms linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Segmented toggle = Get Started toggle, scaled 86px -> 36px */
+.seg{position:relative;display:inline-grid;grid-template-columns:1fr 1fr;height:32px;padding:2px;border-radius:var(--pc-radius-control);background:var(--pc-color-bg-hover)}
+.seg span{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;padding:0 12px;font:500 12.5px/1 var(--pc-font-sans);color:var(--pc-color-text-secondary);border-radius:6px}
+.seg span.on{color:var(--pc-color-text-primary);background:var(--pc-color-bg-surface);box-shadow:0 0 0 1px #E6E2DE,var(--pc-shadow-sm)}
+.seg--sm{height:26px;padding:2px}
+.seg--sm span{font-size:12px;padding:0 9px;border-radius:5px}
+
+.kbd{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:5px;background:var(--pc-color-bg-surface);border:var(--pc-hairline);font:500 11px/1 var(--pc-font-mono);color:var(--pc-color-text-primary)}
+
+/* Word marks in the text pane */
+.w{border-radius:var(--pc-radius-word);padding:0 1px;text-decoration-skip-ink:none;text-underline-offset:.42em;cursor:pointer}
+.lens-conf .w.c-auto{text-decoration:underline solid 1px var(--pc-color-conf-auto)}
+.lens-conf .w.c-ok{text-decoration:underline dotted 2px var(--pc-color-conf-ok)}
+.lens-conf .w.c-doubt{background:var(--pc-color-conf-doubt-soft);text-decoration:underline wavy 1.5px var(--pc-color-conf-doubt-line)}
+.lens-prov .w.p-raw{text-decoration:underline dashed 1.5px var(--pc-color-prov-raw)}
+.lens-prov .w.p-rule{text-decoration:underline solid 2px var(--pc-color-prov-rule)}
+.lens-prov .w.p-swap{text-decoration:underline dotted 3px var(--pc-color-prov-swap)}
+.lens-prov .w.p-llm{text-decoration:underline wavy 1.5px var(--pc-color-prov-llm)}
+.lens-prov .w.p-human{text-decoration:underline double 3px var(--pc-color-prov-human)}
+.w.is-hover{background:var(--pc-color-bg-hover)}
+.w.is-active{background:var(--pc-color-scan-active-fill);box-shadow:inset 0 -2px 0 var(--pc-color-scan-active-stroke)}
+.auto-mode.lens-conf .w.c-auto{text-decoration:none}
+
+/* ================= EDITOR MOCK (1366x768) ================= */
+.stage{position:relative;width:1366px;margin:0 auto}
+.app{width:1366px;height:768px;background:var(--pc-color-bg-canvas);border:1px solid var(--pc-color-border);border-radius:12px;overflow:hidden;display:grid;grid-template-rows:var(--pc-topbar-h) 1fr}
+.topbar{display:flex;align-items:center;gap:12px;padding:0 16px;background:var(--pc-color-bg-surface);border-bottom:1px solid var(--pc-color-border-subtle)}
+.wordmark{font:700 18px/1 var(--pc-font-sans);letter-spacing:-.02em;color:var(--pc-color-primary-solid);margin-right:12px;display:flex;align-items:center;gap:8px}
+.wordmark i{width:20px;height:20px;border-radius:6px;background:var(--pc-gradient-primary)}
+.topbar .spacer{flex:1}
+.offline{display:inline-flex;align-items:center;gap:6px;font:500 13px/1 var(--pc-font-sans);color:var(--pc-color-text-secondary)}
+.offline .dot{width:7px;height:7px;border-radius:50%;background:var(--pc-color-success)}
+.work{display:grid;grid-template-columns:var(--pc-scan-w) var(--pc-text-w) var(--pc-rail-w);min-height:0}
+.pane{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--pc-color-border-subtle);background:var(--pc-color-bg-surface)}
+.pane:last-child{border-right:0}
+.pane-h{height:44px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;background:var(--pc-color-bg-surface);border-bottom:var(--pc-hairline)}
+.pane-h .t{font:700 13px/1 var(--pc-font-sans);letter-spacing:.01em}
+.pane-h .s{font:500 12px/1 var(--pc-font-sans);color:var(--pc-color-text-secondary)}
+.pane-h .spacer{flex:1}
+/* scan */
+.viewer{flex:1;background:var(--pc-color-scan-viewer-bg);padding:24px 32px;position:relative;overflow:hidden}
+.paper{position:relative;height:100%;border-radius:2px;background:
+  radial-gradient(ellipse 180px 120px at 82% 68%,#C9A46A33,transparent 70%),
+  radial-gradient(ellipse 220px 160px at 12% 18%,#D8BC8A40,transparent 70%),
+  radial-gradient(ellipse 90px 60px at 64% 30%,#B9925A2E,transparent 70%),
+  linear-gradient(180deg,#F1E6D1,#EADCC2);padding:44px 40px}
+.paper .hd{font:600 13px/1 var(--pc-font-tamil);color:#5a4a3c;text-align:center;letter-spacing:0;margin-bottom:26px;opacity:.85}
+.region{position:relative}
+.sl{font:500 13.5px/1 "Noto Serif Tamil","Noto Sans Tamil",serif;color:#3B2E24;display:flex;flex-wrap:nowrap;gap:6px 8px;margin-bottom:30px;letter-spacing:0}
+.sl.indent{padding-left:36px}
+.bx{padding:5px 3px 7px;border-radius:2px}
+.bx.b-doubt{background:var(--pc-color-scan-doubt-fill);box-shadow:0 0 0 1px var(--pc-color-scan-doubt-stroke)}
+.bx.b-hover{background:var(--pc-color-scan-hover-fill);box-shadow:0 0 0 1.5px var(--pc-color-scan-hover-stroke)}
+.bx.b-active{background:var(--pc-color-scan-active-fill);box-shadow:0 0 0 1.5px var(--pc-color-scan-active-stroke)}
+.bx.b-auto{box-shadow:0 0 0 1px var(--pc-color-scan-auto-stroke);background:var(--pc-color-scan-auto-fill)}
+.pgno{position:absolute;bottom:14px;right:18px;font:400 11px/1 var(--pc-font-mono);color:#7a6a5a}
+/* text pane */
+.textbody{flex:1;padding:32px 32px 16px;overflow:hidden;position:relative}
+.tl{display:grid;grid-template-columns:32px 1fr;align-items:baseline;margin-bottom:10px}
+.tl .ln{font:400 11px/1 var(--pc-font-mono);color:var(--pc-color-text-disabled);font-variant-numeric:tabular-nums}
+.tl .tx{font:400 15px/1.8 var(--pc-font-tamil);color:var(--pc-color-text-primary)}
+.tl.gap{margin-top:22px}
+.legend{flex:none;border-top:var(--pc-hairline);padding:10px 32px;display:flex;gap:16px;align-items:center;font:500 11.5px/1 var(--pc-font-sans);color:var(--pc-color-text-disabled)}
+.legend .lg{display:inline-flex;align-items:center;gap:6px}
+.legend .lg b{font-weight:700;color:var(--pc-color-text-primary)}
+.ul{display:inline-block;width:22px;height:10px;border-bottom-width:2px;border-bottom-style:solid}
+.ul.wavy{border:0;height:10px;background:linear-gradient(135deg,transparent 45%,currentColor 45%,currentColor 55%,transparent 55%) 0 5px/6px 6px repeat-x,linear-gradient(45deg,transparent 45%,currentColor 45%,currentColor 55%,transparent 55%) 3px 5px/6px 6px repeat-x}
+/* popover */
+.pop{position:absolute;width:288px;background:var(--pc-color-bg-surface);border:var(--pc-hairline);border-radius:var(--pc-radius-panel);box-shadow:var(--pc-shadow-sm);padding:14px 16px 16px;transform-origin:170px 0}
+.pop .row{display:flex;align-items:center;gap:8px}
+.pop .lab{font:700 11px/1 var(--pc-font-sans);letter-spacing:.1em;text-transform:uppercase;color:var(--pc-color-text-secondary)}
+.pop .inp{margin-top:8px;height:34px;border-radius:var(--pc-radius-control);border:1px solid var(--pc-color-primary);display:flex;align-items:center;padding:0 10px;font:400 13px/1 var(--pc-font-mono)}
+.pop .prev{margin-top:12px;font:600 16px/1.5 var(--pc-font-tamil)}
+.pop .ev{margin-top:4px;font:400 12px/1.5 var(--pc-font-sans);color:var(--pc-color-text-secondary)}
+.pop .acts{margin-top:14px;display:flex;justify-content:flex-end;gap:8px}
+/* rail */
+.qhead{padding:14px 16px 12px}
+.qhead .big{font:700 13px/1 var(--pc-font-sans)}
+.bar{height:4px;border-radius:99px;background:var(--pc-color-bg-hover);margin-top:10px;overflow:hidden}
+.bar i{display:block;height:100%;width:22%;background:var(--pc-gradient-primary);border-radius:99px}
+.qlist{flex:1;overflow:hidden;padding:6px 0}
+.qi{display:grid;grid-template-columns:3px 1fr auto;gap:0 11px;align-items:center;padding:10px 16px 10px 10px}
+.qi .mk{width:3px;height:28px;border-radius:2px;background:transparent}
+.qi .wd{font:500 13px/1.5 var(--pc-font-tamil)}
+.qi .mt{font:400 11px/1.3 var(--pc-font-mono);color:var(--pc-color-text-secondary);font-variant-numeric:tabular-nums}
+.qi .cf{font:500 11.5px/1 var(--pc-font-mono);color:var(--pc-color-conf-doubt);background:transparent;padding:0;font-variant-numeric:tabular-nums}
+.qi.is-active{background:var(--pc-color-primary-soft)}
+.qi.is-active .mk{background:var(--pc-color-primary-solid)}
+.qi.done .wd{color:var(--pc-color-text-disabled);text-decoration:line-through}
+.qfoot{flex:none;border-top:var(--pc-hairline);padding:12px 16px;display:flex;gap:10px;align-items:center;font:500 12px/1 var(--pc-font-sans);color:var(--pc-color-text-secondary);flex-wrap:wrap}
+.toast{position:absolute;left:50%;bottom:60px;transform:translateX(-50%);background:var(--pc-color-inverse);color:#fff;border-radius:var(--pc-radius-panel);padding:10px 14px;font:500 13px/1 var(--pc-font-sans);display:flex;gap:8px;align-items:center;box-shadow:var(--pc-shadow-sm)}
+.toast .ok{color:#7FD4A8}
+/* annotations */
+.ann{position:absolute;width:20px;height:20px;border-radius:50%;background:var(--pc-color-text-primary);color:#fff;font:700 11px/20px var(--pc-font-sans);text-align:center;box-shadow:0 0 0 2px #FFFFFF;z-index:5}
+.annlist{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 24px;margin-top:28px}
+.annlist div{display:grid;grid-template-columns:24px 1fr;gap:10px;font-size:13.5px;line-height:1.5;color:var(--pc-color-text-secondary)}
+.annlist b{color:var(--pc-color-text-primary);display:block;font-size:14px}
+.annlist .n{width:24px;height:24px;border-radius:50%;background:var(--pc-color-text-primary);color:#fff;font:700 12px/24px var(--pc-font-sans);text-align:center}
+/* small demos */
+.demo{background:var(--pc-color-bg-subtle);border:1px solid var(--pc-color-border-subtle);border-radius:8px;padding:16px;margin-bottom:14px}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.arrow{color:var(--pc-color-text-disabled);font-size:14px}
+pre.tokens{background:var(--pc-color-inverse);color:#F1EEEB;border-radius:var(--pc-radius-panel);padding:20px 22px;font:400 12.5px/1.65 var(--pc-font-mono);overflow:auto;white-space:pre}
+.status{display:inline-flex;align-items:center;gap:6px;font:500 12px/1 var(--pc-font-sans);padding:5px 8px;border-radius:6px;white-space:nowrap}
+.st-done{background:var(--pc-color-success-bg);color:var(--pc-color-success)}
+.st-part{background:var(--pc-color-info-bg);color:var(--pc-color-info)}
+.st-todo{background:var(--pc-color-bg-hover);color:var(--pc-color-text-secondary)}
+.st-unk{background:var(--pc-color-warning-bg);color:var(--pc-color-warning)}
+ol.next{counter-reset:n;list-style:none;display:grid;gap:0}
+ol.next li{counter-increment:n;display:grid;grid-template-columns:40px 1fr;gap:14px;border-top:1px solid var(--pc-color-border-subtle);padding:18px 0}
+ol.next li:before{content:counter(n);width:28px;height:28px;border-radius:50%;background:var(--pc-color-bg-hover);font:700 13px/28px var(--pc-font-sans);text-align:center}
+ol.next li.first:before{background:var(--pc-color-primary-solid);color:#fff}
+ol.next b{display:block;font-size:15px;margin-bottom:2px}
+ol.next p{font-size:14px;color:var(--pc-color-text-secondary)}
+footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--pc-color-border-subtle);font-size:13px;color:var(--pc-color-text-secondary)}
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="doc">
+  <div>
+    <div class="eyebrow">Pink Cloud · Screen 2 of 3 · Design system</div>
+    <h1 class="display">Correction editor</h1>
+    <p class="lead">v2 polish pass. Scan on the left, Unicode Tamil on the right, review queue in the rail. Every token, component and behavior the editor needs, so Codex can build <code>tokens.css</code> + <code>ui.css</code> without inventing anything.</p>
+  </div>
+  <dl class="meta">
+    <dt>Colors</dt><dd>Repo <code>pink-cloud-color-system-v2</code> (orange anchor #F94612). No purple.</dd>
+    <dt>Type</dt><dd>Suisse Intl (UI; installed locally as "Suisse Intl Trial", Satoshi from ./fonts/ as fallback) · Noto Sans Tamil (Tamil) · Menlo (code, ids, numbers)</dd>
+    <dt>Layout</dt><dd>Repo layout plan: 1366×768, top bar 52, scan 580 | text 506 | rail 280, no page scroll</dd>
+    <dt>Data</dt><dd><code>schema/schema.json</code> + <code>schema/doc_demo.json</code> (Thirukkural 1-2, HEAVY)</dd>
+  </dl>
+</header>
+
+<!-- ======================= 01 MOCK ======================= -->
+<section>
+  <div class="sec-h"><span class="sec-n">01</span><h2 class="h2">The screen</h2></div>
+  <p class="sec-p">Native size, 1366×768. Lines 1-3 are the committed mock page (<code>doc_demo.json</code>); lines 4-8 continue the same kurals to fill the pane. Per-word confidences are illustrative - the contract has line confidences only unless <code>words[]</code> is filled. State shown: Auto mode, confidence lens, the doubt word <span class="ta">வாலறிவன்</span> selected with its fix popup open. Polish pass: one elevation style, smaller Tamil, fewer boxes.</p>
+
+  <div class="stage">
+    <div class="app">
+      <div class="topbar">
+        <div class="wordmark"><i></i>Pink Cloud</div>
+        <span class="pill pill--warn is-current">P1 · repaired</span>
+        <span class="pill pill--ok">P2 · clean</span>
+        <span class="pill pill--run"><svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9" /></svg>P3 · OCR…</span>
+        <div class="spacer"></div>
+        <div class="seg"><span class="on">Auto</span><span>Review</span></div>
+        <span class="offline"><span class="dot"></span>Offline</span>
+        <button class="btn btn--solid">Export</button>
+      </div>
+      <div class="work">
+        <div class="pane">
+          <div class="pane-h"><span class="t">Scan</span><span class="s">Page 1 of 3</span><div class="spacer"></div><div class="seg seg--sm"><span class="on">Plain</span><span>Heatmap</span></div></div>
+          <div class="viewer">
+            <div class="paper">
+              <div class="hd">திருக்குறள் · அறத்துப்பால்</div>
+              <div class="region">
+                <div class="sl"><span class="bx">அகர</span><span class="bx">முதல</span><span class="bx">எழுத்தெல்லாம்</span><span class="bx">ஆதி</span></div>
+                <div class="sl indent"><span class="bx">பகவன்</span><span class="bx">முதற்றே</span><span class="bx">உலகு</span></div>
+                <div class="sl"><span class="bx">கற்றதனால்</span><span class="bx">ஆய</span><span class="bx b-doubt">பயனென்கொல்</span><span class="bx b-active">வாழறிவன்</span></div>
+                <div class="sl indent"><span class="bx b-doubt">நற்றாள்</span><span class="bx b-doubt">தொழாஅர்</span><span class="bx">எனின்</span></div>
+                <div class="sl"><span class="bx">மலர்மிசை</span><span class="bx">ஏகினான்</span><span class="bx b-doubt">மாணடி</span><span class="bx">சேர்ந்தார்</span></div>
+                <div class="sl indent"><span class="bx">நிலமிசை</span><span class="bx b-doubt">நீடுவாழ்</span><span class="bx">வார்</span></div>
+                <div class="sl"><span class="bx">வேண்டுதல்</span><span class="bx">வேண்டாமை</span><span class="bx">இலானடி</span></div>
+                <div class="sl indent" style="margin-bottom:0"><span class="bx">யாண்டும்</span><span class="bx b-doubt">இடும்பை</span><span class="bx">இல</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="pane">
+          <div class="pane-h"><span class="t">Text</span><div class="spacer"></div><div class="seg seg--sm"><span class="on">Confidence</span><span>Provenance</span></div></div>
+          <div class="textbody lens-conf auto-mode">
+            <div class="tl"><span class="ln">L1</span><span class="tx"><span class="w c-auto">அகர</span> <span class="w c-auto">முதல</span> <span class="w c-ok">எழுத்தெல்லாம்</span> <span class="w c-auto">ஆதி</span></span></div>
+            <div class="tl"><span class="ln">L2</span><span class="tx"><span class="w c-auto">பகவன்</span> <span class="w c-ok">முதற்றே</span> <span class="w c-auto">உலகு</span></span></div>
+            <div class="tl gap"><span class="ln">L3</span><span class="tx"><span class="w c-ok">கற்றதனால்</span> <span class="w c-auto">ஆய</span> <span class="w c-doubt">பயனென்கொல்</span> <span class="w c-doubt is-active">வாலறிவன்</span></span></div>
+            <div class="tl" id="l4" style="margin-top:214px"><span class="ln">L4</span><span class="tx"><span class="w c-doubt">நற்றாள்</span> <span class="w c-doubt">தொழாஅர்</span> <span class="w c-auto">எனின்</span></span></div>
+            <div class="tl gap"><span class="ln">L5</span><span class="tx"><span class="w c-auto">மலர்மிசை</span> <span class="w c-ok">ஏகினான்</span> <span class="w c-doubt">மாணடி</span> <span class="w c-auto">சேர்ந்தார்</span></span></div>
+            <div class="tl"><span class="ln">L6</span><span class="tx"><span class="w c-auto">நிலமிசை</span> <span class="w c-doubt">நீடுவாழ்</span> <span class="w c-auto">வார்</span></span></div>
+            <div class="tl gap"><span class="ln">L7</span><span class="tx"><span class="w c-auto">வேண்டுதல்</span> <span class="w c-ok">வேண்டாமை</span> <span class="w c-auto">இலானடி</span></span></div>
+            <div class="tl"><span class="ln">L8</span><span class="tx"><span class="w c-auto">யாண்டும்</span> <span class="w c-doubt">இடும்பை</span> <span class="w c-auto">இல</span></span></div>
+
+            <div class="pop" id="pop" style="left:176px;top:158px">
+              <div class="row"><span class="lab">Fix word</span><div style="flex:1"></div><span class="small" style="font-size:11.5px;display:inline-flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--pc-color-prov-swap)"></span>swap · T1</span></div>
+              <div class="inp">vaalarivan<span style="width:1px;height:16px;background:var(--pc-color-text-primary);margin-left:1px"></span></div>
+              <div class="prev ta">வாலறிவன்</div>
+              <div class="ev">Was <span class="ta">வாழறிவன்</span> · ழ/ல confusion</div>
+              <div class="acts"><button class="btn btn--outline btn--sm">Reject</button><button class="btn btn--solid btn--sm">Accept</button></div>
+            </div>
+          </div>
+          <div class="legend">
+            <span class="lg"><span class="ul wavy" style="color:var(--pc-color-conf-doubt-line);background-color:var(--pc-color-conf-doubt-soft)"></span>Doubt</span>
+            <span class="lg"><span class="ul" style="border-color:var(--pc-color-conf-ok);border-bottom-style:dotted"></span>OK</span>
+            <span class="lg" style="margin-left:auto">Auto words hidden in Auto mode</span>
+          </div>
+        </div>
+        <div class="pane">
+          <div class="pane-h"><span class="t">Review</span><div class="spacer"></div><span class="s">7 left</span></div>
+          <div class="qhead"><div class="bar" style="margin-top:0"><i style="width:12%"></i></div><div class="small" style="font-size:11.5px;margin-top:8px;color:var(--pc-color-text-disabled)">1 of 8 fixed</div></div>
+          <div class="qlist">
+            <div class="qi done"><span class="mk"></span><div><div class="wd ta">முதல்</div><div class="mt">L1 · human</div></div><span class="cf" style="color:var(--pc-color-text-disabled)">done</span></div>
+            <div class="qi"><span class="mk"></span><div><div class="wd ta">பயனென்கொல்</div><div class="mt">L3</div></div><span class="cf">0.52</span></div>
+            <div class="qi is-active"><span class="mk"></span><div><div class="wd ta">வாலறிவன்</div><div class="mt">L3 · swap</div></div><span class="cf">0.41</span></div>
+            <div class="qi"><span class="mk"></span><div><div class="wd ta">நற்றாள்</div><div class="mt">L4</div></div><span class="cf">0.58</span></div>
+            <div class="qi"><span class="mk"></span><div><div class="wd ta">தொழாஅர்</div><div class="mt">L4</div></div><span class="cf">0.47</span></div>
+            <div class="qi"><span class="mk"></span><div><div class="wd ta">மாணடி</div><div class="mt">L5</div></div><span class="cf">0.61</span></div>
+            <div class="qi"><span class="mk"></span><div><div class="wd ta">நீடுவாழ்</div><div class="mt">L6</div></div><span class="cf">0.55</span></div>
+            <div class="qi"><span class="mk"></span><div><div class="wd ta">இடும்பை</div><div class="mt">L8</div></div><span class="cf">0.66</span></div>
+          </div>
+          <div class="qfoot"><span class="kbd">J</span> next <span class="kbd">K</span> prev <span class="kbd">↵</span> fix</div>
+        </div>
+      </div>
+    </div>
+    <span class="ann" style="left:142px;top:-8px">1</span><span class="ann" style="left:1062px;top:-8px">2</span><span class="ann" style="left:1340px;top:-8px">3</span><span class="ann" style="left:470px;top:305px">4</span><span class="ann" style="left:1074px;top:64px">5</span><span class="ann" style="left:744px;top:250px">6</span><span class="ann" style="left:552px;top:741px">7</span><span class="ann" style="left:1077px;top:283px">8</span>
+  </div>
+
+  <div class="annlist">
+    <div><span class="n">1</span><p><b>Page pills</b>Flat, no shadow. Current page gets a 1px inset ring in its own color. Click to jump.</p></div>
+    <div><span class="n">2</span><p><b>Auto / Review</b>Segmented control: neutral track, white thumb with hairline + the one faint shadow.</p></div>
+    <div><span class="n">3</span><p><b>Export</b>The only filled button. Flat #D93A0B, no shadow, no ring. Press scales to 0.97.</p></div>
+    <div><span class="n">4</span><p><b>Active box</b>Selected word on the scan: 1.5px #D93A0B + 14% orange fill. Doubt: 1px amber + 30% yellow. Nothing else is boxed.</p></div>
+    <div><span class="n">5</span><p><b>Lens</b>Confidence or Provenance. One underline layer at a time.</p></div>
+    <div><span class="n">6</span><p><b>Fix popup</b>Hairline + faint shadow only. Tanglish in, Tamil preview, Reject / Accept.</p></div>
+    <div><span class="n">7</span><p><b>Quiet legend</b>One line, disabled-grey text, only the marks that are visible right now.</p></div>
+    <div><span class="n">8</span><p><b>Queue</b>No row dividers, no chips. 3px orange bar marks the active row; confidence is plain Menlo text.</p></div>
+  </div>
+</section>
+
+<!-- ======================= 02 TYPE ======================= -->
+<section>
+  <div class="sec-h"><span class="sec-n">02</span><h2 class="h2">Type in the editor</h2></div>
+  <p class="sec-p">The custom scale from today's typography prompt, plus three editor roles. Tamil never gets negative tracking or uppercase; Tamil line-height stays at 1.7 or more so vowel signs and pulli clear the underlines.</p>
+  <table class="spec">
+    <tr><th>Role</th><th>Font / weight</th><th>Size / line-height</th><th>Tracking</th><th>Used for</th></tr>
+    <tr><td><b>.tamil-editor</b> (new)</td><td>Noto Sans Tamil 400</td><td>15px / 1.8</td><td>0</td><td>Text pane words. Down from 20px (v1) and 17px (v2): Noto Sans Tamil runs large next to the Latin UI font. Underline offset .42em</td></tr>
+    <tr><td>.tamil-h</td><td>Noto Sans Tamil 600</td><td>16px / 1.5</td><td>0</td><td>Fix-popup preview (was 24px, then 19px)</td></tr>
+    <tr><td>.tamil-row</td><td>Noto Sans Tamil 500</td><td>13px / 1.5</td><td>0</td><td>Queue rows (was 16px 600, then 14px)</td></tr><tr><td>.tamil-scan</td><td>Noto Serif Tamil 500</td><td>14.5px</td><td>0</td><td>Mock scan text only (real scans are images)</td></tr>
+    <tr><td>.h3</td><td>Suisse Intl 700</td><td>1.25rem / 1.25</td><td>-0.01em</td><td>Empty states</td></tr>
+    <tr><td><b>.pane-title</b> (new)</td><td>Suisse Intl 700</td><td>13px / 1</td><td>0.01em</td><td>Pane headers</td></tr>
+    <tr><td>.small</td><td>Suisse Intl 500</td><td>0.875rem / 1.45</td><td>0.01em</td><td>Metadata, toast, legend (12-13px)</td></tr>
+    <tr><td>.eyebrow</td><td>Suisse Intl 700 caps</td><td>0.75rem / 1</td><td>0.12em</td><td>"Fix word" label (11px)</td></tr>
+    <tr><td>.button</td><td>Suisse Intl 700</td><td>14px / 20px (13px small)</td><td>0.01em</td><td>Export, Accept, Reject</td></tr>
+    <tr><td><b>.code</b></td><td>Menlo 400-500</td><td>11-13px / 1.3-1.6</td><td>0, tabular-nums</td><td>Line ids (L3), confidences (0.41), Tanglish input, kbd chips, hashes</td></tr>
+  </table>
+</section>
+
+<section>
+  <div class="sec-h"><span class="sec-n">02b</span><h2 class="h2">Elevation, radius, motion</h2></div>
+  <p class="sec-p">One elevation language for every component. Structure comes from hairlines and white space, not shadows. Motion is short and ease-out, and it is only used where it helps.</p>
+  <div class="grid3">
+    <div class="card"><h4>Elevation: 2 levels only</h4><ul>
+      <li><b>Flat (default):</b> <code>1px solid #E6E2DE</code> hairline or no border. Buttons, pills, toggles tracks, cards, panes, heatmap, queue rows.</li>
+      <li><b>Raised:</b> hairline + <code>0 1px 2px #1E1A180F</code>. Only on things that float above the page: fix popup, toast, toggle thumb.</li>
+      <li>No colored shadows, no stacked shadows, no inset shadows, no glow rings. Focus uses a 2px #F94612 outline, 2px offset.</li></ul></div>
+    <div class="card"><h4>Radius</h4><ul>
+      <li>3px: word highlight.</li><li>6-7px: pills, toggle thumbs, kbd.</li><li>8px: buttons, inputs, toggle tracks.</li><li>10px: popup, toast, cards, app frame.</li><li>No full-pill buttons in the editor.</li></ul></div>
+    <div class="card"><h4>Motion</h4><ul>
+      <li>Ease: <code>cubic-bezier(.23,1,.32,1)</code> (strong ease-out). Never ease-in.</li>
+      <li>Button press: <code>scale(.97)</code>, 160ms.</li>
+      <li>Popup enters from <code>scale(.96)</code> + opacity 0 to 1 in 160ms, with transform-origin at the active word. It exits in 100ms.</li>
+      <li>Toggle thumb slides 160ms. Scroll-to-word 200ms.</li>
+      <li>No animation on J/K navigation or highlight changes. Keyboard actions are frequent, so they must feel instant.</li>
+      <li>Respect <code>prefers-reduced-motion</code>: drop scale, keep opacity.</li></ul></div>
+  </div>
+</section>
+
+<!-- ======================= 03 TOP BAR ======================= -->
+<section>
+  <div class="sec-h"><span class="sec-n">03</span><h2 class="h2">Top bar</h2></div>
+  <p class="sec-p">52px, surface white, 1px subtle bottom border, 16px side padding, 12px gaps. Holds only: wordmark, page badges, Auto/Review toggle, offline badge, Export. No menus, search, avatar, tabs or zoom (layout plan rule).</p>
+  <div class="grid3">
+    <div class="card"><h4>Export button</h4><div class="demo" style="display:flex;gap:12px;align-items:center"><button class="btn btn--solid">Export</button><button class="btn btn--solid" style="background:var(--pc-color-primary-active)">Hover</button><button class="btn btn--solid" style="opacity:.4">Disabled</button></div>
+      <ul><li>34px high, 14px padding, radius 8, Suisse Intl Bold 14/20 white. Label only, no icon.</li><li>Flat fill #D93A0B, hover #B32E08, press scale(.97). No shadow, no ring, no gradient.</li><li>Disabled (40%) until at least one page finished OCR. Goes to page 3.</li><li>The #F94612→#FA683D gradient is for labels 19px+ bold (Start OCR, Download PDF).</li></ul></div>
+    <div class="card"><h4>Page badges</h4><div class="demo flow"><span class="pill pill--ok is-current"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>P1 · clean</span><span class="pill pill--warn"><span class="dot"></span>P2 · 3 doubt</span></div>
+      <ul><li>Flat state pill at 26px: radius 7, padding 0 9, gap 6, Suisse Intl 500 12.5px, tinted bg, no shadow, no border.</li><li>Label = page number + state word. Icon shape changes per state so color is never alone.</li><li>Current page: 1px inset ring in the pill's own text color. Click = jump; keyboard 1-9 optional.</li><li>More than 8 pages: show 7 + "+N" outline pill that opens a page list popover.</li></ul></div>
+    <div class="card"><h4>Offline badge</h4><div class="demo"><span class="offline"><span class="dot"></span>Offline</span></div>
+      <ul><li>Text badge, no fill. 7px success dot + "Offline", Suisse Intl 500 13px secondary. "Groq OFF" moves to the export receipt so the bar stays short.</li><li>If the Baidu HEAVY route is used live, text becomes "Online · HEAVY via API" with a warning dot. The demo story is offline, so keep it green.</li></ul></div>
+  </div>
+</section>
+
+<!-- ======================= 04 SCAN PANE ======================= -->
+<section>
+  <div class="sec-h"><span class="sec-n">04</span><h2 class="h2">Scan pane</h2></div>
+  <p class="sec-p">580px wide. Viewer bg #312C29 so the paper reads as an object; page image fit-to-width with 24/32px padding. Boxes are drawn in an absolutely positioned overlay on the image. Fills stay translucent so ink is readable; strokes carry the state.</p>
+  <div class="grid2">
+    <table class="spec">
+      <tr><th>Box state</th><th>Stroke</th><th>Fill</th><th>When</th></tr>
+      <tr><td>Layout region</td><td><span class="sw" style="background:#7F7A76"></span>1px dashed #7F7A76</td><td>none</td><td>Block/line box, shown on line hover</td></tr>
+      <tr><td>Auto word</td><td><span class="sw" style="background:#0B7A55"></span>1px #0B7A55</td><td>#0B7A55 10%</td><td>Off by default. On only in Review mode with heatmap off, if wanted</td></tr>
+      <tr><td>OK word</td><td>none</td><td>none</td><td>No box. OK is quiet on the scan</td></tr>
+      <tr><td>Doubt word</td><td><span class="sw" style="background:#A86A00"></span>1px #A86A00</td><td>#FFD23D 30%</td><td>Every doubt word, always visible</td></tr>
+      <tr><td>Hover link</td><td><span class="sw" style="background:#1F5FAE"></span>1px #1F5FAE</td><td>#1F5FAE 12%</td><td>Word under the cursor, either pane</td></tr>
+      <tr><td>Active / selected</td><td><span class="sw" style="background:#D93A0B"></span>1.5px #D93A0B</td><td>#F94612 14%</td><td>One word at a time, synced with text caret and queue row</td></tr>
+    </table>
+    <div class="card"><h4>Rules</h4><ul>
+      <li>Box coordinates are the <code>bbox</code> [x, y, w, h] in pixels of the 1600px inference copy the backend serves. Draw at <code>x × (renderedWidth / naturalWidth)</code>. The editor never guesses scale.</li>
+      <li>Stack order, bottom to top: region → auto → doubt → hover → active. Active wins over doubt (doubt fill hides while active).</li>
+      <li>Pad each box 3px outside the bbox and use radius 2 so strokes never touch ink. At rest only doubt boxes are drawn; everything else appears on hover or selection. No shadow on the page image.</li>
+      <li>Provenance is not drawn on the scan. The scan shows what was read; provenance lives in the text pane.</li>
+      <li>Repaired pages: before/after slider (ui-correction). 2px white divider, 28px round handle with ⇔, labels "Before repair" / "After" in inverse chips at the top corners. Drag follows the pointer 1:1.</li>
+      <li>If <code>words[]</code> is empty, fall back to line boxes from <code>lines[].bbox</code> with the line's confidence.</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- ======================= 05 TEXT PANE ======================= -->
+<section>
+  <div class="sec-h"><span class="sec-n">05</span><h2 class="h2">Text pane: underlines</h2></div>
+  <p class="sec-p">506px wide, 32px padding, words in <code>.tamil-editor</code> (15px), 10px between lines and 22px between kurals. Line ids in a 32px Menlo gutter. Confidence and provenance both speak through underline style, so the pane shows one layer at a time through the lens switch in its header (default: Confidence). Word color stays text-primary in both lenses for Tamil legibility.</p>
+  <div class="grid2">
+    <div>
+      <table class="spec">
+        <tr><th colspan="3">Confidence lens (default)</th></tr>
+        <tr><td style="width:90px"><b>Auto</b><br><span class="small">≥ 0.90</span></td><td class="lens-conf"><span class="w c-auto ta" style="font-size:15px">பள்ளிக்கூடம்</span></td><td>1px solid #0B7A55. Hidden in Auto mode (nothing to do).</td></tr>
+        <tr><td><b>OK</b><br><span class="small">0.75-0.89</span></td><td class="lens-conf"><span class="w c-ok ta" style="font-size:15px">பள்ளிக்கூடம்</span></td><td>2px dotted #1F5FAE. No fill.</td></tr>
+        <tr><td><b>Doubt</b><br><span class="small">&lt; 0.75</span></td><td class="lens-conf"><span class="w c-doubt ta" style="font-size:15px">பள்ளிக்கூடம்</span></td><td>Soft #FFF1B8 fill + 1.5px wavy #A86A00. The only filled state (fill softened from #FFE27A).</td></tr>
+      </table>
+      <div class="note warn">Thresholds: context.md token plan says ok ≥ 0.75; the v1 color page said 0.70. Pick one and put it in <code>tokens.css</code> as <code>--pc-conf-ok-min</code> / <code>--pc-conf-auto-min</code>, read by JS.</div>
+    </div>
+    <table class="spec">
+      <tr><th colspan="3">Provenance lens</th></tr>
+      <tr><td style="width:90px"><b>Raw</b></td><td class="lens-prov"><span class="w p-raw ta" style="font-size:15px">தமிழ்நாடு</span></td><td>1.5px dashed #9A948F. Untouched OCR.</td></tr>
+      <tr><td><b>Rule</b></td><td class="lens-prov"><span class="w p-rule ta" style="font-size:15px">தமிழ்நாடு</span></td><td>2px solid #1A4E96. Deterministic rule / dictionary.</td></tr>
+      <tr><td><b>Swap</b></td><td class="lens-prov"><span class="w p-swap ta" style="font-size:15px">வாலறிவன்</span></td><td>3px dotted #006D63. Confusable glyph swap (ழ↔ல, ள↔ழ).</td></tr>
+      <tr><td><b>LLM</b></td><td class="lens-prov"><span class="w p-llm ta" style="font-size:15px">தமிழ்நாடு</span></td><td>1.5px wavy #8A5A2B. Model suggestion, pending Accept.</td></tr>
+      <tr><td><b>Human</b></td><td class="lens-prov"><span class="w p-human ta" style="font-size:15px">தமிழ்நாடு</span></td><td>3px double #D93A0B. A person accepted or typed it. Final say.</td></tr>
+    </table>
+  </div>
+  <div class="grid3" style="margin-top:24px">
+    <div class="card"><h4>Word states (both lenses)</h4><p class="lens-conf ta" style="font-size:20px;color:var(--pc-color-text-primary)"><span class="w is-hover">நற்றாள்</span>&nbsp; <span class="w is-active">வாலறிவன்</span></p><ul><li>Hover: neutral #F1EEEB fill, no ring.</li><li>Active: 14% orange fill + 2px #D93A0B bottom bar (inset), radius 3. No box around the word.</li><li>Focus-visible = active style + 2px #F94612 outline, offset 2.</li></ul></div>
+    <div class="card"><h4>Mapping from the contract</h4><ul><li>Confidence: <code>words[].confidence</code>, else <code>lines[].confidence</code>.</li><li>Provenance: raw by default. A word matching <code>corrections[].after</code> takes its tier: rule / swap / LLM. Accepted fixes become human.</li><li>The mock's <code>tier: "T1"</code> has no name in the schema. Proposed map: T1 = swap, T2 = rule, T3 = LLM. Confirm with Tinku.</li></ul></div>
+    <div class="card"><h4>Legend strip</h4><ul><li>One quiet line at the pane bottom: hairline top, 10px 32px padding, Suisse Intl 500 11.5px in text-disabled.</li><li>Lists only the marks visible right now. In Auto mode: Doubt, OK and a note "Auto words hidden". In the Provenance lens: the 5 styles.</li><li>Sample = 22px underline in the real style. Always visible, never in a tooltip.</li></ul></div>
+  </div>
+</section>
+
+<!-- ======================= 06 LINKAGE + MODES ======================= -->
+<section>
+  <div class="sec-h"><span class="sec-n">06</span><h2 class="h2">Click-to-sync, queue, hotkeys, modes</h2></div>
+  <p class="sec-p">One selection model drives all three panes. There is exactly one active word (or none). Every change is instant; only scroll uses motion (160ms, ease-out).</p>
+  <div class="grid2">
+    <div class="card"><h4>Linkage behavior</h4><ol>
+      <li><b>Identity.</b> Each word gets a stable key <code>p{page}:{lineId}:w{index}</code> (index = 1-based position in the line's word list). All three panes look words up by this key.</li>
+      <li><b>Click a word in the text pane</b> → it becomes active. The scan draws the active box for the same key. If the box is outside the viewer, the viewer scrolls so the box sits at 1/3 height. If the word is in the queue, that row gets the active style and scrolls into view. The caret is placed at the end of the word.</li>
+      <li><b>Click a box on the scan</b> → same result, mirrored: the text pane scrolls the word into view (1/3 height) and marks it active.</li>
+      <li><b>Click a queue row</b> → same as clicking the word. Both panes scroll.</li>
+      <li><b>Hover</b> a word or box → hover style on both sides. Hover never scrolls and never changes the active word.</li>
+      <li><b>Click empty space</b> → nothing changes. <b>Esc</b> closes the popover first; a second Esc clears the active word.</li>
+      <li><b>Page jump</b> (badge) → clears the active word, scrolls both panes to top.</li>
+      <li><b>Line fallback.</b> Without <code>words[]</code>, the unit is the line: click a line → line box active on the scan, whole line active in the text.</li>
+    </ol></div>
+    <div class="card"><h4>Review queue</h4><ul>
+      <li><b>Contents.</b> Auto mode: doubt words only. Review mode: doubt + OK words.</li>
+      <li><b>Order.</b> Reading order: page → line <code>seq</code> → word index. Predictable with J, matches the scan. (No "lowest first" sort: one order, fewer choices.)</li>
+      <li><b>Row anatomy.</b> 3px active bar · Tamil word (Noto Sans Tamil 500 13px) · meta in Menlo 11px: <code>L3</code> (+ page when the queue spans pages) + provenance if not raw · confidence right as plain Menlo 11.5px in conf-doubt color, no chip. 10/16px padding, no dividers.</li>
+      <li><b>Header.</b> "Review" + plain "<i>N</i> left" text on the right (no pill). Under it: a 4px progress bar (primary gradient on neutral-100), then "<i>x</i> of <i>y</i> fixed" in 11.5px disabled text.</li>
+      <li><b>Fixed rows</b> stay in place, strike through, chip reads "done". They leave the "left" count at once.</li>
+      <li><b>Empty.</b> "Nothing left to review" + success check. Export stays the next step.</li>
+    </ul></div>
+    <div class="card"><h4>Keys (proposal)</h4>
+      <table class="spec" style="border:0">
+        <tr><td><span class="kbd">J</span></td><td>Next queue item after the active one. Wraps to the first item of the next page; at the end, a toast "Queue done".</td></tr>
+        <tr><td><span class="kbd">K</span></td><td>Previous queue item.</td></tr>
+        <tr><td><span class="kbd">↵</span></td><td>Open the fix popover on the active word. In the popover: Accept.</td></tr>
+        <tr><td><span class="kbd">Esc</span></td><td>Reject / close popover, then clear selection.</td></tr>
+      </table>
+      <div class="note">J / K is the default for the build (J was suggested earlier; no other key was ever chosen). Keys never fire while focus is in a text input.</div>
+    </div>
+    <div class="card"><h4>Auto / Review toggle</h4><div class="demo flow"><div class="seg"><span class="on">Auto</span><span>Review</span></div><span class="arrow">→</span><div class="seg"><span>Auto</span><span class="on">Review</span></div></div><ul>
+      <li>Get Started toggle, flattened: 32px track, radius 8, bg #F1EEEB, 2px padding, no inset shadow. Thumb is white, radius 6, with a hairline + the one faint shadow (0 1px 2px #1E1A180F). Labels are Suisse Intl 500 12.5px: secondary, active = text-primary. No gradient, no text shadow.</li>
+      <li>Thumb slides 160ms with the ease-out curve. Keyboard: it is a radio group (arrow keys).</li>
+      <li><b>Auto</b>: auto words need nothing - no underline, no box. Queue = doubt only.</li>
+      <li><b>Review</b>: every word keeps its underline; queue = doubt + OK. Mode never changes the data, only what is shown and queued.</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- ======================= 07 HEATMAP + PROCESSING ======================= -->
+<section>
+  <div class="sec-h"><span class="sec-n">07</span><h2 class="h2">Heatmap and processing states</h2></div>
+  <div class="grid2">
+    <div class="card"><h4>Heatmap overlay (scan pane)</h4>
+      <div class="demo" style="background:#312C29;padding:14px"><div style="background:linear-gradient(180deg,#F1E6D1,#EADCC2);padding:16px 18px;border-radius:2px">
+        <div class="sl" style="font-size:16px;margin-bottom:12px;gap:0;flex-wrap:wrap"><span class="bx" style="background:var(--pc-heat-auto)">அகர முதல எழுத்தெல்லாம் ஆதி</span></div>
+        <div class="sl" style="font-size:16px;margin-bottom:12px;gap:0;flex-wrap:wrap"><span class="bx" style="background:var(--pc-heat-ok)">பகவன் முதற்றே உலகு</span></div>
+        <div class="sl" style="font-size:16px;margin-bottom:0;gap:0;flex-wrap:wrap"><span class="bx" style="background:var(--pc-heat-doubt)">கற்றதனால் ஆய பயனென்கொல் வாழறிவன்</span></div>
+      </div></div>
+      <ul><li>Switch in the scan pane header ("Plain / Heatmap"). Plain by default so the scan stays clean.</li><li>On: every line (or word, if <code>words[]</code>) gets a fill by bin: auto #0B7A55 8%, OK #1F5FAE 16%, doubt #FFD23D 40%. Fills only: no strokes, no edges, no shadow.</li><li>Uses the doc_demo line confidences above: 0.93 / 0.88 / 0.41.</li><li>Hover and active boxes still draw on top. Queue and underlines do not change.</li><li>A 3-swatch mini legend appears in the viewer's bottom-left while on.</li></ul></div>
+    <div class="card"><h4>Processing states (OCR and repair jobs)</h4>
+      <div class="demo flow" style="gap:6px 6px">
+        <span class="pill pill--lg pill--queued"><span class="dot"></span>Queued</span><span class="arrow">→</span>
+        <span class="pill pill--lg pill--run"><svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9"/></svg>Fast OCR</span><span class="arrow">→</span>
+        <span class="pill pill--lg pill--ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>Clean</span>
+      </div>
+      <div class="demo flow" style="gap:6px 6px">
+        <span class="pill pill--lg pill--run"><svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9"/></svg>Repairing</span><span class="arrow">→</span>
+        <span class="pill pill--lg pill--warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg>Repaired · 3 doubt</span><span class="arrow">or</span>
+        <span class="pill pill--lg pill--err"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></svg>Failed</span><span class="arrow">→</span>
+        <span class="pill pill--lg pill--outline"><span class="dot" style="color:var(--pc-color-warning)"></span>Precomputed</span>
+      </div>
+      <ul><li>Same anatomy as processing-states-pills.html (34px, radius 9, 0 12px padding, 9px gap, 7px dot / 18px icon), flattened (no shadow) and recolored to v2 semantics.</li><li>Running states use info blue + spinner. The source pill file used indigo #6366F1 for Processing - that is too close to purple, so it is replaced here.</li><li>Page badge in the top bar = the same pill at 26px. Page can be opened in the editor once it is Clean or Repaired.</li><li>Failed → Precomputed is the H4.25 repair gate: the page swaps to the precomputed result and the demo looks identical.</li></ul></div>
+  </div>
+</section>
+
+<!-- ======================= 08 TOKENS ======================= -->
+<section>
+  <div class="sec-h"><span class="sec-n">08</span><h2 class="h2">Tokens to paste into tokens.css</h2></div>
+  <p class="sec-p">The editor subset. Everything else stays as in color-system v2. New tokens are marked.</p>
+<pre class="tokens">:root {
+  /* brand */           --pc-color-primary:#F94612; --pc-color-primary-gradient-end:#FA683D;
+                        --pc-color-primary-solid:#D93A0B; --pc-color-primary-active:#B32E08; --pc-color-primary-soft:#FFF4EF;
+                        --pc-gradient-destructive: linear-gradient(180deg,#E36323,#DF5A18); --pc-color-destructive-solid:#C4380C;
+  /* confidence */      --pc-color-conf-auto:#0B7A55; --pc-color-conf-ok:#1F5FAE; --pc-color-conf-doubt:#7A5200;
+                        --pc-color-conf-doubt-bg:#FFE27A; --pc-color-conf-doubt-line:#A86A00;           /* line: new */
+                        --pc-conf-auto-min:0.90; --pc-conf-ok-min:0.75;                                 /* new, confirm */
+  /* provenance */      --pc-color-prov-raw:#9A948F; --pc-color-prov-rule:#1A4E96; --pc-color-prov-swap:#006D63;
+                        --pc-color-prov-llm:#8A5A2B; --pc-color-prov-human:#D93A0B;
+  /* scan */            --pc-color-scan-viewer-bg:#312C29; --pc-color-scan-region-stroke:#7F7A76;
+                        --pc-color-scan-doubt-stroke:#A86A00; --pc-color-scan-doubt-fill:#FFD23D4D;
+                        --pc-color-scan-hover-stroke:#1F5FAE; --pc-color-scan-hover-fill:#1F5FAE1F;
+                        --pc-color-scan-active-stroke:#D93A0B; --pc-color-scan-active-fill:#F9461224;
+  /* heatmap (new) */   --pc-heat-auto:#0B7A5514; --pc-heat-ok:#1F5FAE29; --pc-heat-doubt:#FFD23D66;
+  /* type */            --pc-font-sans:"Suisse Intl Trial","Suisse Intl","Satoshi",-apple-system,system-ui,sans-serif;
+                        --pc-font-tamil:"Noto Sans Tamil","Latha","Tamil Sangam MN",sans-serif;
+                        --pc-font-mono:Menlo,"JetBrains Mono",monospace;
+                        --pc-font-code:Menlo,"JetBrains Mono",monospace;   /* repo tokens.css says "Mendel": fix */
+  /* layout (new) */    --pc-topbar-h:52px; --pc-scan-w:580px; --pc-text-w:506px; --pc-rail-w:280px;
+  /* radius */          --pc-radius-word:3px; --pc-radius-sm:6px; --pc-radius-control:8px; --pc-radius-panel:10px;
+  /* elevation */       --pc-hairline: 1px solid #E6E2DE;
+                        --pc-shadow-sm: 0 1px 2px #1E1A180F;        /* the ONLY shadow: popup, toast, toggle thumb */
+  /* doubt text fill */ --pc-color-conf-doubt-soft:#FFF1B8;       /* new */
+  /* motion */          --pc-motion-fast:100ms; --pc-motion-base:160ms; --pc-motion-slow:200ms;
+                        --pc-ease-out: cubic-bezier(.23,1,.32,1);
+}</pre>
+</section>
+
+<!-- ======================= 09 WHAT'S NEXT ======================= -->
+<section>
+  <div class="sec-h"><span class="sec-n">09</span><h2 class="h2">What's next</h2></div>
+  <p class="sec-p">From today's Vertical Slices plan and model split, checked against the repo at 3:15 PM.</p>
+  <table class="spec">
+    <tr><th>Slice</th><th>Owner</th><th>Model</th><th>Status</th><th>Evidence</th></tr>
+    <tr><td>contract</td><td>Tinku (+Jasper)</td><td>Luna</td><td><span class="status st-part">In repo, sign-off unconfirmed</span></td><td><code>schema/schema.json</code> + <code>doc_demo.json</code> committed. No <code>endpoints.md</code>.</td></tr>
+    <tr><td>design-system</td><td>Sutharshan</td><td>Luna</td><td><span class="status st-part">Mostly pushed</span></td><td>tokens.css (80965cb), static index.html (a6d1955), fonts/ on main. ui.css is built and waiting on one GitHub tap. Two fixes needed: index.html points at NotoSansTamil woff2 files that don't exist (use <code>./fonts/noto-sans-tamil.ttf</code>), and tokens.css has "Mendel" in <code>--pc-font-code</code> (use Menlo).</td></tr>
+    <tr><td>ui-editor-core</td><td>Sutharshan</td><td>Sol</td><td><span class="status st-todo">Next - not started</span></td><td>Build it with editor-build-prompt.txt.</td></tr>
+    <tr><td>ui-correction</td><td>Sutharshan</td><td>Sol</td><td><span class="status st-todo">After editor-core</span></td><td>-</td></tr>
+    <tr><td>ui-integration</td><td>Sutharshan</td><td>Luna</td><td><span class="status st-todo">At H6</span></td><td>-</td></tr>
+    <tr><td>pipe-skeleton-router · pipe-repair · pipe-export-receipt</td><td>Tinku</td><td>Sol · Sol · Luna→Sol</td><td><span class="status st-unk">Unknown</span></td><td>A <code>fastapi/</code> folder now exists on main; no status in chat.</td></tr>
+    <tr><td>data-upload · data-demo-set · qa-demo</td><td>Jasper</td><td>Luna</td><td><span class="status st-unk">Unknown</span></td><td>Jasper's acceptance of his slices was still pending at 2:35 PM.</td></tr>
+    <tr><td>Baidu PaddleOCR token</td><td>-</td><td>-</td><td><span class="status st-unk">Blocked</span></td><td>SMS code sent ~1:04 PM, never entered; it was valid 30 min, so it needs a resend.</td></tr>
+  </table>
+  <h3 class="h3" style="margin:32px 0 14px">Your next moves, in order</h3>
+  <ol class="next">
+    <li class="first"><div><b>Finish the design-system slice</b><p>Tap the ui.css GitHub code. Fix the two things above: the Noto Sans Tamil @font-face goes to <code>./fonts/noto-sans-tamil.ttf</code> (truetype, weight 100 900), and the mono stack goes to Menlo. Apply the 02b elevation rules to ui.css (no shadows except the one faint shadow on the popup, toast and toggle thumb).</p></div></li>
+    <li><div><b>Build ui-editor-core (Sol)</b><p>Paste editor-build-prompt.txt into your agent on branch <code>slice/ui-editor-core</code>. Done when doc_demo.json renders offline, clicks link both ways, and J jumps through doubt words. Add your handoff.md lines, then merge at the next sync.</p></div></li>
+    <li><div><b>Settle the contract gaps with Tinku</b><p>Will the router always fill <code>words[]</code>, and can each word get an optional <code>line_id</code>? What are the tier names (T1 = swap?)? Is the ok threshold 0.75 or 0.70?</p></div></li>
+    <li><div><b>ui-correction (Sol)</b><p>Fix popup, Tanglish → Tamil, Accept/Reject, provenance lens, before/after slider. Done when "thamizh" → தமிழ் → Accept → human.</p></div></li>
+    <li><div><b>Unblock HEAVY OCR</b><p>Resend the Baidu SMS code, or switch to the fallback (Novita paddleocr-vl or precomputed pages).</p></div></li>
+    <li><div><b>H6: ui-integration</b><p>Flip <code>USE_MOCK=false</code>, then H8.5 freeze + tag <code>demo-v1</code>.</p></div></li>
+  </ol>
+</section>
+
+<footer>Pink Cloud · correction editor spec · built Sep 23, 2026 from repo muffedd/Pinkcloud---TamilOCR (color-system v2, layout plan, schema) and today's component files. Self-contained: embedded CSS, no JS, no CDNs. Fonts expected in ./fonts/.</footer>
+</div>
+</body>
+</html>
