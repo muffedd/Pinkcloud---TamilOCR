@@ -9,6 +9,7 @@ opencv-python-headless==5.0.0.93
 pypdfium2==5.13.0
 numpy==2.3.5
 pillow==12.3.0
+python-docx==1.2.0   # export.docx (Word export)
 httpx==0.28.1   # needed by tests (starlette TestClient)
 pytest==9.1.1    # backend test runner
 
