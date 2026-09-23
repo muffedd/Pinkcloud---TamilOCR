@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pink Cloud - Tamil OCR Editor</title>
+<!--
+  Pink Cloud - static editor page (layout plan, page 2 of 3).
+  Renders schema/doc_demo.json OFFLINE: the JSON is embedded inline below, no fetch.
+  Design system: tokens.css + ui.css (relative paths, repo root).
+  Fonts: Satoshi + Noto Sans Tamil via @font-face from ./fonts/ (local, no CDN).
+-->
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="ui.css">
+<style>
+/* Local fonts - expected files inside ./fonts/ (same names as design system/foundations). */
+@font-face {
+  font-family: "Satoshi";
+  src: url("./fonts/Satoshi-Regular.woff2") format("woff2"),
+       url("./fonts/satoshi-regular.woff2") format("woff2"),
+       url("./fonts/Satoshi-400.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Satoshi";
+  src: url("./fonts/Satoshi-Medium.woff2") format("woff2"),
+       url("./fonts/satoshi-medium.woff2") format("woff2"),
+       url("./fonts/Satoshi-500.woff2") format("woff2");
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Satoshi";
+  src: url("./fonts/Satoshi-Bold.woff2") format("woff2"),
+       url("./fonts/satoshi-bold.woff2") format("woff2"),
+       url("./fonts/Satoshi-700.woff2") format("woff2");
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Noto Sans Tamil";
+  src: url("./fonts/NotoSansTamil-Regular.woff2") format("woff2"),
+       url("./fonts/notosanstamil-regular.woff2") format("woff2"),
+       url("./fonts/NotoSansTamil-400.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Noto Sans Tamil";
+  src: url("./fonts/NotoSansTamil-SemiBold.woff2") format("woff2"),
+       url("./fonts/notosanstamil-semibold.woff2") format("woff2"),
+       url("./fonts/NotoSansTamil-600.woff2") format("woff2");
+  font-weight: 600; font-style: normal; font-display: swap;
+}
+
+:root {
+  /* Fallbacks mirror the design-system spec; tokens.css overrides these when present. */
+  --color-brand-primary: var(--color-brand-primary, #c2410c);
+  --color-bg-canvas: #faf9f7;
+  --color-bg-surface: #f4f2ef;
+  --color-border-subtle: #e5e1dc;
+  --color-border-default: #d6d0ca;
+  --color-text-primary: #292524;
+  --color-text-secondary: #57534e;
+  --color-text-muted: #8a857f;
+  --color-confidence-auto-fb: #78716c;
+  --color-confidence-ok-fb: #15803d;
+  --color-confidence-doubt-fb: #b45309;
+  --color-provenance-rules-fb: #1d4ed8;
+  --color-provenance-human-fb: #c2410c;
+  --stack-latin: "Satoshi", system-ui, "Segoe UI", Roboto, sans-serif;
+  --stack-tamil: "Noto Sans Tamil", "Satoshi", "Latha", "Nirmala UI", sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--color-bg-canvas);
+  color: var(--color-text-primary);
+  font-family: var(--stack-latin);
+  font-size: 15px;
+  line-height: 1.5;
+}
+/* One screen, no page scroll: fixed app frame, panes scroll on their own. */
+.app { min-width: 1366px; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* ---- Zone 1: top bar (52px) ---- */
+.topbar {
+  height: 52px; flex: 0 0 52px;
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 24px;
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border-default);
+}
+.wordmark { font-size: 20px; font-weight: 700; color: var(--color-brand-primary); letter-spacing: 0.01em; }
+.page-badges { display: flex; gap: 8px; }
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 500; line-height: 1;
+  padding: 7px 10px; border: 1px solid var(--color-border-default); border-radius: 4px;
+  background: var(--color-bg-canvas); color: var(--color-text-secondary);
+}
+.badge.repair { border-color: var(--color-confidence-doubt, var(--color-confidence-doubt-fb)); color: var(--color-confidence-doubt, var(--color-confidence-doubt-fb)); }
+.badge.profile { font-weight: 700; }
+.badge.offline { color: var(--color-text-secondary); }
+.badge.offline::before { content: "\25CF"; color: var(--color-confidence-ok, var(--color-confidence-ok-fb)); font-size: 9px; }
+.topbar .spacer { flex: 1; }
+.seg { display: inline-flex; border: 1px solid var(--color-border-default); border-radius: 6px; overflow: hidden; }
+.seg button {
+  appearance: none; border: 0; background: var(--color-bg-canvas);
+  font: 500 13px/1 var(--stack-latin); color: var(--color-text-secondary);
+  padding: 9px 16px; cursor: pointer;
+}
+.seg button.on { background: var(--color-text-primary); color: var(--color-bg-canvas); }
+.button {
+  appearance: none; cursor: pointer; border-radius: 6px;
+  font: 600 15px/1 var(--stack-latin); padding: 12px 20px;
+}
+.button.primary { border: 1px solid var(--color-brand-primary); background: var(--color-brand-primary); color: #fff; }
+
+/* ---- Fixed grid: scan 580 | text 506 | rail 280 ---- */
+.grid {
+  flex: 1; min-height: 0;
+  display: grid; grid-template-columns: 580px 506px 280px;
+}
+.pane { min-height: 0; overflow-y: auto; padding: 16px 24px 24px; border-right: 1px solid var(--color-border-subtle); }
+.pane:last-child { border-right: 0; }
+.pane h2 { margin: 0 0 16px; font: 600 14px/1.2 var(--stack-latin); color: var(--color-text-primary); }
+
+/* ---- Zone 2: scan pane ---- */
+.scan-frame {
+  position: relative; width: 100%; aspect-ratio: 2 / 1;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default); border-radius: 4px;
+  background-image: repeating-linear-gradient(45deg, transparent 0 14px, rgba(0,0,0,0.025) 14px 15px);
+}
+.scan-frame svg { display: block; width: 100%; height: 100%; }
+.scan-note { margin-top: 8px; font-size: 12px; color: var(--color-text-muted); }
+
+/* ---- Zone 3: text pane ---- */
+.lines { font-family: var(--stack-tamil); font-size: 19px; line-height: 2.1; }
+.line { margin: 0 0 16px; }
+.line .linetag {
+  font: 500 11px/1 var(--stack-latin); color: var(--color-text-muted);
+  display: block; margin-bottom: 4px;
+}
+/* Confidence: color + underline style, never color alone. */
+.w { text-underline-offset: 0.28em; text-decoration-thickness: 2px; }
+.w-ok    { color: var(--color-confidence-ok, var(--color-confidence-ok-fb)); text-decoration: underline solid var(--color-confidence-ok, var(--color-confidence-ok-fb)); }
+.w-auto  { color: var(--color-text-primary); text-decoration: underline solid var(--color-confidence-auto, var(--color-confidence-auto-fb)); }
+.w-doubt { color: var(--color-confidence-doubt, var(--color-confidence-doubt-fb)); text-decoration: underline wavy var(--color-confidence-doubt, var(--color-confidence-doubt-fb)); }
+/* Provenance on the corrected word: second cue = double underline + label. */
+.w-prov-rules {
+  color: var(--color-provenance-rules, var(--color-provenance-rules-fb));
+  text-decoration: underline double var(--color-provenance-rules, var(--color-provenance-rules-fb));
+  text-decoration-thickness: 2px;
+}
+.correction {
+  margin-top: 16px; padding: 12px 16px;
+  border: 1px solid var(--color-border-default); border-radius: 6px;
+  background: var(--color-bg-surface); font-size: 13px;
+}
+.correction b { font-family: var(--stack-tamil); font-weight: 600; }
+.correction .tier {
+  display: inline-block; font: 700 11px/1 var(--stack-latin);
+  border: 1px solid var(--color-provenance-rules, var(--color-provenance-rules-fb));
+  color: var(--color-provenance-rules, var(--color-provenance-rules-fb));
+  border-radius: 3px; padding: 3px 6px; margin-right: 8px;
+}
+.correction .evidence { margin: 8px 0 0; color: var(--color-text-secondary); }
+.correction .before { text-decoration: line-through; }
+/* 3a: legend strip, pinned at the bottom of the text pane. */
+.legend {
+  margin-top: 24px; padding: 12px 16px;
+  border: 1px solid var(--color-border-subtle); border-radius: 6px;
+  font: 500 11px/1.9 var(--stack-latin); color: var(--color-text-secondary);
+}
+.legend .chip { display: inline-block; border: 1px solid var(--color-border-default); border-radius: 3px; padding: 1px 6px; margin: 0 2px; }
+.legend .chip.hi { color: var(--color-confidence-ok, var(--color-confidence-ok-fb)); }
+.legend .chip.mid { color: var(--color-confidence-auto, var(--color-confidence-auto-fb)); }
+.legend .chip.lo { color: var(--color-confidence-doubt, var(--color-confidence-doubt-fb)); }
+.legend .u { font-family: var(--stack-tamil); text-underline-offset: 0.25em; }
+.legend .u-solid { text-decoration: underline solid; }
+.legend .u-dash  { text-decoration: underline dashed; }
+.legend .u-dot   { text-decoration: underline dotted; }
+.legend .u-dbl   { text-decoration: underline double; }
+.legend .u-wavy  { text-decoration: underline wavy; }
+
+/* ---- Zone 4: review rail ---- */
+.queue-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  padding: 9px 12px; margin-bottom: 8px;
+  border: 1px solid var(--color-border-default); border-radius: 4px;
+  background: var(--color-bg-surface);
+}
+.queue-row .qw { font: 400 15px/1.3 var(--stack-tamil); color: var(--color-text-primary); }
+.queue-row .qm { font-size: 11px; color: var(--color-text-muted); white-space: nowrap; }
+.key-hint {
+  margin-top: 24px; padding: 12px 16px;
+  border: 1px solid var(--color-border-subtle); border-radius: 6px;
+  font-size: 13px; color: var(--color-text-secondary);
+}
+.key-hint kbd {
+  font: 700 12px/1 var(--stack-latin);
+  border: 1px solid var(--color-text-primary); border-radius: 3px;
+  padding: 3px 7px; margin-right: 8px; color: var(--color-text-primary);
+}
+.key-hint .sub { display: block; margin-top: 6px; font-size: 10px; color: var(--color-text-muted); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Zone 1: top bar (52px) - wordmark, page badges, Auto/Review toggle, offline badge, Export -->
+  <header class="topbar">
+    <div class="wordmark">Pink Cloud</div>
+    <nav class="page-badges" id="page-badges" aria-label="Pages"></nav>
+    <span class="badge profile" id="profile-badge"></span>
+    <div class="spacer"></div>
+    <div class="seg" role="group" aria-label="Mode">
+      <button class="on" type="button">Auto</button>
+      <button type="button">Review</button>
+    </div>
+    <span class="badge offline">Offline · Groq OFF</span>
+    <button class="button primary" type="button">Export &#8594;</button>
+  </header>
+
+  <main class="grid">
+
+    <!-- Zone 2: scan pane (580) - placeholder with line bbox overlay -->
+    <section class="pane" id="scan-pane" aria-label="Scan">
+      <h2 id="scan-title">Scan</h2>
+      <div class="scan-frame">
+        <svg id="scan-svg" viewBox="0 0 1600 800" preserveAspectRatio="xMidYMid meet" role="img"
+             aria-label="Scan placeholder with detected line boxes"></svg>
+      </div>
+      <p class="scan-note">Scan placeholder - line boxes drawn from doc_demo.json bboxes (1600px-capped image space).</p>
+    </section>
+
+    <!-- Zone 3: text pane (506) - Unicode Tamil with confidence + provenance underlines -->
+    <section class="pane" id="text-pane" aria-label="Text">
+      <h2>Text · Unicode Tamil</h2>
+      <div class="lines" id="lines"></div>
+      <div class="correction" id="correction" hidden></div>
+      <div class="legend">
+        <div>Confidence:
+          <span class="chip hi">high</span><span class="chip mid">mid</span><span class="chip lo">low</span>
+        </div>
+        <div>Provenance:
+          <span class="u u-solid">raw</span> ·
+          <span class="u u-dash">rule</span> ·
+          <span class="u u-dot">swap</span> ·
+          <span class="u u-dbl">LLM</span> ·
+          <span class="u u-wavy">human</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Zone 4: review rail (280) - queue + next-error key hint -->
+    <aside class="pane" id="rail-pane" aria-label="Review queue">
+      <h2 id="queue-title">Review queue</h2>
+      <div id="queue"></div>
+      <div class="key-hint">
+        <span><kbd>N</kbd>Next error</span>
+        <span class="sub">key-hint, hotkey from build</span>
+      </div>
+    </aside>
+
+  </main>
+</div>
+
+<!-- Layout plan, page 1 zone 2: upload.js (Jasper's data-upload slice) fills this empty slot. -->
+<div id="upload-root"></div>
+
+<!-- Embedded page payload: schema/doc_demo.json, rendered fully offline (no fetch). -->
+<script id="doc" type="application/json">
+{
+  "page": 1,
+  "profile": "HEAVY",
+  "preprocessed": true,
+  "needs_review": true,
+  "quality": {
+    "blur": 38.4,
+    "contrast": 0.27,
+    "noise": 0.63,
+    "skew_deg": 3.4,
+    "damage_flags": ["yellowed", "stained"],
+    "ink_density": 0.14,
+    "estimated_lines": 3,
+    "quality_score": 34
+  },
+  "lines": [
+    { "id": "L1", "seq": 1, "body": "அகர முதல எழுத்தெல்லாம் ஆதி", "bbox": [180, 320, 1240, 90], "confidence": 0.93, "kural": 1 },
+    { "id": "L2", "seq": 2, "body": "பகவன் முதற்றே உலகு", "bbox": [200, 470, 1180, 88], "confidence": 0.88, "kural": 1 },
+    { "id": "L3", "seq": 3, "body": "கற்றதனால் ஆய பயனென்கொல் வாழறிவன்", "bbox": [170, 620, 1270, 92], "confidence": 0.41, "kural": 2 }
+  ],
+  "corrections": [
+    {
+      "before": "வாழறிவன்",
+      "after": "வாலறிவன்",
+      "tier": "T1",
+      "evidence": "ழ/ல glyph confusion on a stained, low-contrast stroke: the ல in வால் was misread as the looped ழ, yielding வாழறிவன் instead of வாலறிவன் (Kural 2)."
+    }
+  ],
+  "text": "அகர முதல எழுத்தெல்லாம் ஆதி பகவன் முதற்றே உலகு கற்றதனால் ஆய பயனென்கொல் வாலறிவன்",
+  "processing_ms": 4820,
+  "work": "திருக்குறள்",
+  "chapter": 1,
+  "script": "Tamil",
+  "material": "paper"
+}
+</script>
+<script>
+// Render the embedded page JSON. No fetch, no network - a few lines only.
+const doc = JSON.parse(document.getElementById('doc').textContent);
+const confClass = c => c >= 0.85 ? 'ok' : c >= 0.6 ? 'auto' : 'doubt';
+const confColor = { ok: 'var(--color-confidence-ok, #15803d)', auto: 'var(--color-confidence-auto, #78716c)', doubt: 'var(--color-confidence-doubt, #b45309)' };
+const cor = (doc.corrections || [])[0] || null;
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+
+// Top bar: one page badge per page (repair when preprocessing was applied), engine profile badge.
+document.getElementById('page-badges').innerHTML =
+  '<span class="badge ' + (doc.preprocessed ? 'repair' : '') + '">P' + doc.page + (doc.preprocessed ? ' repair' : ' clean') + '</span>';
+document.getElementById('profile-badge').textContent = doc.profile;
+document.getElementById('scan-title').textContent = 'Scan · page ' + doc.page + ' of ' + doc.page;
+
+// Scan pane: one box per line bbox, stroked by confidence class.
+const svg = document.getElementById('scan-svg');
+for (const l of doc.lines) {
+  const [x, y, w, h] = l.bbox, cls = confClass(l.confidence);
+  const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  r.setAttribute('x', x); r.setAttribute('y', y);
+  r.setAttribute('width', w); r.setAttribute('height', h);
+  r.setAttribute('fill', 'none'); r.setAttribute('stroke', confColor[cls]); r.setAttribute('stroke-width', 4);
+  svg.appendChild(r);
+  const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  t.setAttribute('x', x + 6); t.setAttribute('y', y - 10);
+  t.setAttribute('fill', confColor[cls]); t.setAttribute('font-size', '26');
+  t.textContent = l.id + ' · ' + l.confidence.toFixed(2);
+  svg.appendChild(t);
+}
+
+// Text pane: word spans with confidence underlines; the corrected word carries rule provenance.
+const linesEl = document.getElementById('lines');
+for (const l of doc.lines) {
+  const p = document.createElement('p');
+  p.className = 'line';
+  p.innerHTML = '<span class="linetag">' + l.id + ' · conf ' + l.confidence.toFixed(2) + '</span>' +
+    l.body.split(' ').map(w => {
+      const fixed = cor && w === cor.before;
+      const word = fixed ? cor.after : w;
+      const cls = 'w w-' + confClass(l.confidence) + (fixed ? ' w-prov-rules' : '');
+      const title = fixed ? ' title="' + esc(cor.tier + ': ' + cor.before + ' → ' + cor.after + '. ' + cor.evidence) + '"' : '';
+      return '<span class="' + cls + '"' + title + '>' + esc(word) + '</span>';
+    }).join(' ');
+  linesEl.appendChild(p);
+}
+
+// Correction note: before -> after, tier, evidence.
+if (cor) {
+  const c = document.getElementById('correction');
+  c.hidden = false;
+  c.innerHTML = '<span class="tier">' + esc(cor.tier) + '</span>' +
+    '<b class="before">' + esc(cor.before) + '</b> &#8594; <b>' + esc(cor.after) + '</b>' +
+    '<p class="evidence">' + esc(cor.evidence) + '</p>';
+}
+
+// Review rail: low-confidence lines, count in the header.
+const low = doc.lines.filter(l => confClass(l.confidence) === 'doubt');
+document.getElementById('queue-title').textContent = 'Review queue · ' + low.length + ' left';
+document.getElementById('queue').innerHTML = low.map(l =>
+  '<div class="queue-row"><span class="qw">' + esc((cor && l.body.includes(cor.before) ?
+    l.body.replace(cor.before, cor.after) : l.body).split(' ').pop()) + '</span>' +
+  '<span class="qm">p' + doc.page + ' · low</span></div>').join('');
+</script>
+</body>
+</html>
