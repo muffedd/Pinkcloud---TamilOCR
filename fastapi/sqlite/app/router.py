@@ -99,7 +99,10 @@ def compute_scores(gray: np.ndarray) -> PageScores:
 # blur ~90-400 with grain noise ~10-14, which the old values misclassified
 # as HEAVY. Tune with: python tools/tune_thresholds.py <folder-of-samples>
 # ----------------------------------------------------------------------------
-THRESHOLDS = {"blur": 80.0, "contrast": 0.20, "noise": 15.0, "skew_deg": 7.0}
+# Tuned on the CICT Tirukkural GT scans (133 pages, tools/tune_thresholds.py):
+# blur p25 = 553.0, contrast p25 = 0.419, noise p75 clamped to floor 10.0,
+# skew max 0.92 + 1.0 headroom = 1.9. 68/133 clean scans route FAST.
+THRESHOLDS = {"blur": 553.0, "contrast": 0.419, "noise": 10.0, "skew_deg": 1.9}
 
 
 def choose_profile(scores: PageScores) -> tuple[str, PageScores]:
