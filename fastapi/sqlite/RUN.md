@@ -68,7 +68,28 @@ Accepted types: pdf, jpg, jpeg, png, tiff (anything else → HTTP 400).
 - Without paddle installed you get a `[stub]` line with confidence 0.0 —
   same shape, so the frontend can be built against it.
 
-## 5. Notes
+## 5. Real OCR requirements
+
+- `pip install "paddlepaddle==3.3.1" "paddleocr==3.7.0"` (Python <= 3.13; no 3.14 wheels).
+- paddlepaddle 3.3.1 wheels need an **AVX-capable CPU**. On machines without AVX,
+  the backend detects this at startup (subprocess probe), logs an ERROR and serves
+  marked stub output — `/health` reports `"ocr_engine": "stub"` with the reason.
+- Engine flags set for correctness: `enable_mkldnn=False` (paddle 3.3.1 CPU
+  NotImplementedError in predict), `use_doc_orientation_classify=False`,
+  `use_doc_unwarping=False` (unwarping breaks the bbox-on-1600px contract).
+
+## 6. Threshold tuning (CICT samples)
+
+```bash
+python tools/tune_thresholds.py <folder-with-CICT-samples>
+```
+
+Prints the 4 metrics per sample and suggested `THRESHOLDS`; paste the result
+into `app/router.py`. Current defaults: blur>=80, contrast>=0.20, noise<=15,
+skew_deg<=7. Tests: `python -m pytest tests/ -v` (real-OCR e2e auto-skips when
+paddle is unusable).
+
+## 7. Notes
 
 - Uploads are stored byte-for-byte at `uploads/<job_id>/master.<ext>`,
   SHA-256 hashed before writing and verified after.

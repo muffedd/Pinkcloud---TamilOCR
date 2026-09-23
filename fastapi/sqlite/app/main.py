@@ -1,12 +1,15 @@
 """Pink Cloud — Tamil OCR web app backend (pipe-skeleton-router).
 
 Pipeline per upload:
-  1. validate type        -> main.py
+  1. validate type AND extension -> main.py   (both required; 400 before
+     any job row exists; undecodable bytes -> 4xx, never a failed job)
   2. hash + save master   -> storage.py  (byte-for-byte, SHA-256 first)
   3. create job row       -> db.py
-  4. load pages           -> pdfutil.py  (PDF via pypdfium2, images via cv2)
+  4. load pages           -> pdfutil.py  (PDF via pypdfium2, images via
+     cv2, ALL pages of multi-page TIFFs)
   5. score + route        -> router.py   (FAST / HEAVY badge per page)
-  6. OCR fast pass        -> ocr.py      (lazy PaddleOCR, stub if missing)
+  6. OCR fast pass        -> ocr.py      (lazy PaddleOCR 3.x, marked stub
+     fallback; engine failures are logged and shown in /health)
   7. build contract JSON  -> schema_out.py
   8. store result         -> db.py
 
@@ -15,6 +18,7 @@ Docs: see RUN.md
 """
 
 import json
+import logging
 import time
 import uuid
 from pathlib import Path
@@ -22,12 +26,13 @@ from pathlib import Path
 from fastapi import FastAPI, File, HTTPException, UploadFile
 
 from . import db, storage
-from .ocr import ocr_page
-from .pdfutil import load_pages, to_gray
+from .ocr import engine_status, ocr_page, _get_engine
+from .pdfutil import load_pages, probe_decode, to_gray
 from .router import choose_profile, compute_scores
 from .schema_out import build_job_result, build_page_result, parse_job_result
 
-# Only these content types are accepted (anything else -> 400).
+# Both a supported content type AND a supported extension are required;
+# a mismatch on EITHER side is rejected with 400 before any job exists.
 ALLOWED_TYPES = {
     "application/pdf",
     "image/jpeg",
@@ -35,19 +40,26 @@ ALLOWED_TYPES = {
     "image/tiff",
 }
 
-app = FastAPI(title="Pink Cloud", version="0.1.0")
+app = FastAPI(title="Pink Cloud", version="0.2.0")
 
 
 @app.on_event("startup")
 def on_startup() -> None:
-    """Create the SQLite table when the server boots."""
+    """Create the SQLite table and probe the OCR engine at boot.
+
+    The engine probe is non-fatal: a missing/broken paddle logs an
+    exception and /health reports the stub engine — the API still works.
+    """
+    logging.basicConfig(level=logging.INFO)
     db.init_db()
+    _get_engine()  # eager init so /health reflects reality from the start
 
 
 @app.get("/health")
 def health():
-    """Liveness check for the frontend/infra."""
-    return {"ok": True}
+    """Liveness check. Also reports the OCR engine state so stub output
+    is never mistaken for real OCR text."""
+    return {"ok": True, **engine_status()}
 
 
 def _pipeline(job_id: str, master: Path) -> list[dict]:
@@ -61,11 +73,11 @@ def _pipeline(job_id: str, master: Path) -> list[dict]:
 
         # (5) Quality metrics + FAST/HEAVY badge. HEAVY pages would
         #     normally go to a repair pass first — the skeleton just
-        #    OCR's them directly for now.
+        #     OCR's them directly for now.
         scores = compute_scores(gray)
         profile, scores = choose_profile(scores)
 
-        # (6) OCR fast pass (stub lines if paddle isn't installed).
+        # (6) OCR fast pass (clearly-marked stub lines if paddle missing).
         ocr_lines, ocr_ms = ocr_page(img)
 
         # (7) Freeze the contract JSON for this page.
@@ -106,22 +118,40 @@ def _run_job(job_id: str, filename: str, data: bytes) -> None:
         result = build_job_result(pages)
         db.set_result(job_id, "done", json.dumps(result, ensure_ascii=False))
     except Exception as exc:  # keep the server alive, record the failure
+        logging.getLogger("pinkcloud.job").exception("job %s failed", job_id)
         db.set_result(job_id, "error", json.dumps({"error": str(exc)}))
 
 
 @app.post("/jobs")
 async def create_job(file: UploadFile = File(...)):
-    """Accept an upload, process it, return the new job id."""
+    """Accept an upload, process it, return the new job id.
+
+    Validation happens in order, BEFORE any job row is created:
+      1. content type AND extension both supported -> else 400
+      2. bytes must actually decode (PDF opens / image decodes) -> else 422
+    """
     filename = file.filename or "upload"
     ctype = (file.content_type or "").lower()
-    ext_ok = Path(filename).suffix.lower() in storage.ALLOWED_EXTS
-    if ctype not in ALLOWED_TYPES and not ext_ok:
+    ext = Path(filename).suffix.lower()
+
+    # BOTH checks must pass (the old code accepted either one, which let
+    # evil.exe ride in with a spoofed image/png content type).
+    if ctype not in ALLOWED_TYPES or ext not in storage.ALLOWED_EXTS:
         raise HTTPException(
             status_code=400,
             detail="unsupported file type: use pdf, jpg, jpeg, png or tiff",
         )
 
     data = await file.read()
+
+    # Corrupt uploads are rejected here — not stored as jobs that fail later.
+    try:
+        probe_decode(ext, data)
+    except Exception:
+        raise HTTPException(
+            status_code=422,
+            detail="file could not be decoded (corrupt or empty document)",
+        )
 
     job_id = uuid.uuid4().hex  # also the folder name under uploads/
     db.create_job(job_id, filename, storage.sha256_bytes(data))

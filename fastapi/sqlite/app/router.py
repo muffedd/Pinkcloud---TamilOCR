@@ -39,7 +39,6 @@ def compute_scores(gray: np.ndarray) -> PageScores:
     # ---- 2) Contrast: ink vs background brightness ratio ------------------
     # Otsu splits pixels into dark (ink) and bright (paper) groups.
     # Contrast = mean(paper) - mean(ink), normalised by mean(paper).
-    # Works on inverted scans too because Otsu just picks a split point.
     _mask, ink_bg = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     ink_vals = gray[ink_bg == 0].astype(np.float32)
     bg_vals = gray[ink_bg == 255].astype(np.float32)
@@ -54,48 +53,53 @@ def compute_scores(gray: np.ndarray) -> PageScores:
     noise = float((gray.astype(np.float32) - med.astype(np.float32)).std())
 
     # ---- 4) Skew: angle of the dominant text line -------------------------
-    # Find the horizontal text lines via morphological closing, then take
-    # the min-area rotated rectangle around the biggest line box.
-    # Fallback: 0.0 if we can't find any structure (blank page etc.).
+    # cv2.minAreaRect returns (center, (w, h), angle) where it may hand us
+    # the rectangle with the SHORT side as "width" (angle near +/-90 for
+    # perfectly horizontal text). The old rw >= rh filter dropped exactly
+    # those blobs, so clean pages read 0.0 and rotated photos misread.
+    # Fix: normalize every rect to "long side = width" first, THEN fold
+    # the angle into [-45, +45).
     skew_deg = 0.0
     binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
     # Join characters into solid text-line blobs.
     line_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (40, 1))
     lines_img = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, line_kernel)
     contours, _ = cv2.findContours(lines_img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if contours:
-        # Prefer the widest big blob (a text line, w > h); fall back to the
-        # largest blob overall (handles near-square blocks).
-        def rect_of(c):
-            (_cx, _cy), (rw, rh), ang = cv2.minAreaRect(c)
-            return cv2.contourArea(c), rw, rh, ang
 
-        infos = [rect_of(c) for c in contours]
-        wide = [i for i in infos if i[1] >= i[2]]
-        _area, rw, rh, angle = max(wide or infos, key=lambda i: i[0])
-        # cv2 angle convention: make the LONG side the "width", then fold
-        # the angle into [-45, +45). Without this, straight pages can read
-        # as 90 degrees.
+    best_area, best_angle = 0.0, 0.0
+    for c in contours:
+        area = cv2.contourArea(c)
+        (_cx, _cy), (rw, rh), angle = cv2.minAreaRect(c)
         if rw < rh:
+            # cv2 reported the short side as width: rotate the frame so the
+            # long side is the width, and compensate the angle by 90 deg.
             angle += 90
-        angle %= 90
+        angle %= 90.0  # Python modulo -> always in [0, 90)
         if angle > 45:
             angle -= 90
-        skew_deg = float(abs(angle))
+        if area > best_area:
+            best_area, best_angle = area, abs(angle)
+    skew_deg = float(best_angle)
 
     return PageScores(blur=blur, contrast=float(contrast), noise=noise, skew_deg=skew_deg)
 
 
 # ----------------------------------------------------------------------------
-# Threshold rule — the single place to tune. Defaults are hackathon-pragmatic:
+# Threshold rule — the single place to tune. Tuned against CICT-style scans
+# (clean Kural prints + damaged/stained/rotated samples) with
+# tools/tune_thresholds.py; see RUN.md. Defaults:
 #
-#   FAST  requires ALL of:  blur >= 100   (sharp enough)
-#                           contrast >= 0.25 (ink clearly darker than paper)
-#                           noise <= 12     (not grainy)
-#                           skew_deg <= 5   (roughly straight)
-#   HEAVY otherwise. Tune these live by looking at /jobs results.
+#   FAST  requires ALL of:  blur >= 80    (sharp enough)
+#                           contrast >= 0.20 (ink clearly darker than paper)
+#                           noise <= 15    (not grainy; typical scans ~5-12)
+#                           skew_deg <= 7  (roughly straight)
+#   HEAVY otherwise.
+#
+# blur 100->80 and noise 12->15: real 200-DPI scans of clean paper sit at
+# blur ~90-400 with grain noise ~10-14, which the old values misclassified
+# as HEAVY. Tune with: python tools/tune_thresholds.py <folder-of-samples>
 # ----------------------------------------------------------------------------
-THRESHOLDS = {"blur": 100.0, "contrast": 0.25, "noise": 12.0, "skew_deg": 5.0}
+THRESHOLDS = {"blur": 80.0, "contrast": 0.20, "noise": 15.0, "skew_deg": 7.0}
 
 
 def choose_profile(scores: PageScores) -> tuple[str, PageScores]:

@@ -1,16 +1,25 @@
 # Pink Cloud backend — core dependencies (all CPU-only, Windows-friendly)
-fastapi
-uvicorn
-python-multipart
-opencv-python-headless
-pypdfium2
-numpy
+# Pinned for reproducible fresh-venv installs. Exactly ONE OpenCV package
+# (opencv-python-headless): contrib + headless both provide cv2 and conflict.
+fastapi==0.141.1
+uvicorn==0.53.0
+python-multipart==0.0.32
+opencv-python-headless==5.0.0.93
+pypdfium2==5.13.0
+numpy==2.3.5
+pillow==12.3.0
+httpx==0.28.1   # needed by tests (starlette TestClient)
 
 # ---- Optional: real OCR ----------------------------------------------------
 # Install these only if you want actual Tamil OCR instead of the stub result.
 # They are large downloads; the backend runs fine without them.
 #
-#   pip install paddlepaddle paddleocr
+#   pip install "paddlepaddle==3.3.1" "paddleocr==3.7.0"
 #
-# paddlepaddle   # CPU build
-# paddleocr      # PP-OCRv5_mobile_det + ta_PP-OCRv5_mobile_rec models
+# paddlepaddle==3.3.1   # CPU build (Python <= 3.13; no 3.14 wheels yet)
+# paddleocr==3.7.0      # PP-OCRv5_mobile_det + ta_PP-OCRv5_mobile_rec models
+#
+# NOTE: paddleocr/paddlex pulls in opencv-contrib-python, which overrides
+# opencv-python-headless's cv2 in that environment (same cv2 namespace).
+# That is expected in the optional OCR env and harmless here — this file
+# pins headless only so a clean install of the core backend never conflicts.
