@@ -60,13 +60,15 @@ var S = {
      Doubt < 0.80  : several flaws, low Tamil share, garbage */
 var AUTO_MIN = 0.95;
 var OK_MIN = 0.80;
-/* Review floor for pages the backend routed to review (needs_review, or
-   profile HEAVY): any line that is not clean (< 0.95, i.e. a single flaw at
-   0.90 or worse) is Doubt. Clean pages keep the normal bands. The proxy only
-   sees malformed text: a wrong but well-formed Tamil word scores 0.99 and is
-   NOT flagged. This raises recall on broken output, it is not proof of
-   correctness. */
-var REVIEW_FLOOR = 0.95;
+/* Doubt floor on pages the backend routed to review (needs_review, or
+   profile HEAVY). Set to the backend's per-line floor
+   (schema_out.LINE_REVIEW_FLOOR = 0.80) so "N need you" here and the
+   receipt's human-review count agree. Lines with 1-3 flaws (0.82-0.90) are
+   OK, not Auto: they keep the OK underline and stay in the Review-mode
+   queue. The proxy only sees malformed text: a wrong but well-formed Tamil
+   word scores 0.99 and is NOT flagged; it is not proof of correctness.
+   Raise this (tokens.css --pc-conf-review-floor) for stricter review. */
+var REVIEW_FLOOR = 0.80;
 var MOTION_BASE = 160;
 var TOAST_MS = 2400;
 
@@ -899,9 +901,9 @@ function renderScan() {
 
 function renderLegend() {
   el.legend.className = "legend lens-" + S.lens;
-  var doubtLabel = isReviewPage(S.page)
-    ? "Doubt <" + REVIEW_FLOOR + " (review page)"
-    : "Doubt <" + OK_MIN.toFixed(2);
+  var floor = isReviewPage(S.page) ? Math.max(REVIEW_FLOOR, OK_MIN) : OK_MIN;
+  var doubtLabel = "Doubt <" + floor.toFixed(2) +
+    (floor > OK_MIN ? " (review page)" : "");
   var items = S.lens === "conf"
     ? [["is-auto", "Auto ≥" + AUTO_MIN.toFixed(2)], ["is-ok", "OK"], ["is-doubt", doubtLabel]]
     : [["pv-raw", "Raw"], ["pv-rule", "Rule"], ["pv-swap", "Swap"], ["pv-llm", "LLM"], ["pv-human", "Human"]];
@@ -1834,7 +1836,7 @@ function loadPage(doc) {
 function init() {
   AUTO_MIN = cssNum("--pc-conf-auto-min", 0.95);
   OK_MIN = cssNum("--pc-conf-ok-min", 0.80);
-  REVIEW_FLOOR = cssNum("--pc-conf-review-floor", 0.95);
+  REVIEW_FLOOR = cssNum("--pc-conf-review-floor", 0.80);
   HEAT_CLEAN = cssNum("--pc-heat-clean", 0.98);
   HEAT_BAD = cssNum("--pc-heat-bad", 0.60);
   MOTION_BASE = cssNum("--pc-motion-base", 160);

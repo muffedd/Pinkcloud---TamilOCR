@@ -46,7 +46,7 @@
      clean Tamil 0.99, flawed 0.90 -> 0.62, garbage <= 0.54, low Tamil share -> 0). */
   --pc-conf-auto-min: 0.95;
   --pc-conf-ok-min: 0.80;
-  --pc-conf-review-floor: 0.95; /* Doubt floor on needs_review/HEAVY pages: any flaw */
+  --pc-conf-review-floor: 0.80; /* Doubt floor on needs_review/HEAVY pages = backend LINE_REVIEW_FLOOR */
   --pc-heat-clean: 0.98;        /* heatmap: at/above = clean (green) */
   --pc-heat-bad: 0.60;          /* heatmap: at/below = damaged (red) */
 
