@@ -928,6 +928,7 @@ span.sn-item { cursor: default; }
 .exp-card { width: 360px; }
 .exp-lead { margin: var(--pc-space-1) 0 var(--pc-space-2); font-size: var(--pc-fs-toast); line-height: 1.5; color: var(--pc-color-text-secondary); }
 .exp-facts li { justify-content: space-between; }
+.exp-facts li[hidden] { display: none; }
 .exp-val { color: var(--pc-color-text-primary); font-weight: 500; font-variant-numeric: tabular-nums; }
 .exp-val.is-warn { color: var(--pc-color-warning); }
 .exp-note {

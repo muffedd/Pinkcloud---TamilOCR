@@ -1418,8 +1418,15 @@ function setAiOff() {
   S.aiOffMem = true;
   try { window.sessionStorage.setItem(SS_AI_OFF, "1"); } catch (e) { /* private mode: memory only */ }
 }
+/* AI reads Tamil only. A word with no Tamil letter (English, digits, a
+   watermark) is skipped quietly: real-model runs transliterate or invent a
+   Tamil word for it. Not an AI failure, just not AI's job. */
+var TAMIL_CHAR = /[\u0B80-\u0BFF]/;
+function aiSkipsWord(text) { return !TAMIL_CHAR.test(String(text || "")); }
+
 function aiFixAvailable(w) {
   if (!w || w.fixed || w.bin !== "doubt" || !window.PC_API.suggestWord) return false;
+  if (aiSkipsWord(w.orig)) return false;
   if (aiOff()) return false;
   var badge = $("connBadge");
   return !!badge && badge.getAttribute("data-state") === "connected";
@@ -1975,6 +1982,7 @@ function aiaFixedKeys() {
    learned dictionary will fix on load are skipped. */
 function aiaTargets() {
   var out = [];
+  out.skipped = 0;
   var done = aiaFixedKeys();
   var dict = dictLoad();
   var here = S.page ? Number(S.page.page) : null;
@@ -1985,6 +1993,7 @@ function aiaTargets() {
     if (Number(doc.page) === here) {
       S.words.forEach(function (w) {
         if (w.bin !== "doubt" || w.fixed || done[w.key]) return;
+        if (aiSkipsWord(w.orig)) { out.skipped++; return; }
         out.push({ key: w.key, page: w.page, line: w.lineId, word: w.idx, before: w.orig, context: w.line.body });
       });
       return;
@@ -1994,12 +2003,16 @@ function aiaTargets() {
       String(line.body).split(/\s+/).filter(Boolean).forEach(function (text, i) {
         var key = "p" + doc.page + ":" + line.id + ":w" + (i + 1);
         if (done[key] || (dict[text] && dict[text] !== text)) return;
+        if (aiSkipsWord(text)) { out.skipped++; return; }
         out.push({ key: key, page: Number(doc.page), line: line.id, word: i + 1, before: text, context: line.body });
       });
     });
   });
   return out;
 }
+
+/* "N skipped (non-Tamil)" - shown wherever fix-all reports its count. */
+function aiaSkipNote() { return aia.skipped ? aia.skipped + " skipped (non-Tamil)" : ""; }
 
 function aiaView(name) {
   ["aiaChoose", "aiaRun", "aiaReview"].forEach(function (id) { $(id).hidden = id !== name; });
@@ -2009,13 +2022,18 @@ function openAiAll() {
   if (!aiaAvailable() || aia.open) return;
   closePopup();
   aia.targets = aiaTargets();
+  aia.skipped = aia.targets.skipped || 0;
+  $("aiaSkipRow").hidden = !aia.skipped;
+  $("aiaSkipped").textContent = String(aia.skipped);
   var pages = S.allPages && S.allPages.length ? S.allPages.length : 1;
   $("aiaPages").textContent = String(pages);
   $("aiaWords").textContent = String(aia.targets.length);
   $("aiaStart").disabled = !aia.targets.length;
   $("aiaLead").textContent = aia.targets.length
     ? "AI reads every Doubt word on every page. Doubt = text looks malformed. AI readings can be wrong, so you confirm each one."
-    : "No open Doubt words left on any page.";
+    : aia.skipped
+      ? "No Tamil Doubt words left for AI · " + aiaSkipNote() + "."
+      : "No open Doubt words left on any page.";
   aiaView("aiaChoose");
   aia.lastFocus = document.activeElement;
   aia.open = true;
@@ -2167,7 +2185,7 @@ function aiaFirstPrefilled() {
 function aiaFinishPrefill(found, done, total, failed) {
   var keys = Object.keys(found);
   if (!keys.length) {
-    if (!failed) toast("AI found no better reading for " + plural(done, "word", "words"), "info");
+    if (!failed) toast("AI found no better reading for " + plural(done, "word", "words") + (aia.skipped ? " · " + aiaSkipNote() : ""), "info");
     return;
   }
   aiaSave({ mode: "prefill", items: found });
@@ -2182,7 +2200,7 @@ function aiaFinishPrefill(found, done, total, failed) {
   if (first) select(first.key, "queue");
   if (!failed) {
     toast("AI pre-filled " + plural(keys.length, "word", "words") + " on " + plural(Object.keys(pages).length, "page", "pages") +
-      " · 1 accepts, J skips", "info");
+      (aia.skipped ? " · " + aiaSkipNote() : "") + " · 1 accepts, J skips", "info");
   }
   if (!here) aiaNudgeNextPage();
 }
@@ -2246,9 +2264,10 @@ function aiaShowReview(found, done, total, failed) {
   });
   var lead = keys.length
     ? "AI suggests " + plural(keys.length, "fix", "fixes") + " for " + plural(done, "word", "words") + " it read" +
-      (done < total ? " (stopped at " + done + " of " + total + ")" : "") + ". Untick any you don't want. Nothing is applied until you press Apply."
+      (done < total ? " (stopped at " + done + " of " + total + ")" : "") + (aia.skipped ? " · " + aiaSkipNote() : "") +
+      ". Untick any you don't want. Nothing is applied until you press Apply."
     : "AI found no better reading for " + plural(done, "word", "words") +
-      (done < total ? " (stopped at " + done + " of " + total + ")." : ".");
+      (done < total ? " (stopped at " + done + " of " + total + ")" : "") + (aia.skipped ? " · " + aiaSkipNote() : "") + ".";
   $("aiaReviewLead").textContent = lead;
   $("aiaAllRow").hidden = keys.length < 2;
   $("aiaAll").checked = true;
