@@ -482,6 +482,24 @@ def export_pdf(job_id: str, reviewer: str | None = None, receipt_page: bool = Tr
     )
 
 
+DOCX_MEDIA_TYPE = ("application/vnd.openxmlformats-officedocument."
+                   "wordprocessingml.document")
+
+
+@app.get("/jobs/{job_id}/export.docx")
+def export_docx(job_id: str, reviewer: str | None = None):
+    """Word document: same corrections-applied text as export.txt, one
+    heading per page, receipt as the final section."""
+    job, pages = _done_job(job_id)
+    data = _export.build_docx(pages, _receipt(job, pages, reviewer))
+    return Response(
+        data, media_type=DOCX_MEDIA_TYPE,
+        headers={
+            "Content-Disposition": _content_disposition(job, "docx"),
+            "X-Master-SHA256": job["sha256"],
+        },
+    )
+
 # --- demo box: serve the UI from the API origin (no CORS needed) ---------
 # Whitelist only: never expose pinkcloud.db or uploads/ over HTTP.
 #
