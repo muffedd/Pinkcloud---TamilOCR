@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pink Cloud - Icon Motion, Variant C (Interaction)</title>
+<style>
+  :root{
+    --bg:#FBF5EF;            /* lightest brand */
+    --surface:#FFFFFF;
+    --ink:#1B1B1B;           /* black */
+    --ink-soft:#6B6259;
+    --orange:#F97316;        /* brand orange */
+    --orange-dark:#C2410C;   /* dark orange */
+    --orange-light:#FDBA74;  /* light orange */
+    --orange-glow:#FFE4C7;
+    --pill:#FFF1E4;
+    --bounce:cubic-bezier(.34,1.56,.64,1);
+    --spring:cubic-bezier(.22,1.9,.36,1);
+    --soft:cubic-bezier(.45,.05,.35,1.4);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    background-image:radial-gradient(circle, #F3E3D3 1.2px, transparent 1.3px);
+    background-size:26px 26px;
+    color:var(--ink);
+    display:flex;
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ============ SIDEBAR ============ */
+  .sidebar{
+    width:248px;
+    background:var(--surface);
+    margin:18px;
+    margin-right:0;
+    border-radius:20px;
+    box-shadow:0 2px 14px rgba(194,65,12,.07), 0 1px 3px rgba(27,27,27,.05);
+    display:flex;
+    flex-direction:column;
+    padding:18px 12px;
+    flex-shrink:0;
+  }
+  .user-chip{
+    display:flex;align-items:center;gap:10px;
+    padding:8px 10px 16px;
+    border-bottom:1px solid #F6EAE0;
+    margin-bottom:14px;
+  }
+  .avatar{
+    width:34px;height:34px;border-radius:11px;
+    background:linear-gradient(135deg,var(--orange),var(--orange-dark));
+    color:#fff;font-weight:700;font-size:13px;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 0 0 3px #fff, 0 0 14px rgba(249,115,22,.45);
+  }
+  .user-chip .name{font-size:13.5px;font-weight:600}
+  .user-chip .sub{font-size:11px;color:var(--ink-soft)}
+  .nav{display:flex;flex-direction:column;gap:3px}
+  .nav-label{
+    font-size:10px;letter-spacing:.12em;color:var(--ink-soft);
+    text-transform:uppercase;padding:8px 12px 4px;font-weight:600;
+  }
+  .nav-item{
+    display:flex;align-items:center;gap:12px;
+    padding:9px 12px;
+    border-radius:13px;
+    cursor:pointer;
+    position:relative;
+    transition:background .25s var(--bounce), transform .35s var(--bounce), box-shadow .35s var(--bounce);
+    user-select:none;
+  }
+  .nav-item .icon{
+    width:22px;height:22px;flex-shrink:0;
+    color:var(--ink);
+    transition:color .25s var(--bounce);
+    transform-origin:50% 55%;
+  }
+  .nav-item .icon svg{width:100%;height:100%;display:block}
+  .nav-item .label{font-size:13.5px;font-weight:500;transition:color .25s var(--bounce)}
+  .nav-item .dot{
+    position:absolute;right:12px;
+    width:6px;height:6px;border-radius:50%;
+    background:var(--orange);
+    opacity:0;transform:scale(0);
+    transition:all .4s var(--spring);
+    box-shadow:0 0 8px rgba(249,115,22,.8);
+  }
+
+  /* hover: elastic pop */
+  .nav-item:hover,.nav-item.force-hover{
+    background:var(--pill);
+    transform:translateX(4px) scale(1.015);
+  }
+  .nav-item:hover .icon,.nav-item.force-hover .icon{color:var(--orange-dark);animation:iconPop .6s var(--spring)}
+  .nav-item:hover .dot{opacity:.55;transform:scale(1)}
+
+  /* selected: bigger elastic pop + persistent state */
+  .nav-item.active{
+    background:var(--pill);
+    box-shadow:inset 0 0 0 1.5px var(--orange-light), 0 4px 14px rgba(249,115,22,.18);
+  }
+  .nav-item.active .icon{color:var(--orange-dark)}
+  .nav-item.active .label{color:var(--orange-dark);font-weight:600}
+  .nav-item.active .dot{opacity:1;transform:scale(1.15)}
+  .nav-item.select-pop .icon{animation:selectPop .85s var(--spring)}
+  .nav-item.select-pop{animation:itemPop .85s var(--spring)}
+
+  @keyframes iconPop{
+    0%{transform:scale(1)}
+    35%{transform:scale(1.34) rotate(-4deg)}
+    60%{transform:scale(.9) rotate(2deg)}
+    80%{transform:scale(1.08)}
+    100%{transform:scale(1)}
+  }
+  @keyframes selectPop{
+    0%{transform:scale(1)}
+    30%{transform:scale(1.5) rotate(5deg)}
+    55%{transform:scale(.85) rotate(-3deg)}
+    75%{transform:scale(1.12)}
+    100%{transform:scale(1)}
+  }
+  @keyframes itemPop{
+    0%{transform:scale(1)}
+    40%{transform:scale(1.03)}
+    70%{transform:scale(.99)}
+    100%{transform:scale(1)}
+  }
+
+  .sidebar .foot{
+    margin-top:auto;padding:10px 12px 2px;
+    font-size:10.5px;color:var(--ink-soft);
+  }
+
+  /* ============ MAIN ============ */
+  .main{flex:1;padding:34px 36px;overflow:auto}
+  .crumb{font-size:12px;color:var(--ink-soft);margin-bottom:6px}
+  h1{font-size:24px;font-weight:700;letter-spacing:-.02em;margin-bottom:4px}
+  h1 .accent{color:var(--orange-dark)}
+  .lede{font-size:13px;color:var(--ink-soft);margin-bottom:26px;max-width:560px;line-height:1.5}
+  .lede b{color:var(--ink);font-weight:600}
+
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(128px,1fr));
+    gap:14px;
+    max-width:860px;
+  }
+  .tile{
+    background:var(--surface);
+    border-radius:16px;
+    aspect-ratio:1;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+    box-shadow:0 2px 10px rgba(194,65,12,.06), 0 1px 3px rgba(27,27,27,.04);
+    cursor:pointer;
+    transition:transform .4s var(--bounce), box-shadow .4s var(--bounce);
+    position:relative;
+  }
+  .tile:hover,.tile.force-hover{transform:translateY(-4px) scale(1.03);box-shadow:0 10px 26px rgba(249,115,22,.2)}
+  .tile .icon{width:30px;height:30px;color:var(--ink);transform-origin:50% 55%;transition:color .3s var(--bounce)}
+  .tile .icon svg{width:100%;height:100%;display:block}
+  .tile:hover .icon,.tile.force-hover .icon{color:var(--orange-dark);animation:iconPop .6s var(--spring)}
+  .tile .tname{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);font-weight:600}
+  .tile.active{
+    box-shadow:inset 0 0 0 1.5px var(--orange-light), 0 8px 22px rgba(249,115,22,.22);
+    background:var(--pill);
+  }
+  .tile.active .icon{color:var(--orange-dark)}
+  .tile.select-pop .icon{animation:selectPop .85s var(--spring)}
+  .tile .glow{
+    position:absolute;inset:0;border-radius:16px;pointer-events:none;
+    opacity:0;transition:opacity .4s var(--bounce);
+    background:radial-gradient(circle at 50% 42%, rgba(253,186,116,.4), transparent 65%);
+  }
+  .tile:hover .glow,.tile.active .glow,.tile.force-hover .glow{opacity:1}
+
+  /* ============ IDLE MICRO-MOTIONS (reference-style loops) ============ */
+  @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+  @keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-2.5px)}}
+  @keyframes rock{0%,100%{transform:rotate(-7deg)}50%{transform:rotate(7deg)}}
+  @keyframes glint{0%,100%{transform:rotate(0deg) scale(1)}50%{transform:rotate(-8deg) scale(1.05)}}
+  @keyframes scanline{0%{transform:translateY(-8px);opacity:0}15%{opacity:1}85%{opacity:1}100%{transform:translateY(8px);opacity:0}}
+  @keyframes flap{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.55)}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+
+  .idle-home .icon{animation:floaty 3.2s ease-in-out infinite}
+  .idle-projects .icon{animation:breathe 3.6s ease-in-out infinite}
+  .idle-assets .icon{animation:breathe 4s ease-in-out infinite .4s}
+  .idle-scan .icon .scan-line{animation:scanline 2.4s ease-in-out infinite}
+  .idle-search .icon{animation:glint 3.4s ease-in-out infinite .2s}
+  .idle-settings .icon{animation:rock 4.4s ease-in-out infinite}
+  .idle-bell .icon{animation:rock 3.8s ease-in-out infinite .6s}
+  .idle-truck .icon{animation:floaty 2.8s ease-in-out infinite .3s}
+
+  .paused .icon,.paused .scan-line{animation-play-state:paused !important}
+
+  .hint{
+    margin-top:22px;font-size:12px;color:var(--ink-soft);
+    display:flex;align-items:center;gap:8px;
+  }
+  .hint .pulse-dot{
+    width:8px;height:8px;border-radius:50%;background:var(--orange);
+    animation:pulse 2s ease-in-out infinite;box-shadow:0 0 10px rgba(249,115,22,.7);
+  }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="user-chip">
+    <div class="avatar">PC</div>
+    <div>
+      <div class="name">Pink Cloud</div>
+      <div class="sub">Tamil OCR workspace</div>
+    </div>
+  </div>
+  <nav class="nav" id="nav">
+    <div class="nav-label">Menu</div>
+  </nav>
+  <div class="foot">Variant C - interaction-first motion</div>
+</aside>
+
+<main class="main">
+  <div class="crumb">Design system / Icon motion</div>
+  <h1>Icons that <span class="accent">answer back</span></h1>
+  <p class="lede">Every icon idles with a quiet loop, <b>pops elastically on hover</b>, and celebrates selection with a bigger bounce. Custom spring easing throughout. Hover or tap anything.</p>
+  <div class="grid" id="grid"></div>
+  <div class="hint"><span class="pulse-dot"></span><span id="hint-text">Auto-demo running - watch the sidebar. Hover or click to take over.</span></div>
+</main>
+
+<script>
+const ICONS = {
+  home: { label:'Home', idle:'idle-home', svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/></svg>' },
+  projects: { label:'Projects', idle:'idle-projects', svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>' },
+  assets: { label:'Assets', idle:'idle-assets', svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m5 18 5-5 3 3 3.5-3.5L21 17"/></svg>' },
+  scan: { label:'New scan', idle:'idle-scan', svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><line class="scan-line" x1="7" y1="12" x2="17" y2="12" stroke-width="2.2"/></svg>' },
+  search: { label:'Search', idle:'idle-search', svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></svg>' },
+  bell: { label:'Alerts', idle:'idle-bell', svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9a6 6 0 1 0-12 0c0 6-2.5 7-2.5 7h17S18 15 18 9"/><path d="M10.3 20a2 2 0 0 0 3.4 0"/></svg>' },
+  truck: { label:'Exports', idle:'idle-truck', svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6h12v10H2z"/><path d="M14 9h4l3 3v4h-7"/><circle cx="6.5" cy="18" r="1.8"/><circle cx="17" cy="18" r="1.8"/></svg>' },
+  settings: { label:'Settings', idle:'idle-settings', svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg>' },
+};
+
+const nav = document.getElementById('nav');
+const grid = document.getElementById('grid');
+const keys = Object.keys(ICONS);
+let interacting = false;
+
+function makeIcon(key, extra){
+  const d = document.createElement('div');
+  d.className = 'icon';
+  d.innerHTML = ICONS[key].svg;
+  return d;
+}
+
+/* sidebar */
+keys.forEach(key=>{
+  const item = document.createElement('div');
+  item.className = 'nav-item ' + ICONS[key].idle;
+  item.dataset.key = key;
+  item.appendChild(makeIcon(key));
+  const lab = document.createElement('span'); lab.className='label'; lab.textContent = ICONS[key].label;
+  item.appendChild(lab);
+  const dot = document.createElement('span'); dot.className='dot'; item.appendChild(dot);
+  item.addEventListener('click', ()=>select(item, key, 'nav'));
+  nav.appendChild(item);
+});
+
+/* tile grid */
+keys.forEach(key=>{
+  const t = document.createElement('div');
+  t.className = 'tile ' + ICONS[key].idle;
+  t.dataset.key = key;
+  const glow = document.createElement('div'); glow.className='glow'; t.appendChild(glow);
+  t.appendChild(makeIcon(key));
+  const n = document.createElement('div'); n.className='tname'; n.textContent = ICONS[key].label;
+  t.appendChild(n);
+  t.addEventListener('click', ()=>select(t, key, 'tile'));
+  grid.appendChild(t);
+});
+
+function select(el, key, kind){
+  interacting = true;
+  document.getElementById('hint-text').textContent = 'You are in control - auto-demo paused.';
+  // clear actives
+  document.querySelectorAll('.nav-item.active,.tile.active').forEach(e=>e.classList.remove('active'));
+  // activate matching nav item AND tile together
+  document.querySelectorAll(`[data-key="${key}"]`).forEach(e=>{
+    e.classList.add('active');
+    e.classList.remove('select-pop');
+    void e.offsetWidth; // restart animation
+    e.classList.add('select-pop');
+  });
+}
+
+/* auto-demo: cycle the elastic pop through sidebar items */
+let idx = 0;
+const navItems = ()=>[...document.querySelectorAll('.nav-item')];
+function demo(){
+  if(interacting) return;
+  const items = navItems();
+  const prev = document.querySelector('.nav-item.active');
+  if(prev) prev.classList.remove('active');
+  const item = items[idx % items.length];
+  item.classList.add('active');
+  item.classList.remove('select-pop');
+  void item.offsetWidth;
+  item.classList.add('select-pop');
+  // mirror on the tile
+  const key = item.dataset.key;
+  document.querySelectorAll('.tile').forEach(t=>t.classList.remove('active','select-pop'));
+  const tile = document.querySelector(`.tile[data-key="${key}"]`);
+  if(tile){ tile.classList.add('active'); void tile.offsetWidth; tile.classList.add('select-pop'); }
+  idx++;
+}
+demo();
+setInterval(demo, 2400);
+
+/* pause idle loops while hovering, so the pop reads clean */
+document.querySelectorAll('.nav-item,.tile').forEach(el=>{
+  el.addEventListener('mouseenter', ()=>el.classList.add('paused'));
+  el.addEventListener('mouseleave', ()=>el.classList.remove('paused'));
+});
+</script>
+</body>
+</html>

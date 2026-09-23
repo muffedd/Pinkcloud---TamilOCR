@@ -25,7 +25,7 @@ import uuid
 from pathlib import Path
 
 import cv2
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
 from . import db, storage
@@ -41,7 +41,11 @@ ALLOWED_TYPES = {
     "image/jpeg",
     "image/png",
     "image/tiff",
+    "image/webp",
 }
+
+# Multi-image jobs (repeated `files` field): images only, one page each.
+MAX_FILES_PER_JOB = 100
 
 app = FastAPI(title="Pink Cloud", version="0.2.0")
 
@@ -65,8 +69,8 @@ def health():
     return {"ok": True, **engine_status()}
 
 
-def _pipeline(job_id: str, master: Path) -> list[dict]:
-    """Process the master file -> list of per-page contract JSON objects."""
+def _pipeline(job_id: str, master: Path | list[Path]) -> list[dict]:
+    """Process the master file(s) -> list of per-page contract JSON objects."""
     pages_out: list[dict] = []
 
     # (4) Load every page as a 1600px-capped BGR image.
@@ -103,6 +107,22 @@ def _pipeline(job_id: str, master: Path) -> list[dict]:
     return pages_out
 
 
+def _run_multi_job(job_id: str, uploads: list[tuple[str, bytes]],
+                   expected_sha256: str) -> None:
+    """Multi-image flow: one master per image, pages stacked in order."""
+    try:
+        saved = storage.save_masters(job_id, uploads)
+        if saved["sha256"] != expected_sha256 or not storage.verify_master(
+                job_id, expected_sha256):
+            raise RuntimeError("master files failed hash verification")
+        pages = _pipeline(job_id, saved["paths"])
+        result = build_job_result(pages)
+        db.set_result(job_id, "done", json.dumps(result, ensure_ascii=False))
+    except Exception as exc:  # keep the server alive, record the failure
+        logging.getLogger("pinkcloud.job").exception("job %s failed", job_id)
+        db.set_result(job_id, "error", json.dumps({"error": str(exc)}))
+
+
 def _run_job(job_id: str, filename: str, data: bytes) -> None:
     """The whole upload-to-result flow, wrapped so errors land in the DB."""
     try:
@@ -125,14 +145,63 @@ def _run_job(job_id: str, filename: str, data: bytes) -> None:
         db.set_result(job_id, "error", json.dumps({"error": str(exc)}))
 
 
+def _read_multi(files: list[UploadFile]) -> list[tuple[str, bytes]]:
+    """Validate + read every image of a multi-image upload, in order.
+    Same rules as the single-file path (type AND extension, then decode),
+    all BEFORE any job row exists; PDFs are single-file only."""
+    if len(files) > MAX_FILES_PER_JOB:
+        raise HTTPException(
+            status_code=400,
+            detail=f"too many files: at most {MAX_FILES_PER_JOB} images per job")
+    uploads: list[tuple[str, bytes]] = []
+    for i, f in enumerate(files, start=1):
+        name = f.filename or f"upload-{i}"
+        ctype = (f.content_type or "").lower()
+        ext = Path(name).suffix.lower()
+        if (ctype not in ALLOWED_TYPES or ext not in storage.ALLOWED_EXTS
+                or ext == ".pdf" or ctype == "application/pdf"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"file {i} ({name}): unsupported type for multi-image "
+                       "jobs: use jpg, jpeg, png, tiff or webp")
+        data = f.file.read()
+        try:
+            probe_decode(ext, data)
+        except Exception:
+            raise HTTPException(
+                status_code=422,
+                detail=f"file {i} ({name}) could not be decoded "
+                       "(corrupt or empty image)")
+        uploads.append((name, data))
+    return uploads
+
+
 @app.post("/jobs")
-def create_job(file: UploadFile = File(...)):
+def create_job(file: UploadFile | None = File(None),
+               files: list[UploadFile] | None = File(None)):
     """Accept an upload, process it, return the new job id.
+
+    Send EITHER `file` (one PDF/image, unchanged behaviour) OR a repeated
+    `files` field (images, in order -> one job, one page per image).
 
     Validation happens in order, BEFORE any job row is created:
       1. content type AND extension both supported -> else 400
       2. bytes must actually decode (PDF opens / image decodes) -> else 422
     """
+    if file is not None and files:
+        raise HTTPException(
+            status_code=400, detail="send either file or files, not both")
+    if files:
+        uploads = _read_multi(files)
+        digest = storage.combined_sha256(
+            [storage.sha256_bytes(d) for _, d in uploads])
+        job_id = uuid.uuid4().hex
+        db.create_job(job_id, uploads[0][0], digest)
+        _run_multi_job(job_id, uploads, digest)
+        return {"job_id": job_id}
+    if file is None:
+        raise HTTPException(status_code=422, detail="no file uploaded")
+
     filename = file.filename or "upload"
     ctype = (file.content_type or "").lower()
     ext = Path(filename).suffix.lower()
@@ -142,7 +211,7 @@ def create_job(file: UploadFile = File(...)):
     if ctype not in ALLOWED_TYPES or ext not in storage.ALLOWED_EXTS:
         raise HTTPException(
             status_code=400,
-            detail="unsupported file type: use pdf, jpg, jpeg, png or tiff",
+            detail="unsupported file type: use pdf, jpg, jpeg, png, tiff or webp",
         )
 
     data = file.file.read()
@@ -180,6 +249,79 @@ def get_job(job_id: str):
         "status": job["status"],
         "created_at": job["created_at"],
         "result": parse_job_result(job["result_json"]),
+    }
+
+
+def _job_summary(job: dict) -> dict:
+    """List-row shape for GET /jobs: everything a jobs UI needs without
+    fetching each job's full result. page_count / pages_needing_review /
+    receipt_url are null until the job is done; error carries the failure
+    message for failed jobs."""
+    result = parse_job_result(job["result_json"])
+    done = job["status"] == "done"
+    pages = (result or {}).get("pages") or [] if done else []
+    return {
+        "job_id": job["id"],
+        "filename": job["filename"],
+        "sha256": job["sha256"],
+        "status": job["status"],
+        "created_at": job["created_at"],
+        "page_count": len(pages) if done else None,
+        "pages_needing_review": (
+            sum(1 for p in pages if p.get("needs_review")) if done else None
+        ),
+        "error": (result or {}).get("error") if job["status"] == "error" else None,
+        "result_url": f"/jobs/{job['id']}",
+        "receipt_url": f"/jobs/{job['id']}/receipt" if done else None,
+    }
+
+
+@app.get("/jobs")
+def list_jobs(limit: int = Query(50, ge=1, le=200),
+              offset: int = Query(0, ge=0)):
+    """List jobs, newest first, with the fields a jobs UI needs.
+    Paginate with limit/offset; total is the full job count."""
+    rows, total = db.list_jobs(limit, offset)
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "jobs": [_job_summary(r) for r in rows],
+    }
+
+
+@app.get("/search")
+def search(q: str = Query(..., min_length=1, max_length=200),
+           limit: int = Query(20, ge=1, le=100),
+           offset: int = Query(0, ge=0)):
+    """Full-text search over the OCR text of finished jobs.
+
+    q is matched as whole-word tokens (implicit AND). Results carry the
+    job + page + line refs and a snippet with hits wrapped in <mark>.
+    Only 'done' jobs are searched; raw stored OCR text is indexed
+    (reviewer corrections are not)."""
+    if not q.strip():
+        raise HTTPException(status_code=400, detail="empty search query")
+    if not db.fts_available():
+        raise HTTPException(status_code=503,
+                            detail="search index unavailable in this build")
+    rows, total = db.search_lines(q.strip(), limit, offset)
+    return {
+        "query": q.strip(),
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "results": [
+            {
+                "job_id": r["job_id"],
+                "filename": r["filename"],
+                "page": r["page"],
+                "line": r["line"],
+                "snippet": r["snippet"],
+                "score": round(float(r["score"]), 4),
+            }
+            for r in rows
+        ],
     }
 
 # Job ids are uuid4 hex (32 lowercase hex chars); anything else was never
@@ -220,11 +362,11 @@ def _rendered_page_png(job_id: str, page_number: int) -> Path | None:
     with _PAGE_RENDER_LOCK:
         if cache_path.is_file():  # another request rendered it meanwhile
             return cache_path
-        master = storage.master_path(job_id)
-        if master is None:
+        masters = storage.master_paths(job_id)
+        if not masters:
             return None
         try:
-            pages = load_pages(master)
+            pages = load_pages(masters)
         except Exception:  # master unreadable -> treat as missing page
             return None
         if not 1 <= page_number <= len(pages):
@@ -468,11 +610,11 @@ def export_pdf(job_id: str, reviewer: str | None = None, receipt_page: bool = Tr
     """Searchable PDF: scan image + invisible Tamil text layer per line,
     a visible receipt page at the end, provenance in the PDF Info dict."""
     job, pages = _done_job(job_id)
-    master = storage.master_path(job_id)
-    if master is None:
+    masters = storage.master_paths(job_id)
+    if not masters:
         raise HTTPException(status_code=410, detail="master file missing")
     receipt = _receipt(job, pages, reviewer)
-    data = _export.build_pdf(master, pages, receipt, receipt_page=receipt_page)
+    data = _export.build_pdf(masters, pages, receipt, receipt_page=receipt_page)
     return Response(
         data, media_type="application/pdf",
         headers={
@@ -517,9 +659,9 @@ UI_ROOT = Path(__file__).resolve().parents[3]
 
 # Root-level UI assets the pages load.
 UI_FILES = {
-    "index.html", "editor.html",
-    "api.js", "upload.js", "editor.js", "translit.js",
-    "tokens.css", "ui.css", "upload.css", "editor.css",
+    "index.html", "editor.html", "export.html", "library.html",
+    "api.js", "upload.js", "editor.js", "translit.js", "export.js", "library.js",
+    "tokens.css", "ui.css", "upload.css", "editor.css", "export.css", "library.css",
     "demo.mp4",  # watch-demo modal on index.html + editor.html
 }
 

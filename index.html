@@ -20,6 +20,18 @@
      file list, Previous/Next). "Next step" opens editor.html?job=<job_id>. -->
 <div id="upload-root"></div>
 
+<!-- Route to the Library (job list + search). Uses the shell link slot in
+     ui.css (.shell-next); carries ?mock / ?api like the editor hand-off. -->
+<a class="btn btn--outline btn--sm shell-next" id="libraryLink" href="./library.html">Library</a>
+<script>
+(function () {
+  var qs = new URLSearchParams(location.search), q = new URLSearchParams();
+  if (qs.has("mock") && qs.get("mock") !== "0") q.set("mock", "1");
+  if (qs.get("api")) q.set("api", qs.get("api"));
+  if (q.toString()) document.getElementById("libraryLink").search = "?" + q.toString();
+})();
+</script>
+
 
 <!-- Watch-demo modal: opened from the empty-state "Watch demo" button.
      Styles live in upload.css (.demo-modal*); open/close wiring in upload.js.

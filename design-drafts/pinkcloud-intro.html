@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pink Cloud - Omni intro</title>
+<!--
+  PINK CLOUD / OMNI - WEB INTRO (single file, no external assets)
+
+  Reference studied: cosmos.so/e/229833236 (720x1280, 60fps dot-matrix type loop).
+  What we took from it: glyphs built from a dot grid, every dot scales on its own,
+  waves of size + colour roll through the grid, big dots carry small white cores.
+
+  PALETTE (from tokens.css)
+    bg canvas      #FDFCFB  (--pc-color-bg-canvas, lightest)
+    black          #1E1A18  (--pc-color-text-primary)
+    dark orange    #B32E08  (--pc-color-primary-active)
+    orange         #F94612  (--pc-color-primary)
+    light orange   #FA683D  (--pc-color-primary-gradient-end)
+    glow tint      #FFC9B3  (--pc-color-primary-soft-border)
+
+  TIMELINE (seconds)
+    0.00 - 0.70  ambient white dots pop in across the canvas, soft orange glow fades up
+    0.25 - 1.15  MINOLI bolt builds dot by dot from its centre outward (spring pop)
+    0.95 - 1.35  glow flare as the bolt completes
+    1.10 - 1.80  bolt springs left to make room
+    1.20 - 2.40  "Omni" builds left to right in a diagonal wave (spring pop)
+    2.40 - 3.70  hold: colour/size waves roll through the dots (black -> dark orange -> orange)
+    3.70 - 4.60  intro sheet slides UP (anticipation dip, then fast exit)
+    3.95 - 4.90  product underneath settles in (spring)
+
+  EASING (exact)
+    dotPop     spring  stiffness 260, damping 13, mass 1   (peak overshoot ~ 1.22x)
+    boltShift  spring  stiffness 170, damping 15, mass 1
+    productIn  spring  stiffness 210, damping 17, mass 1
+    glowFlare  cubic-bezier(0.16, 1, 0.3, 1)
+    sheetUp    cubic-bezier(0.8, -0.35, 0.2, 1)            (dips ~3% down, then leaves)
+    fade       cubic-bezier(0.33, 1, 0.68, 1)
+
+  DEBUG: add ?t=2.5 to freeze at a time. ?loop=1 replays forever. Press R to replay.
+-->
+<style>
+  :root{
+    --bg:#FDFCFB; --ink:#1E1A18; --ink2:#655E58; --dark:#B32E08; --orange:#F94612;
+    --light:#FA683D; --soft:#FFF4EF; --softb:#FFC9B3; --line:#E6E2DE; --surface:#FFFFFF;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:var(--bg);overflow:hidden;
+    font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color:var(--ink)}
+  /* ---------- product underneath ---------- */
+  #product{position:fixed;inset:0;display:flex;flex-direction:column;background:var(--bg);will-change:transform,opacity}
+  .nav{height:64px;display:flex;align-items:center;gap:12px;padding:0 32px;border-bottom:1px solid var(--line);background:var(--surface)}
+  .logo{width:28px;height:28px;border-radius:8px;background:linear-gradient(180deg,#F94612,#FA683D);display:grid;place-items:center}
+  .logo svg{width:16px;height:16px}
+  .brand{font-weight:700;font-size:17px;letter-spacing:-.01em}
+  .nav .sp{flex:1}
+  .pill{font-size:13px;color:var(--ink2);padding:6px 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface)}
+  main{flex:1;display:grid;place-items:center;padding:clamp(16px,4vw,32px)}
+  .card{width:min(720px,100%);background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:40px;box-shadow:0 1px 2px #1E1A180F,0 12px 40px #1E1A180A}
+  .card h1{font-size:28px;letter-spacing:-.02em;margin-bottom:6px}
+  .card p{color:var(--ink2);font-size:15px;margin-bottom:24px}
+  .drop{border:1.5px dashed var(--softb);background:var(--soft);border-radius:12px;height:200px;display:grid;place-items:center;text-align:center;color:var(--ink2);font-size:14px}
+  .drop b{display:block;color:var(--ink);font-size:16px;margin:10px 0 4px}
+  .btn{margin-top:20px;display:inline-block;padding:11px 20px;border-radius:8px;color:#fff;font-weight:600;font-size:14px;background:linear-gradient(180deg,#F94612,#FA683D)}
+  /* ---------- intro sheet ---------- */
+  #intro{position:fixed;inset:0;background:var(--bg);will-change:transform;box-shadow:0 30px 60px #1E1A1814;border-radius:0 0 28px 28px;overflow:hidden}
+  #intro canvas{position:absolute;inset:0;width:100%;height:100%}
+  #replay{position:fixed;right:16px;bottom:16px;z-index:5;font:600 12px/1 inherit;padding:8px 12px;border-radius:7px;border:1px solid var(--line);background:#fff;color:var(--ink2);cursor:pointer;opacity:0;transition:opacity .3s}
+  body.done #replay{opacity:1}
+</style>
+</head>
+<body>
+
+<div id="product">
+  <div class="nav">
+    <div class="logo"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z" fill="#fff"/></svg></div>
+    <div class="brand">Pink Cloud</div>
+    <div class="sp"></div>
+    <div class="pill">Tamil OCR</div>
+  </div>
+  <main>
+    <div class="card">
+      <h1>Upload a scan</h1>
+      <p>Drop Tamil pages or PDFs. We read them, repair the text and flag the lines worth a second look.</p>
+      <div class="drop"><div><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#F94612" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg><b>Drag files here</b>PNG, JPG or PDF</div></div>
+      <span class="btn">Choose files</span>
+    </div>
+  </main>
+</div>
+
+<div id="intro"><canvas id="c"></canvas></div>
+<button id="replay">Replay intro</button>
+
+<script>
+(()=>{
+/* ================= easing ================= */
+// cubic-bezier solver (same maths as CSS)
+function bezier(x1,y1,x2,y2){
+  const cx=3*x1,bx=3*(x2-x1)-cx,ax=1-cx-bx, cy=3*y1,by=3*(y2-y1)-cy,ay=1-cy-by;
+  const sx=t=>((ax*t+bx)*t+cx)*t, sy=t=>((ay*t+by)*t+cy)*t, dx=t=>(3*ax*t+2*bx)*t+cx;
+  return x=>{ if(x<=0)return 0; if(x>=1)return 1; let t=x;
+    for(let i=0;i<8;i++){const e=sx(t)-x; const d=dx(t); if(Math.abs(e)<1e-6)break; if(Math.abs(d)<1e-6)break; t-=e/d;}
+    let lo=0,hi=1; for(let i=0;i<20&&Math.abs(sx(t)-x)>1e-5;i++){ if(sx(t)<x)lo=t; else hi=t; t=(lo+hi)/2; }
+    return sy(t); };
+}
+// damped spring from 0 -> 1, time in seconds (mass 1). Returns value (overshoots).
+function spring(k,c){
+  const w0=Math.sqrt(k), z=c/(2*Math.sqrt(k)), wd=w0*Math.sqrt(Math.max(1e-6,1-z*z));
+  return t=>{ if(t<=0)return 0; return 1-Math.exp(-z*w0*t)*(Math.cos(wd*t)+(z*w0/wd)*Math.sin(wd*t)); };
+}
+const E={
+  dotPop:   spring(260,13),
+  boltShift:spring(170,15),
+  productIn:spring(210,17),
+  glowFlare:bezier(.16,1,.3,1),
+  sheetUp:  bezier(.8,-.35,.2,1),
+  fade:     bezier(.33,1,.68,1),
+};
+const clamp=(v,a=0,b=1)=>Math.min(b,Math.max(a,v));
+const seg=(t,a,b)=>clamp((t-a)/(b-a));
+const lerp=(a,b,t)=>a+(b-a)*t;
+function hash(i){ let x=Math.sin(i*127.1+311.7)*43758.5453; return x-Math.floor(x); }
+
+/* ================= palette ================= */
+const C={bg:'#FDFCFB',ink:'#1E1A18',dark:'#B32E08',orange:'#F94612',light:'#FA683D',soft:'#FFC9B3',white:'#FFFFFF'};
+
+/* ================= setup ================= */
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+const intro=document.getElementById('intro'), product=document.getElementById('product');
+let W,H,DPR,pitch,textDots=[],boltDots=[],ambient=[],layout={};
+
+function sample(drawFn,w,h,step){
+  const o=document.createElement('canvas'); o.width=w; o.height=h;
+  const g=o.getContext('2d'); g.fillStyle='#000'; drawFn(g,w,h);
+  const d=g.getImageData(0,0,w,h).data, out=[];
+  for(let y=step/2;y<h;y+=step) for(let x=step/2;x<w;x+=step){
+    // coverage over a small cross = graded dot size (edge dots come out smaller)
+    let cov=0,n=0; for(const [ox,oy] of [[0,0],[-step*.3,0],[step*.3,0],[0,-step*.3],[0,step*.3]]){
+      const px=Math.round(x+ox),py=Math.round(y+oy); if(px<0||py<0||px>=w||py>=h)continue;
+      cov+=d[(py*w+px)*4+3]/255; n++; }
+    cov/=n; if(cov>.2) out.push({x,y,cov});
+  }
+  return out;
+}
+
+function build(){
+  DPR=Math.min(2,window.devicePixelRatio||1);
+  W=innerWidth; H=innerHeight; cv.width=W*DPR; cv.height=H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0);
+  const unit=Math.min(W/1.9,H*0.9);           // composition scale
+  pitch=Math.max(5,Math.round(unit/46));      // grid spacing in px
+  const fontPx=Math.round(unit*0.42);
+  // --- "Omni" ---
+  const font=`900 ${fontPx}px ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif`;
+  const m=document.createElement('canvas').getContext('2d'); m.font=font;
+  const tw=Math.ceil(m.measureText('Omni').width)+pitch*2, th=Math.ceil(fontPx*1.05);
+  const td=sample((g,w,h)=>{g.font=font;g.textBaseline='middle';g.fillText('Omni',pitch,h*0.52);},tw,th,pitch);
+  // --- MINOLI bolt ---
+  const bh=th*1.08, bw=bh*0.62;
+  const bd=sample((g,w,h)=>{g.beginPath();
+    const P=[[.62,0],[.05,.58],[.44,.58],[.30,1],[.95,.38],[.55,.38],[.78,0]];
+    P.forEach(([x,y],i)=>i?g.lineTo(x*w,y*h):g.moveTo(x*w,y*h)); g.closePath(); g.fill();},Math.ceil(bw),Math.ceil(bh),pitch);
+  const gap=pitch*3, total=bw+gap+tw;
+  layout={cx:W/2,cy:H/2,total,bw,bh,tw,th,gap,
+    boltEndX:W/2-total/2, boltStartX:W/2-bw/2, textX:W/2-total/2+bw+gap};
+  boltDots=bd.map((d,i)=>{const dx=d.x-bw/2,dy=d.y-bh/2; return {...d,dx,dy,dist:Math.hypot(dx,dy)/bh,h:hash(i+7)};});
+  textDots=td.map((d,i)=>({...d,u:d.x/tw,v:d.y/th,h:hash(i+1001)}));
+  // --- ambient white dots (scattered, avoid the centre band) ---
+  ambient=[]; const N=Math.round(W*H/5200);
+  for(let i=0;i<N;i++){ const x=hash(i*3.1)*W, y=hash(i*5.7+2)*H;
+    const r=(0.35+Math.pow(hash(i*9.3),3)*1.1)*pitch*0.32;
+    ambient.push({x,y,r,h:hash(i*1.9+4),d:Math.hypot(x-W/2,y-H/2)/Math.hypot(W/2,H/2)}); }
+}
+
+/* ================= drawing ================= */
+function dot(x,y,r,fill){ if(r<=.15)return; ctx.beginPath(); ctx.arc(x,y,r,0,6.2832); ctx.fillStyle=fill; ctx.fill(); }
+function whiteDot(x,y,r){ // white dot that still reads on a light bg: warm halo + faint ring
+  if(r<=.15)return;
+  ctx.beginPath(); ctx.arc(x,y,r*1.9,0,6.2832); ctx.fillStyle='rgba(249,70,18,0.10)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(x,y,r,0,6.2832); ctx.fillStyle='#fff'; ctx.fill();
+  ctx.lineWidth=Math.max(.6,r*.22); ctx.strokeStyle='rgba(250,104,61,0.55)'; ctx.stroke();
+}
+function glow(x,y,rad,a,col){ const g=ctx.createRadialGradient(x,y,0,x,y,rad);
+  g.addColorStop(0,`rgba(${col},${a})`); g.addColorStop(.45,`rgba(${col},${a*.45})`); g.addColorStop(1,`rgba(${col},0)`);
+  ctx.fillStyle=g; ctx.fillRect(x-rad,y-rad,rad*2,rad*2); }
+
+function frame(t){
+  ctx.clearRect(0,0,W,H); ctx.fillStyle=C.bg; ctx.fillRect(0,0,W,H);
+  const L=layout, R=pitch*0.5;
+
+  // bolt position: centre -> left (spring)
+  const shift=E.boltShift(Math.max(0,t-1.10));
+  const bx=lerp(L.boltStartX,L.boltEndX,shift), by=L.cy-L.bh/2;
+  const bcx=bx+L.bw/2;
+
+  // ---- glow field ----
+  const gIn=E.fade(seg(t,0,.9));
+  const flare=E.glowFlare(seg(t,.95,1.35))*(1-E.fade(seg(t,1.35,2.4)));
+  const breathe=.5+.5*Math.sin(t*2.2);
+  glow(bcx,L.cy,L.bh*(1.05+.5*flare),.30*gIn+.35*flare,'249,70,18');
+  glow(bcx,L.cy,L.bh*(.55+.25*flare),.22*gIn+.30*flare,'250,104,61');
+  const tIn=E.fade(seg(t,1.3,2.4));
+  glow(L.textX+L.tw*.5,L.cy,L.tw*.62,(.16+.05*breathe)*tIn,'250,104,61');
+  glow(L.textX+L.tw*.25,L.cy+L.th*.1,L.tw*.42,(.10+.04*breathe)*tIn,'249,70,18');
+
+  // ---- ambient white dots ----
+  for(const a of ambient){
+    const t0=.05+a.d*.45+a.h*.25, s=E.dotPop(t-t0);
+    const tw=.75+.25*Math.sin(t*3+a.h*20);
+    const drift=Math.sin(t*.6+a.h*9)*pitch*.35;
+    whiteDot(a.x+drift,a.y-drift*.6,a.r*s*tw);
+  }
+
+  // ---- MINOLI bolt (orange / light orange, white cores) ----
+  for(const d of boltDots){
+    const t0=.25+d.dist*.55+d.h*.12;
+    const s=E.dotPop(t-t0);
+    const wave=.5+.5*Math.sin(t*4.2-d.dy/pitch*.55+d.h*1.5);
+    const r=R*(.45+.55*d.cov)*s*(.72+.42*wave*seg(t,1.2,1.6));
+    const x=bx+d.x, y=by+d.y;
+    dot(x,y,r,wave>.62?C.orange:(wave>.3?C.light:C.dark));
+    if(wave>.8) dot(x,y,r*.38,'#fff');
+  }
+
+  // ---- "Omni" (black -> dark orange -> orange waves) ----
+  for(const d of textDots){
+    const t0=1.20+(d.u*.85+d.v*.25)*1.0+d.h*.10;
+    const s=E.dotPop(t-t0);
+    const live=seg(t,2.2,2.7);
+    // two travelling waves like the reference: a diagonal sweep and a slow column ripple
+    const w1=.5+.5*Math.sin(t*3.4-(d.u*7+d.v*3)+d.h*.8);
+    const w2=.5+.5*Math.sin(t*1.7+d.u*11-d.v*2);
+    const wave=lerp(.35,w1*.7+w2*.3,live);
+    const pulse=1+live*(wave-.45)*.75;
+    const r=R*(.42+.58*d.cov)*s*pulse;
+    const x=L.textX+d.x, y=L.cy-L.th/2+d.y;
+    // layered colour from the brand schema: base black, waves push dots to dark orange then orange
+    const base=d.v+d.h*.15; // static vertical gradient before the waves take over
+    let col = lerp(base,wave,live) > .68 ? C.orange : (lerp(base,wave,live) > .42 ? C.dark : C.ink);
+    dot(x,y,r,col);
+    if(live>0 && wave>.86 && d.cov>.8) dot(x,y,r*.36,'#fff');
+  }
+}
+
+/* ================= sheet + product ================= */
+function layers(t){
+  const up=E.sheetUp(seg(t,3.70,4.60));
+  intro.style.transform=`translate3d(0,${-up*104}%,0)`;
+  intro.style.visibility=up>=1?'hidden':'visible';
+  const p=E.productIn(Math.max(0,t-3.95));
+  product.style.transform=`translate3d(0,${(1-p)*70}px,0) scale(${.965+.035*p})`;
+  product.style.opacity=clamp(E.fade(seg(t,3.85,4.4)));
+  document.body.classList.toggle('done',t>=4.9);
+}
+
+/* ================= run ================= */
+build(); addEventListener('resize',()=>{build(); if(frozen!=null)render(frozen);});
+const q=new URLSearchParams(location.search);
+const frozen=q.has('t')?parseFloat(q.get('t')):null, loop=q.get('loop')==='1';
+const END=5.2;
+function render(t){ if(t<4.7)frame(t); layers(t); }
+if(frozen!=null){ render(frozen); window.__ready=true; return; }
+let start=performance.now();
+function tick(now){ let t=(now-start)/1000; if(loop&&t>END+1){start=now;t=0;} render(t); if(t<END||loop)requestAnimationFrame(tick); }
+function replay(){ start=performance.now(); intro.style.visibility='visible'; requestAnimationFrame(tick); }
+document.getElementById('replay').onclick=replay;
+addEventListener('keydown',e=>{if(e.key==='r'||e.key==='R')replay();});
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

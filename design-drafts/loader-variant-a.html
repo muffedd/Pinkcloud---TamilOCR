@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pink Cloud - Reading (Variant A: Smoke)</title>
+<style>
+  :root{
+    --pc-bg:#FCFAF8;        /* neutral 25 - app canvas, lightest */
+    --pc-orange-100:#FFE6D7;
+    --pc-orange-200:#FFC9AB;
+    --pc-orange-300:#FDA679;
+    --pc-orange-500:#F25A1A; /* brand identity */
+    --pc-orange-600:#CC4410; /* dark orange */
+    --pc-orange-800:#8C2F0E;
+    --pc-ink:#221A16;
+  }
+  html,body{margin:0;height:100%;background:var(--pc-bg);overflow:hidden}
+  body{font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--pc-ink)}
+  #fx{position:fixed;inset:0;width:100%;height:100%;display:block;opacity:0;transition:opacity 1.2s cubic-bezier(.2,.7,.2,1)}
+  #fx.on{opacity:1}
+  /* no-WebGL fallback: drifting CSS blobs */
+  .fallback{position:fixed;inset:0;display:none;overflow:hidden}
+  .fallback i{position:absolute;border-radius:50%;filter:blur(60px);opacity:.75;animation:drift 18s ease-in-out infinite alternate}
+  .fallback i:nth-child(1){width:55vmax;height:40vmax;left:-10vmax;top:10vh;background:var(--pc-orange-200)}
+  .fallback i:nth-child(2){width:40vmax;height:30vmax;right:-8vmax;top:40vh;background:var(--pc-orange-300);animation-duration:23s}
+  .fallback i:nth-child(3){width:26vmax;height:22vmax;left:35vw;top:55vh;background:var(--pc-orange-500);opacity:.45;animation-duration:15s}
+  @keyframes drift{to{transform:translate(8vmax,-6vmax) scale(1.15)}}
+  .no-gl .fallback{display:block}
+
+  .status{position:fixed;left:50%;bottom:9vh;transform:translateX(-50%);display:flex;align-items:center;gap:12px;
+    padding:12px 18px 12px 16px;border-radius:999px;background:rgba(252,250,248,.72);
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    box-shadow:0 1px 0 rgba(255,255,255,.9) inset,0 8px 30px rgba(140,47,14,.10);border:1px solid rgba(204,68,16,.14);
+    font-size:15px;letter-spacing:-.01em;font-weight:560;white-space:nowrap}
+  .status .dots{display:inline-flex;gap:5px}
+  .status .dots b{width:7px;height:7px;border-radius:50%;background:var(--pc-orange-500);animation:hop 1.1s cubic-bezier(.34,1.56,.64,1) infinite}
+  .status .dots b:nth-child(2){animation-delay:.14s;background:var(--pc-orange-600)}
+  .status .dots b:nth-child(3){animation-delay:.28s;background:var(--pc-ink)}
+  @keyframes hop{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
+  .status small{font-weight:450;color:#6B5D55;font-size:13px}
+  .hide-label .status{display:none}
+  @media (prefers-reduced-motion:reduce){.status .dots b{animation:none}}
+</style>
+</head>
+<body>
+<canvas id="fx" aria-hidden="true"></canvas>
+<div class="fallback" aria-hidden="true"><i></i><i></i><i></i></div>
+<div class="status" role="status" aria-live="polite">
+  <span class="dots" aria-hidden="true"><b></b><b></b><b></b></span>
+  <span id="msg">Reading your document</span><small id="sub">extracting text</small>
+</div>
+
+<script id="vs" type="x-shader/x-vertex">#version 300 es
+in vec2 a; void main(){ gl_Position = vec4(a,0.,1.); }
+</script>
+<script id="fs" type="x-shader/x-fragment">#version 300 es
+precision highp float;
+uniform vec2 uRes; uniform float uTime; uniform float uDpr; uniform float uIntro;
+out vec4 o;
+
+const vec3 BG  = vec3(252.,250.,248.)/255.;
+const vec3 O1  = vec3(255.,230.,215.)/255.;   // orange 100
+const vec3 O2  = vec3(255.,201.,171.)/255.;   // orange 200 light orange
+const vec3 O3  = vec3(253.,166.,121.)/255.;   // orange 300
+const vec3 O5  = vec3(242., 90., 26.)/255.;   // orange 500 brand
+const vec3 O6  = vec3(204., 68., 16.)/255.;   // orange 600 dark orange
+const vec3 INK = vec3( 34., 26., 22.)/255.;
+
+float hash(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p,p+45.32); return fract(p.x*p.y); }
+float noise(vec2 p){
+  vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.-2.*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),u.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x), u.y);
+}
+float fbm(vec2 p){
+  float v=0., a=.5; mat2 r=mat2(.8,-.6,.6,.8);
+  for(int i=0;i<4;i++){ v+=a*noise(p); p=r*p*2.02+vec2(1.7,9.2); a*=.5; }
+  return v;
+}
+// domain-warped smoke density, 0..1
+float smoke(vec2 p, float t){
+  vec2 q = vec2(fbm(p + vec2(0.0, t*.06)), fbm(p + vec2(5.2,1.3) - vec2(t*.05, 0.)));
+  vec2 r = vec2(fbm(p + 3.2*q + vec2(1.7,9.2) + t*.09), fbm(p + 3.2*q + vec2(8.3,2.8) - t*.07));
+  float d = fbm(p + 3.6*r);
+  // wisps rise gently from lower-left toward upper-right
+  return d;
+}
+
+void main(){
+  vec2 frag = gl_FragCoord.xy;
+  float s = min(uRes.x,uRes.y);
+  vec2 uv = (frag - .5*uRes)/s;           // aspect-correct, centred
+  float t = uTime;
+
+  // --- continuous smoke field ---
+  vec2 p = uv*2.1 + vec2(t*.035, -t*.02);
+  float d = smoke(p, t);
+  d = smoothstep(.28, .92, d);
+  // soft breathing so the loader feels alive even when drift is slow
+  d *= .92 + .08*sin(t*.9);
+  d *= uIntro;
+
+  vec3 col = BG;
+  col = mix(col, O1, smoothstep(.10,.45,d));
+  col = mix(col, O2, smoothstep(.30,.70,d)*.95);
+  col = mix(col, O3, smoothstep(.48,.88,d)*.85);
+  col = mix(col, O5, smoothstep(.66,1.05,d)*.70);
+  col = mix(col, O6, smoothstep(.85,1.20,d)*.55);
+
+  // faint ink core in the very densest wisps - the black accent, kept soft
+  col = mix(col, INK, smoothstep(.93,1.15,d)*.10);
+
+  // gentle warm vignette + grain
+  float vig = 1. - smoothstep(.25, 1.25, length(uv*vec2(.9,1.)));
+  col = mix(col*vec3(.985,.97,.96), col, vig);
+  col += (hash(frag + fract(t)*97.) - .5) * .012;
+
+  o = vec4(col,1.);
+}
+</script>
+
+<script>
+(function(){
+  const qs = new URLSearchParams(location.search);
+  const freezeT = qs.has('t') ? parseFloat(qs.get('t')) : null;   // ?t=12 renders a still frame at 12s
+  if (qs.get('label') === '0') document.documentElement.classList.add('hide-label');
+
+  const cvs = document.getElementById('fx');
+  const gl = cvs.getContext('webgl2', {antialias:false, premultipliedAlpha:false, preserveDrawingBuffer: freezeT!==null});
+  if (!gl){ document.documentElement.classList.add('no-gl'); return; }
+
+  function sh(type, src){ const s=gl.createShader(type); gl.shaderSource(s, src.trim()); gl.compileShader(s);
+    if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+  let prog;
+  try{
+    prog = gl.createProgram();
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, document.getElementById('vs').textContent));
+    gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, document.getElementById('fs').textContent));
+    gl.linkProgram(prog);
+    if(!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+  }catch(e){ console.error(e); document.documentElement.classList.add('no-gl'); return; }
+  gl.useProgram(prog);
+
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog,'a'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  const uRes=gl.getUniformLocation(prog,'uRes'), uTime=gl.getUniformLocation(prog,'uTime'),
+        uDpr=gl.getUniformLocation(prog,'uDpr'), uIntro=gl.getUniformLocation(prog,'uIntro');
+
+  // Render at up to 1.5x DPR - smoke is soft, so this keeps it cheap on phones
+  let dpr = 1;
+  function resize(){
+    dpr = Math.min(window.devicePixelRatio||1, 1.5);
+    const w = Math.round(innerWidth*dpr), h = Math.round(innerHeight*dpr);
+    if (cvs.width!==w || cvs.height!==h){ cvs.width=w; cvs.height=h; gl.viewport(0,0,w,h); }
+  }
+  addEventListener('resize', resize); resize();
+
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const speed = reduce ? .25 : 1;
+  // intro: bouncy ease-out-back on the smoke density
+  const easeOutBack = x => { const c1=1.70158, c3=c1+1; return 1 + c3*Math.pow(x-1,3) + c1*Math.pow(x-1,2); };
+  const t0 = performance.now();
+
+  function frame(now){
+    const el = freezeT!==null ? freezeT : (now - t0)/1000;
+    const intro = Math.min(Math.max(easeOutBack(Math.min(el/1.6,1)), 0), 1.08);
+    gl.uniform2f(uRes, cvs.width, cvs.height);
+    gl.uniform1f(uTime, 20. + el*speed);   // offset so the first frame already has shape
+    gl.uniform1f(uDpr, dpr);
+    gl.uniform1f(uIntro, intro);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  requestAnimationFrame(()=>cvs.classList.add('on'));
+  if (freezeT!==null){ cvs.style.transition='none'; cvs.classList.add('on'); }
+
+  // Rotate the status copy while the app works (hook these to real stages if wanted)
+  const stages = ['extracting text','matching fields','checking confidence','almost there'];
+  let si = 0; const sub = document.getElementById('sub');
+  if (freezeT===null) setInterval(()=>{ si=(si+1)%stages.length; sub.textContent=stages[si]; }, 2400);
+
+  // Public hook: window.pcLoader.done() fades the shader out
+  window.pcLoader = { done(){ cvs.style.transition='opacity .6s ease'; cvs.style.opacity='0';
+    document.querySelector('.status').style.opacity='0'; } };
+})();
+</script>
+</body>
+</html>
