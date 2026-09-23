@@ -1,6 +1,10 @@
 /* Pink Cloud - Export / Result page (export.html?job=<job_id>).
    GET /jobs/{id}/receipt -> receipt card; downloads link the existing
-   GET /jobs/{id}/export.pdf and /export.txt endpoints.
+   GET /jobs/{id}/export.pdf, /export.txt and /export.docx endpoints.
+   Markdown, CSV and XML are built in the browser from GET /jobs/{id} plus
+   GET /jobs/{id}/corrections, applying the saved fixes with the same rule
+   as the server's export.apply_corrections (page, line id, 1-based word;
+   stale 'before' skipped), so every format carries the same text.
    404 -> missing job; 409 -> not ready (polls GET /jobs/{id} while pending).
    Same ?api= override as api.js (default: same origin). ?reviewer= is
    passed through to the receipt and both exports. */
@@ -81,6 +85,8 @@
 
     $("dlPdf").href = jobUrl("/export.pdf");
     $("dlTxt").href = jobUrl("/export.txt");
+    $("dlDocx").href = jobUrl("/export.docx");
+    RECEIPT = r;
 
     var c = r.corrections || {}, p = r.pages || {}, l = r.lines || {}, t = r.time || {}, o = r.ocr || {};
     var tiers = Object.keys(c.by_tier || {}).sort().map(function (k) { return k + " " + c.by_tier[k]; }).join(" · ");
@@ -154,6 +160,130 @@
         $("missingText").previousElementSibling.textContent = "Receipt unavailable";
       });
   }
+
+  /* ---------- client-built formats: Markdown, CSV, XML ---------- */
+  var RECEIPT = null;
+
+  function getJson(url, okMissing) {
+    return fetch(url, { cache: "no-store" }).then(function (res) {
+      if (okMissing && res.status === 404) return null;
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.json();
+    });
+  }
+
+  /* Mirror of fastapi/sqlite/app/export.py apply_corrections. */
+  function correctedPages(pages, corrections) {
+    var by = {};
+    (corrections || []).forEach(function (c) {
+      var page = parseInt(c.page, 10), word = parseInt(c.word, 10);
+      var after = String(c.after == null ? "" : c.after).trim();
+      if (!(page >= 1) || !(word >= 1) || !after) return;
+      by[page + "|" + c.line + "|" + word] = { before: c.before == null ? null : String(c.before), after: after };
+    });
+    return (pages || []).map(function (p, i) {
+      var pno = parseInt(p.page, 10) || i + 1;
+      var lines = (p.lines || []).slice().sort(function (a, b) { return (a.seq || 0) - (b.seq || 0); }).map(function (l) {
+        var words = String(l.body || "").split(/\s+/).filter(Boolean);
+        for (var w = 1; w <= words.length; w++) {
+          var c = by[pno + "|" + l.id + "|" + w];
+          if (c && (c.before === null || c.before === words[w - 1])) words[w - 1] = c.after;
+        }
+        return { id: l.id, seq: l.seq, confidence: l.confidence, text: words.join(" ") };
+      });
+      return { page: pno, profile: p.profile, lines: lines, text: lines.length ? null : String(p.text || "") };
+    });
+  }
+
+  function pageLines(p) {
+    return p.lines.length ? p.lines.map(function (l) { return l.text; }) : (p.text ? p.text.split("\n") : []);
+  }
+
+  function mdEsc(t) { return t.replace(/([\\`*_\[\]<>|])/g, "\\$1").replace(/^(\s*)([#>+-]|\d+[.)])/, "$1\\$2"); }
+  function buildMd(pages, r) {
+    var out = ["# " + mdEsc(r.filename || "Pink Cloud export"), "",
+      "> Pink Cloud export · job " + r.job_id + " · master SHA-256 " + ((r.master || {}).sha256 || "-"), ""];
+    pages.forEach(function (p) {
+      out.push("## Page " + p.page, "");
+      var ls = pageLines(p).map(mdEsc);
+      out.push(ls.length ? ls.join("  \n") : "_(no text)_", "");
+    });
+    return out.join("\n");
+  }
+
+  function csvCell(v) {
+    v = v == null ? "" : String(v);
+    return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  }
+  function buildCsv(pages) {
+    var rows = [["page", "line", "seq", "text", "confidence"]];
+    pages.forEach(function (p) {
+      if (p.lines.length) p.lines.forEach(function (l) { rows.push([p.page, l.id, l.seq, l.text, l.confidence]); });
+      else pageLines(p).forEach(function (t, i) { rows.push([p.page, "", i + 1, t, ""]); });
+    });
+    /* BOM so Excel opens the Tamil text as UTF-8 */
+    return "\ufeff" + rows.map(function (r) { return r.map(csvCell).join(","); }).join("\r\n") + "\r\n";
+  }
+
+  function xmlEsc(v) {
+    return String(v == null ? "" : v)
+      .replace(/[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD\uD800-\uDFFF]/g, "")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function buildXml(pages, r) {
+    var m = r.master || {};
+    var out = ['<?xml version="1.0" encoding="UTF-8"?>',
+      '<document generator="Pink Cloud" job="' + xmlEsc(r.job_id) + '" filename="' + xmlEsc(r.filename) +
+      '" master-sha256="' + xmlEsc(m.sha256) + '" pages="' + pages.length + '">'];
+    pages.forEach(function (p) {
+      out.push('  <page n="' + p.page + '"' + (p.profile ? ' profile="' + xmlEsc(p.profile) + '"' : "") + ">");
+      if (p.lines.length) p.lines.forEach(function (l) {
+        out.push('    <line id="' + xmlEsc(l.id) + '" seq="' + xmlEsc(l.seq) + '"' +
+          (l.confidence != null ? ' confidence="' + xmlEsc(l.confidence) + '"' : "") + ">" + xmlEsc(l.text) + "</line>");
+      });
+      else pageLines(p).forEach(function (t, i) { out.push('    <line seq="' + (i + 1) + '">' + xmlEsc(t) + "</line>"); });
+      out.push("  </page>");
+    });
+    out.push("</document>", "");
+    return out.join("\n");
+  }
+
+  var FORMATS = {
+    md: { build: buildMd, mime: "text/markdown;charset=utf-8" },
+    csv: { build: buildCsv, mime: "text/csv;charset=utf-8" },
+    xml: { build: buildXml, mime: "application/xml;charset=utf-8" }
+  };
+
+  function saveBlob(text, mime, name) {
+    var url = URL.createObjectURL(new Blob([text], { type: mime }));
+    var a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function clientExport(fmt, btn) {
+    var f = FORMATS[fmt], err = $("moreErr");
+    if (!f || !RECEIPT) return;
+    err.hidden = true;
+    btn.disabled = true;
+    Promise.all([
+      getJson(API_BASE + "/jobs/" + encodeURIComponent(JOB)),
+      getJson(API_BASE + "/jobs/" + encodeURIComponent(JOB) + "/corrections", true)
+    ]).then(function (res) {
+      var pages = correctedPages(res[0].result && res[0].result.pages, res[1] && res[1].corrections);
+      var stem = String(RECEIPT.filename || "pinkcloud").replace(/\.[^.]+$/, "").replace(/[\\/:*?"<>|]+/g, "_") || "pinkcloud";
+      saveBlob(f.build(pages, RECEIPT), f.mime, stem + "." + fmt);
+    }).catch(function (e) {
+      err.textContent = "Could not build the " + fmt.toUpperCase() + " file (" + e.message + "). Try again, or use TXT.";
+      err.hidden = false;
+    }).then(function () { btn.disabled = false; });
+  }
+
+  ["dlMd", "dlCsv", "dlXml"].forEach(function (id) {
+    var b = $(id);
+    b.addEventListener("click", function () { clientExport(b.getAttribute("data-fmt"), b); });
+  });
 
   /* copy the full hash */
   $("copySha").addEventListener("click", function () {
