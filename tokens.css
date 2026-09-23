@@ -1,0 +1,178 @@
+/* ==========================================================================
+   Pink Cloud - Design Tokens
+   Sources of truth:
+     - Color system v2 (design system/foundations/pink-cloud-color-system-v2):
+       all 78 :root tokens, copied verbatim (colors + button shadows).
+     - Typography system spec: font stacks, type scale, tracking,
+       hierarchy opacities, spacing scale.
+   Palette: brand orange #F94612 family, warm neutrals. No pink, no purple.
+   Import once:  @import url("tokens.css");
+   ========================================================================== */
+
+:root {
+  /* ======================= COLOR (color system v2) ======================= */
+
+  /* ---- Brand orange ramp ---- */
+  --pc-color-brand-50: #FFF4EF;
+  --pc-color-brand-100: #FFE6DB;
+  --pc-color-brand-200: #FFC9B3;
+  --pc-color-brand-300: #FFA582;
+  --pc-color-brand-400: #FA683D;
+  --pc-color-brand-500: #F94612;
+  --pc-color-brand-600: #D93A0B;
+  --pc-color-brand-700: #B32E08;
+  --pc-color-brand-800: #8C250A;
+  --pc-color-brand-900: #5E1A08;
+
+  /* ---- Primary (brand orange) roles ---- */
+  --pc-color-primary: #F94612;
+  --pc-color-primary-gradient-end: #FA683D;
+  --pc-color-primary-hover: #D93A0B;
+  --pc-color-primary-active: #B32E08;
+  --pc-color-primary-text: #B32E08;
+  --pc-color-primary-soft: #FFF4EF;
+  --pc-color-primary-soft-border: #FFC9B3;
+  --pc-color-on-primary: #FFFFFF;
+  --pc-color-focus-ring: #F94612;
+  --pc-color-primary-solid: #D93A0B;
+  --pc-color-button-outline: #0000001A;
+
+  /* ---- Destructive (deep orange, gradient #E36323 -> #DF5A18) ---- */
+  --pc-color-destructive: #E36323;
+  --pc-color-destructive-end: #DF5A18;
+  --pc-color-destructive-solid: #C4380C;
+
+  /* ---- Confidence ---- */
+  --pc-color-conf-auto: #0B7A55;
+  --pc-color-conf-auto-bg: #DDF3EA;
+  --pc-color-conf-ok: #1F5FAE;
+  --pc-color-conf-ok-bg: #E3EDFA;
+  --pc-color-conf-doubt: #7A5200;
+  --pc-color-conf-doubt-bg: #FFE27A;
+
+  /* ---- Provenance ---- */
+  --pc-color-prov-raw: #9A948F;
+  --pc-color-prov-rule: #1A4E96;
+  --pc-color-prov-swap: #006D63;
+  --pc-color-prov-llm: #8A5A2B;
+  --pc-color-prov-human: #D93A0B;
+
+  /* ---- Semantic status ---- */
+  --pc-color-success: #17754A;
+  --pc-color-success-bg: #E6F4EC;
+  --pc-color-warning: #8F5200;
+  --pc-color-warning-bg: #FFF3D6;
+  --pc-color-error: #BE123C;
+  --pc-color-error-bg: #FDECEF;
+  --pc-color-info: #1F5FAE;
+  --pc-color-info-bg: #E7F0FB;
+
+  /* ---- Warm neutrals ---- */
+  --pc-color-neutral-0: #FFFFFF;
+  --pc-color-neutral-25: #FDFCFB;
+  --pc-color-neutral-50: #F8F6F4;
+  --pc-color-neutral-100: #F1EEEB;
+  --pc-color-neutral-200: #E6E2DE;
+  --pc-color-neutral-300: #D2CCC6;
+  --pc-color-neutral-400: #ADA69F;
+  --pc-color-neutral-500: #8A827B;
+  --pc-color-neutral-600: #655E58;
+  --pc-color-neutral-700: #4B4541;
+  --pc-color-neutral-800: #312C29;
+  --pc-color-neutral-900: #1E1A18;
+
+  /* ---- Surface, border and text aliases ---- */
+  --pc-color-bg-canvas: #FDFCFB;
+  --pc-color-bg-surface: #FFFFFF;
+  --pc-color-bg-subtle: #F8F6F4;
+  --pc-color-bg-hover: #F1EEEB;
+  --pc-color-border-subtle: #E6E2DE;
+  --pc-color-border: #D2CCC6;
+  --pc-color-border-strong: #ADA69F;
+  --pc-color-text-primary: #1E1A18;
+  --pc-color-text-secondary: #655E58;
+  --pc-color-text-disabled: #8A827B;
+
+  /* ---- Scan-box (OCR region overlays) ---- */
+  --pc-color-scan-region-stroke: #7F7A76;
+  --pc-color-scan-region-fill: #7F7A7600;
+  --pc-color-scan-auto-stroke: #0B7A55;
+  --pc-color-scan-auto-fill: #0B7A551A;
+  --pc-color-scan-doubt-stroke: #A86A00;
+  --pc-color-scan-doubt-fill: #FFD23D4D;
+  --pc-color-scan-hover-stroke: #1F5FAE;
+  --pc-color-scan-hover-fill: #1F5FAE1F;
+  --pc-color-scan-active-stroke: #D93A0B;
+  --pc-color-scan-active-fill: #F9461224;
+  --pc-color-scan-viewer-bg: #312C29;
+
+  /* ---- Button shadows ---- */
+  --pc-shadow-button-inner: inset 0 -4px 8px 0 #00000040, inset 0 4px 8px 0 #FFFFFF59;
+  --pc-shadow-button-drop: 0 16px 16px 0 #0000000D, 0 4px 8px 0 #0000001A;
+
+  /* ---- Typography-spec colors ---- */
+  --pc-color-ink: #0E0E10;            /* base ink for type hierarchy */
+  --pc-color-surface-code: #101014;   /* dark surface for JSON / code blocks */
+
+  /* ============================ FONT STACKS ============================ */
+  --pc-font-latin: "Satoshi", -apple-system, "Inter", sans-serif;
+  --pc-font-tamil: "Noto Sans Tamil", "Satoshi", sans-serif;
+  --pc-font-code: "Mendel", "JetBrains Mono", Menlo, monospace;
+
+  /* ================== TYPE SCALE (1.25 ratio, font shorthand) ================== */
+  --pc-type-display: 700 clamp(2.5rem, 6vw, 4.5rem)/1.05 var(--pc-font-latin);
+  --pc-type-h2: 600 2rem/1.15 var(--pc-font-latin);
+  --pc-type-h3: 600 1.25rem/1.25 var(--pc-font-latin);
+  --pc-type-lead: 400 1.25rem/1.5 var(--pc-font-latin);
+  --pc-type-body: 400 1rem/1.6 var(--pc-font-latin);
+  --pc-type-small: 500 0.875rem/1.45 var(--pc-font-latin);
+  --pc-type-eyebrow: 700 0.75rem/1 var(--pc-font-latin);      /* uppercase */
+  --pc-type-button: 600 1rem/1 var(--pc-font-latin);
+  --pc-type-tamil-h: 600 1.3125rem/1.3 var(--pc-font-tamil);  /* h3 + 0.05rem; never uppercase */
+  --pc-type-tamil-body: 400 1.0625rem/1.7 var(--pc-font-tamil);
+  --pc-type-code: 400 0.9375rem/1.65 var(--pc-font-code);
+
+  /* ---- Tracking (negative only at 18px+; never on body or Tamil) ---- */
+  --pc-track-display: -0.03em;
+  --pc-track-h2: -0.02em;
+  --pc-track-h3: -0.01em;
+  --pc-track-lead: -0.005em;
+  --pc-track-body: 0;
+  --pc-track-small: 0.01em;
+  --pc-track-eyebrow: 0.12em;
+  --pc-track-button: 0.01em;
+  --pc-track-tamil: 0;
+  --pc-track-code: 0;
+
+  /* ---- Hierarchy opacities (never below 0.5) ---- */
+  --pc-opacity-primary: 1;
+  --pc-opacity-secondary: 0.8;   /* lead */
+  --pc-opacity-caption: 0.65;    /* small */
+  --pc-opacity-eyebrow: 0.55;
+
+  /* ---- Measure ---- */
+  --pc-measure-body: 65ch;
+  --pc-measure-heading: 30ch;
+  --pc-measure-tamil: 58ch;
+
+  /* ================= SPACING SCALE (multiples of 0.5rem) ================= */
+  --pc-space-1: 0.5rem;
+  --pc-space-2: 1rem;
+  --pc-space-3: 1.5rem;
+  --pc-space-4: 2rem;
+  --pc-space-6: 3rem;
+
+  /* ============================== RADII ============================== */
+  --pc-radius-xs: 3px;
+  --pc-radius-sm: 6px;
+  --pc-radius-control: 10px;
+  --pc-radius-md: 12px;          /* code / JSON blocks */
+  --pc-radius-card: 14px;
+  --pc-radius-lg: 16px;
+  --pc-radius-pill: 999px;
+
+  /* ======================= SHADOWS (composites) ======================= */
+  --pc-shadow-button: var(--pc-shadow-button-inner), var(--pc-shadow-button-drop);
+  --pc-shadow-card: 0 6px 18px rgba(30, 26, 24, 0.08);
+  --pc-shadow-focus: 0 0 0 1.5px var(--pc-color-focus-ring);
+}
