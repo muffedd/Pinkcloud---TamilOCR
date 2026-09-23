@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Minoli — Tamil &amp; English Document Reader</title>
+<meta name="description" content="Upload a scan. Minoli reads Tamil and English documents into clean JSON.">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<div class="page">
+
+  <!-- ============ HERO ============ -->
+  <header class="hero">
+    <p class="eyebrow">Tamil OCR &middot; English OCR &middot; Structured JSON</p>
+    <h1 class="display">Scan pages. Get clean text.</h1>
+    <p class="tamil-tagline" lang="ta">ஸ்கேன் செய்த பக்கங்களை துல்லியமான உரையாக மாற்றுங்கள்.</p>
+  </header>
+
+  <!-- ============ MAIN: widget + panel ============ -->
+  <main class="layout">
+
+    <div class="main-col">
+
+      <!-- ============ UPLOAD WIDGET ============ -->
+      <section class="upload" aria-labelledby="upload-title">
+        <h2 class="upload-title" id="upload-title">Drop your document here</h2>
+        <p class="upload-lead">We read printed Tamil and English, even in the same page.</p>
+
+        <form class="upload-form" action="#" method="post" enctype="multipart/form-data">
+          <label class="dropzone" for="file-input">
+            <span class="dropzone-hint">Drag &amp; drop your scan here, or <span class="dropzone-link">browse files</span></span>
+            <input class="visually-hidden" type="file" id="file-input" name="document" accept=".pdf,.jpg,.jpeg,.png,.tiff,.webp" multiple>
+          </label>
+          <button class="btn-primary" type="submit">Upload document</button>
+        </form>
+
+        <p class="file-note">PDF, JPG, PNG, TIFF, WebP &middot; <span class="num">up to 25 pages &middot; 15&nbsp;MB max</span></p>
+      </section>
+
+      <!-- ============ JSON OUTPUT ============ -->
+      <section class="output" aria-labelledby="output-label" aria-live="polite">
+        <div class="output-head">
+          <p class="block-label" id="output-label">Output &middot; JSON</p>
+          <button class="btn-copy" type="button">Copy JSON</button>
+        </div>
+        <pre class="code-block" tabindex="0"><code>{
+  "pages": <span class="num">2</span>,
+  "language": ["ta", "en"],
+  "blocks": [
+    { "page": <span class="num">1</span>, "lang": "ta", "text": "வணக்கம்" },
+    { "page": <span class="num">1</span>, "lang": "en", "text": "Invoice No. 1042" }
+  ]
+}</code></pre>
+      </section>
+
+    </div>
+
+    <!-- ============ HOW IT WORKS PANEL ============ -->
+    <aside class="panel" aria-labelledby="panel-title">
+      <h2 class="panel-title" id="panel-title">How it works</h2>
+      <ol class="steps">
+        <li class="step">
+          <span class="step-num" aria-hidden="true">01</span>
+          <div class="step-body">
+            <h3 class="step-title">Upload a scan</h3>
+            <p class="step-desc">Drop a PDF or photo. We accept <span class="num">5</span> common formats up to <span class="num">15&nbsp;MB</span>.</p>
+            <p class="step-desc-ta" lang="ta">உங்கள் PDF அல்லது புகைப்படத்தை பதிவேற்றுங்கள். 15 MB வரை ஏற்கப்படும்.</p>
+          </div>
+        </li>
+        <li class="step">
+          <span class="step-num" aria-hidden="true">02</span>
+          <div class="step-body">
+            <h3 class="step-title">We detect each line</h3>
+            <p class="step-desc">Tamil and English lines are found separately, so mixed pages stay in order.</p>
+            <p class="step-desc-ta" lang="ta">தமிழ் மற்றும் ஆங்கில வரிகள் தனித்தனியே கண்டறியப்பட்டு வரிசை பாதுகாக்கப்படும்.</p>
+          </div>
+        </li>
+        <li class="step">
+          <span class="step-num" aria-hidden="true">03</span>
+          <div class="step-body">
+            <h3 class="step-title">Review low-confidence words</h3>
+            <p class="step-desc">Anything below <span class="num">90%</span> confidence is flagged for a quick check.</p>
+            <p class="step-desc-ta" lang="ta">நம்பிக்கை குறைவான சொற்கள் சரிபார்ப்புக்காகக் குறிக்கப்படும்.</p>
+          </div>
+        </li>
+        <li class="step">
+          <span class="step-num" aria-hidden="true">04</span>
+          <div class="step-body">
+            <h3 class="step-title">Copy clean JSON</h3>
+            <p class="step-desc">One object per page, ready to paste into your app or archive.</p>
+            <p class="step-desc-ta" lang="ta">ஒவ்வொரு பக்கத்திற்கும் ஒரு JSON பொருள் — நகலெடுத்துப் பயன்படுத்தலாம்.</p>
+          </div>
+        </li>
+      </ol>
+    </aside>
+
+  </main>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="footer">
+    <p class="footer-line">Minoli reads Tamil &amp; English scans on-device. Nothing is stored.</p>
+  </footer>
+
+</div>
+
+</body>
+</html>
+
