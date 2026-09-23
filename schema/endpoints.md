@@ -23,20 +23,23 @@ background task later, poll until `status` is not `pending`.
 
 ```bash
 curl -s http://127.0.0.1:8000/health
-# → {"ok": true, "ocr_engine": "paddle"}
+# → {"ok": true, "ocr_engine": "sarvam", "ocr_engine_selected": "sarvam", "sarvam_key_set": true}
 ```
 
 | Field | Type | Notes |
 |---|---|---|
 | `ok` | bool | Always `true` if the server is up |
-| `ocr_engine` | string | `paddle` (real OCR), `stub` (fallback, marked output), or `not_initialized` |
-| `ocr_error` | string | Only present when engine init failed: last line of the error |
+| `ocr_engine` | string | Engine that produced the last page: `sarvam` (real OCR) or `stub` (fallback, marked output). Before any page: `sarvam` if a key is set, else `stub` |
+| `ocr_engine_selected` | string | Always `sarvam` (the only OCR engine) |
+| `sarvam_key_set` | bool | Whether `SARVAM_API_KEY` is set (the key itself is never returned) |
+| `sarvam_error` | string | Only present after a failed Sarvam call: one-line error, key scrubbed |
+| `ocr_error` | string | Only present when `ocr_engine` is `stub`: why (last Sarvam error, or missing key) |
 
-The engine is probed at startup. If paddle is missing or unusable (e.g. no AVX CPU),
-the API still works and returns stub lines - check `/health` before trusting OCR text.
+Sarvam is the only OCR engine. If the key is missing or a Sarvam call fails, the API
+still works and returns stub lines for that page - check `/health` before trusting OCR text.
 
 ```json
-{"ok": true, "ocr_engine": "stub", "ocr_error": "..."}
+{"ok": true, "ocr_engine": "stub", "ocr_engine_selected": "sarvam", "sarvam_key_set": false, "ocr_error": "SARVAM_API_KEY is not set"}
 ```
 
 ## POST /jobs
@@ -239,7 +242,7 @@ carries `Title`, `Keywords` (`master-sha256:<hash> job:<id>`) plus custom keys `
   "corrections": {"total": 0, "by_tier": {}, "human_verdicts": 0},
   "reviewer": "Tinku",
   "time": {"created_at": "...", "exported_at": "...", "processing_ms_total": 4181},
-  "ocr": {"engine_now": "paddle", "stub_pages": 0, "review_floor": 0.5},
+  "ocr": {"engine_now": "sarvam", "stub_pages": 0, "review_floor": 0.5},
   "per_page": [{"page": 1, "profile": "FAST", "needs_review": false, "lines": 4,
                 "lines_auto": 4, "lines_human_review": 0, "corrections": 0, "processing_ms": 4181}]
 }

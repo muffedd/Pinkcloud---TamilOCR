@@ -23,7 +23,7 @@
         "FAST",
         "HEAVY"
       ],
-      "description": "OCR profile chosen by the router. FAST = local PP-OCRv5 mobile (det+rec). HEAVY = hosted PaddleOCR-VL via Baidu AI Studio API after repair preprocessing."
+      "description": "Quality badge chosen by the router. FAST = clean page. HEAVY = damaged page, flagged for review. Both are read by Sarvam Document AI."
     },
     "quality": {
       "$ref": "#/$defs/quality"

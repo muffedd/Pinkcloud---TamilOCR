@@ -4,14 +4,14 @@
 
 Palm-leaf manuscripts and old Tamil print break ordinary OCR. The ink is faded, the pages are stained or warped, and the letterforms are older than the ones modern models were trained on. Pink Cloud accepts that the machine will be wrong sometimes. It scores every word, shows a reviewer only the words it doubts, and makes each fix a single keystroke. The result is Unicode Tamil text and a searchable PDF you can trust, without proofreading every line by hand.
 
-> **Status:** the upload, review, library and export pages all run against the FastAPI backend on `main`, and the upload, editor and library pages also run fully offline in demo mode (`?mock=1`). The backend runs upload → quality routing → Tamil OCR (Sarvam Document AI by default, local PaddleOCR as the fallback), serves page images, saves reviewer corrections, and exports a searchable PDF, TXT and DOCX with a processing receipt. See [Current state](#current-state).
+> **Status:** the upload, review, library and export pages all run against the FastAPI backend on `main`, and the upload, editor and library pages also run fully offline in demo mode (`?mock=1`). The backend runs upload → quality routing → Tamil OCR (Sarvam Document AI; marked stub pages if Sarvam is unavailable), serves page images, saves reviewer corrections, and exports a searchable PDF, TXT and DOCX with a processing receipt. See [Current state](#current-state).
 
 ## How it works
 
 The website has three steps. The stepper at the top of the upload screen shows them (the editor's sidebar splits the last one into Review and Export). Before you start, scan or photograph the palm leaf or printed page; PDF, JPG, PNG or TIFF all work, and multi-page PDFs and TIFFs are fine.
 
 1. **Upload scans** - drag and drop or browse PDF, JPG, PNG or TIFF files, or a ZIP of page images (JPG, PNG, TIFF, WEBP; up to 100). A ZIP stays one row and one job, with one page per image in file-name order (page2 before page10); PDFs and other files inside it are skipped. Each file becomes a job, and its row shows status live: queued → uploading → processing → done.
-2. **Tamil OCR** - every page is scored on blur, contrast, noise and skew, then badged **FAST** (clean) or **HEAVY** (damaged, flagged for review). Sarvam Document AI (`ta-IN`) reads each page by default; without a Sarvam key, or when a call fails, a local PaddleOCR PP-OCRv5 pass with the Tamil recognition model runs instead. Each line gets a bounding box and a confidence score.
+2. **Tamil OCR** - every page is scored on blur, contrast, noise and skew, then badged **FAST** (clean) or **HEAVY** (damaged, flagged for review). Sarvam Document AI (`ta-IN`) reads each page; without a Sarvam key, or when a call fails, the page gets marked `[stub]` lines and is flagged for review. Each line gets a bounding box and a confidence score.
 3. **Review & export** - the editor opens with the doubtful words queued. Fix them, then press **Export**: pending fixes are saved and the export page opens with the downloads.
 
 Every job also shows up in the **Library** (the Documents link in the sidebar), where you can reopen it or search its text.
@@ -83,15 +83,9 @@ uvicorn app.main:app --reload
 - http://127.0.0.1:8000/health → `{"ok": true, "ocr_engine": "..."}`
 - http://127.0.0.1:8000/docs → Swagger UI
 
-OCR runs on Sarvam Document AI by default. Set `SARVAM_API_KEY` in the server's environment (never commit it). Set `OCR_ENGINE=paddle` to stay offline.
+OCR runs on Sarvam Document AI, the only OCR engine. Set `SARVAM_API_KEY` in the server's environment (never commit it).
 
-The local PaddleOCR engine, used for `OCR_ENGINE=paddle` and as the Sarvam fallback, is optional and a large download:
-
-```bash
-pip install "paddlepaddle==3.3.1" "paddleocr==3.7.0"
-```
-
-With no Sarvam key and no usable paddle (or a CPU without AVX), the API returns marked `[stub]` lines in the same contract shape, and `/health` reports `"ocr_engine": "stub"`. Check `/health` before trusting OCR text. All engine variables are in [`fastapi/sqlite/RUN.md`](fastapi/sqlite/RUN.md).
+With no Sarvam key, or when a Sarvam call fails, the API returns marked `[stub]` lines in the same contract shape, and `/health` reports `"ocr_engine": "stub"`. Check `/health` before trusting OCR text. All engine variables are in [`fastapi/sqlite/RUN.md`](fastapi/sqlite/RUN.md).
 
 ### 3. Quick test
 
@@ -112,7 +106,7 @@ The backend serves the UI itself, so open http://127.0.0.1:8000/ and everything 
 
 ```bash
 cd fastapi/sqlite
-python -m pytest tests/ -v      # the real-OCR end-to-end test skips when paddle is unusable
+python -m pytest tests/ -v      # offline; Sarvam is mocked
 ```
 
 ```bash
@@ -132,7 +126,7 @@ The backend lives in `fastapi/sqlite/app/`.
 | `app/storage.py` | Byte-for-byte masters: SHA-256 hashed before write, verified after |
 | `app/router.py` | Per-page quality metrics (blur, contrast, noise, skew_deg) → **FAST** / **HEAVY** badge |
 | `app/pdfutil.py` | PDF via pypdfium2, images via cv2; long side capped at 1600 px |
-| `app/ocr.py` | Sarvam Document AI by default; lazy PaddleOCR fallback (PP-OCRv5_mobile_det + ta_PP-OCRv5_mobile_rec); stub result if neither is usable |
+| `app/ocr.py` | Sarvam Document AI (the only OCR engine); marked stub result when the key is missing or a call fails |
 | `app/export.py` | Applies saved corrections, builds the receipt and the PDF / TXT / DOCX exports |
 | `app/schema_out.py` | Builds the frozen output contract JSON (`schema/schema.json`) |
 
@@ -172,11 +166,10 @@ Open the HTML design files in a browser. No build step is needed.
 - Send HEAVY pages through image repair and a heavier OCR pass.
 - Build a real suggestion source and emit `suggestions[]` from the backend (add it to `schema/schema.json` in the same change).
 - Use saved corrections to improve later passes.
-- Keep the offline PaddleOCR route working alongside the hosted Sarvam default.
 
 ## Heavy repair and OCR provider evaluation
 
-The experimental CPU repair pipeline and OCR comparisons are in `repair/`, `scripts/text_filter.py`, and `ocr_outputs/`. This evaluation came before the app switched engines: the backend now uses Sarvam Document AI by default with PaddleOCR as the fallback (see [`fastapi/sqlite/RUN.md`](fastapi/sqlite/RUN.md)), but the repair pipeline is still not part of the app. `tools/sarvam_ocr.py` is a standalone CLI that runs one file through Sarvam and saves the output.
+The experimental CPU repair pipeline and OCR comparisons are in `repair/`, `scripts/text_filter.py`, and `ocr_outputs/`. This evaluation came before the app switched engines: the backend now uses Sarvam Document AI only (see [`fastapi/sqlite/RUN.md`](fastapi/sqlite/RUN.md)), but the repair pipeline is still not part of the app. `tools/sarvam_ocr.py` is a standalone CLI that runs one file through Sarvam and saves the output.
 
 `repair/repair.py` now routes per page using input ink contrast (threshold `0.25`, matching the repair pipeline's fadedness threshold) and paper brightness (90th percentile threshold `240`). Clean pages use the raw image; damaged pages use the repaired grayscale `_g.png`. The binary PNG is for display only and must not be sent to OCR.
 
