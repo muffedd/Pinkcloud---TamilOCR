@@ -20,7 +20,7 @@
     glow tint      #FFC9B3  (--pc-color-primary-soft-border)
 
   TIMELINE (seconds)
-    0.00 - 0.70  ambient white dots pop in across the canvas, soft orange glow fades up
+    0.00 - 0.70  soft orange glow fades up on the light canvas (no scattered dots)
     0.25 - 1.15  MINOLI bolt builds dot by dot from its centre outward (spring pop)
     0.95 - 1.35  glow flare as the bolt completes
     1.10 - 1.80  bolt springs left to make room
@@ -164,11 +164,8 @@ function build(){
     boltEndX:W/2-total/2, boltStartX:W/2-bw/2, textX:W/2-total/2+bw+gap};
   boltDots=bd.map((d,i)=>{const dx=d.x-bw/2,dy=d.y-bh/2; return {...d,dx,dy,dist:Math.hypot(dx,dy)/bh,h:hash(i+7)};});
   textDots=td.map((d,i)=>({...d,u:d.x/tw,v:d.y/th,h:hash(i+1001)}));
-  // --- ambient white dots (scattered, avoid the centre band) ---
-  ambient=[]; const N=Math.round(W*H/5200);
-  for(let i=0;i<N;i++){ const x=hash(i*3.1)*W, y=hash(i*5.7+2)*H;
-    const r=(0.35+Math.pow(hash(i*9.3),3)*1.1)*pitch*0.32;
-    ambient.push({x,y,r,h:hash(i*1.9+4),d:Math.hypot(x-W/2,y-H/2)/Math.hypot(W/2,H/2)}); }
+  // no ambient dot field (removed per brand direction: dots only as deliberate type elements)
+  ambient=[];
 }
 
 /* ================= drawing ================= */
