@@ -145,7 +145,7 @@ def _run_job(job_id: str, filename: str, data: bytes) -> None:
         db.set_result(job_id, "error", json.dumps({"error": str(exc)}))
 
 
-async def _read_multi(files: list[UploadFile]) -> list[tuple[str, bytes]]:
+def _read_multi(files: list[UploadFile]) -> list[tuple[str, bytes]]:
     """Validate + read every image of a multi-image upload, in order.
     Same rules as the single-file path (type AND extension, then decode),
     all BEFORE any job row exists; PDFs are single-file only."""
@@ -164,7 +164,7 @@ async def _read_multi(files: list[UploadFile]) -> list[tuple[str, bytes]]:
                 status_code=400,
                 detail=f"file {i} ({name}): unsupported type for multi-image "
                        "jobs: use jpg, jpeg, png, tiff or webp")
-        data = await f.read()
+        data = f.file.read()
         try:
             probe_decode(ext, data)
         except Exception:
@@ -177,8 +177,8 @@ async def _read_multi(files: list[UploadFile]) -> list[tuple[str, bytes]]:
 
 
 @app.post("/jobs")
-async def create_job(file: UploadFile | None = File(None),
-                     files: list[UploadFile] | None = File(None)):
+def create_job(file: UploadFile | None = File(None),
+               files: list[UploadFile] | None = File(None)):
     """Accept an upload, process it, return the new job id.
 
     Send EITHER `file` (one PDF/image, unchanged behaviour) OR a repeated
@@ -192,7 +192,7 @@ async def create_job(file: UploadFile | None = File(None),
         raise HTTPException(
             status_code=400, detail="send either file or files, not both")
     if files:
-        uploads = await _read_multi(files)
+        uploads = _read_multi(files)
         digest = storage.combined_sha256(
             [storage.sha256_bytes(d) for _, d in uploads])
         job_id = uuid.uuid4().hex
@@ -214,7 +214,7 @@ async def create_job(file: UploadFile | None = File(None),
             detail="unsupported file type: use pdf, jpg, jpeg, png, tiff or webp",
         )
 
-    data = await file.read()
+    data = file.file.read()
 
     # Corrupt uploads are rejected here — not stored as jobs that fail later.
     try:
