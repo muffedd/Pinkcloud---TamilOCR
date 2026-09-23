@@ -22,7 +22,7 @@ pip install paddlepaddle paddleocr
 uvicorn app.main:app --reload
 ```
 
-- http://127.0.0.1:8000/health → `{"ok": true}`
+- http://127.0.0.1:8000/health → `{"ok": true, "ocr_engine": "paddle"}` (`ocr_engine` is `"paddle"`, `"stub"`, or `"not_initialized"`; on engine init failure an `ocr_error` field carries the reason - see `schema/endpoints.md`)
 - http://127.0.0.1:8000/docs → auto-generated Swagger UI
 
 ## 3. POST a scanned page
