@@ -1,0 +1,22 @@
+lines dropped (<50% Tamil letters): 2
+exact repeated sentences removed: 0
+lines kept: 18
+confidence: layout-box score, not OCR certainty
+source line 1: FLAG (confidence=0.7945672273635864, orphan sign columns=[])
+source line 2: REVIEW (confidence=0.3629760444164276, orphan sign columns=[])
+source line 3: FLAG (confidence=0.7394633889198303, orphan sign columns=[])
+source line 4: FLAG (confidence=0.7394633889198303, orphan sign columns=[])
+source line 5: FLAG (confidence=0.7394633889198303, orphan sign columns=[])
+source line 6: FLAG (confidence=0.7394633889198303, orphan sign columns=[])
+source line 7: FLAG (confidence=0.7394633889198303, orphan sign columns=[])
+source line 8: FLAG (confidence=0.7394633889198303, orphan sign columns=[])
+source line 9: FLAG (confidence=0.7394633889198303, orphan sign columns=[])
+source line 10: FLAG (confidence=0.7394633889198303, orphan sign columns=[])
+source line 11: FLAG (confidence=0.7394633889198303, orphan sign columns=[])
+source line 12: KEEP (confidence=0.8472997546195984, orphan sign columns=[])
+source line 15: KEEP (confidence=0.8596338629722595, orphan sign columns=[])
+source line 16: KEEP (confidence=0.8596338629722595, orphan sign columns=[])
+source line 17: KEEP (confidence=0.8596338629722595, orphan sign columns=[])
+source line 18: KEEP (confidence=0.8596338629722595, orphan sign columns=[])
+source line 19: KEEP (confidence=0.8596338629722595, orphan sign columns=[])
+source line 20: FLAG (confidence=0.6034024953842163, orphan sign columns=[])

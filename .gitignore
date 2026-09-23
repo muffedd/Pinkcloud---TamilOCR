@@ -1,3 +1,8 @@
+# Secrets
+.env
+PADDLE_TOKEN
+apikey.txt
+
 # Python files only — ignore DB, uploads, caches
 pinkcloud.db
 uploads/
