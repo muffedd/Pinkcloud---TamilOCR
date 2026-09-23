@@ -19,11 +19,14 @@ Docs: see RUN.md
 
 import json
 import logging
+import re
 import time
 import uuid
 from pathlib import Path
 
+import cv2
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 
 from . import db, storage
 from .ocr import engine_status, ocr_page, _get_engine
@@ -178,3 +181,71 @@ def get_job(job_id: str):
         "created_at": job["created_at"],
         "result": parse_job_result(job["result_json"]),
     }
+
+# Job ids are uuid4 hex (32 lowercase hex chars); anything else was never
+# created by POST /jobs, so it is a 404, not a 422. Page numbers are plain
+# decimal digits - "0", "-1", "1/..", "abc" all miss the route's contract
+# and answer 404 as well.
+_JOB_ID_RE = re.compile(r"[0-9a-f]{32}")
+_PAGE_NO_RE = re.compile(r"[0-9]+")
+
+
+def _rendered_page_png(job_id: str, page_number: int) -> Path | None:
+    """Render one page of the job's master to PNG, cached on disk.
+
+    Uses the exact same loader as the pipeline (pdfutil.load_pages:
+    pypdfium2 at ~200 DPI for PDFs, cv2 for images, ALL pages of TIFFs,
+    long side capped at 1600 px) so the PNG lives in the same coordinate
+    space the editor draws bboxes in. Masters are immutable per job, so a
+    cached page never goes stale. Returns None when the page cannot be
+    rendered.
+    """
+    cache_path = storage.UPLOAD_ROOT / job_id / f"page-{page_number}.png"
+    if cache_path.is_file():
+        return cache_path
+
+    master = storage.master_path(job_id)
+    if master is None:
+        return None
+    try:
+        pages = load_pages(master)
+    except Exception:  # master unreadable -> treat as missing page
+        return None
+    if not 1 <= page_number <= len(pages):
+        return None
+
+    # Write-then-rename so a crash mid-write never leaves a corrupt cache.
+    # (cv2.imwrite picks its encoder from the extension, so the temp name
+    # must still end in .png.)
+    tmp_path = cache_path.with_name(cache_path.name + ".tmp.png")
+    if not cv2.imwrite(str(tmp_path), pages[page_number - 1]):
+        tmp_path.unlink(missing_ok=True)
+        return None
+    tmp_path.replace(cache_path)
+    return cache_path
+
+
+@app.get("/jobs/{job_id}/pages/{n}/image")
+def get_job_page_image(job_id: str, n: str):
+    """Serve page `n` (1-based) of a finished job as a PNG, rendered the
+    same way the pipeline renders it. Unknown/unfinished jobs and
+    out-of-range pages answer 404."""
+    if not _JOB_ID_RE.fullmatch(job_id):
+        raise HTTPException(status_code=404, detail="job not found")
+    job = db.get_job(job_id)
+    if job is None or job["status"] != "done":
+        raise HTTPException(status_code=404, detail="job not found")
+
+    if not _PAGE_NO_RE.fullmatch(n) or int(n) < 1:
+        raise HTTPException(status_code=404, detail="page not found")
+    page_number = int(n)
+
+    result = parse_job_result(job["result_json"])
+    page_count = len((result or {}).get("pages", []))
+    if page_number > page_count:
+        raise HTTPException(status_code=404, detail="page not found")
+
+    png = _rendered_page_png(job_id, page_number)
+    if png is None:
+        raise HTTPException(status_code=404, detail="page not found")
+    return FileResponse(png, media_type="image/png")
