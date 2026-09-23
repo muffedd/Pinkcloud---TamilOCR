@@ -110,26 +110,6 @@ void main(){
   // faint ink core in the very densest wisps - the black accent, kept soft
   col = mix(col, INK, smoothstep(.93,1.15,d)*.10);
 
-  // --- halftone dot grid riding the smoke (nod to the reference) ---
-  float cell = 13.*uDpr;
-  vec2 cid = floor(frag/cell);
-  vec2 cc = (cid+.5)*cell;
-  vec2 cuv = (cc - .5*uRes)/s;
-  float dc = smoothstep(.28,.92, smoke(cuv*2.1 + vec2(t*.035,-t*.02), t)) * (.92+.08*sin(t*.9)) * uIntro;
-  float dist = length(frag-cc)/cell;
-  float aa = 1.2/cell;
-  // white dots bloom where the smoke is dense
-  float rW = mix(0., .36, smoothstep(.45,1.0,dc));
-  float dotW = 1. - smoothstep(rW-aa, rW+aa, dist);
-  // twinkle: a few cells brighten and swell
-  float tw = step(.965, hash(cid + floor(t*1.5)));
-  dotW = max(dotW, tw*smoothstep(.45,.7,dc)*(1.-smoothstep(.30-aa,.30+aa,dist)));
-  col = mix(col, vec3(1.), dotW*.92);
-  // faint dark-orange pin dots in the pale areas keep the grid legible on the light bg
-  float rP = .075;
-  float dotP = (1. - smoothstep(rP-aa, rP+aa, dist)) * (1.-smoothstep(.15,.45,dc));
-  col = mix(col, O6, dotP*.22);
-
   // gentle warm vignette + grain
   float vig = 1. - smoothstep(.25, 1.25, length(uv*vec2(.9,1.)));
   col = mix(col*vec3(.985,.97,.96), col, vig);
