@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pink Cloud · Buttons + motion</title>
+<!--
+  Pink Cloud design system · components/buttons-motion.html
+  One button family (primary, soft, outline) + one flat toggle, sharing one motion system.
+  Self-contained: embedded CSS, no JS, no CDNs. Fonts from ../../fonts/.
+
+  MOTION SYSTEM (copy these into tokens.css - every animated thing in the UI uses them)
+    --pc-motion-press    90ms    press-in: fast, so the click feels instant
+    --pc-motion-release  220ms   release: springs back to size
+    --pc-motion-color    150ms   background / text color changes
+    --pc-motion-hover    240ms   hover label swap (measured from the reference video)
+    --pc-motion-toggle   260ms   toggle thumb slide
+    --pc-ease-out        cubic-bezier(.23,1,.32,1)       default for anything entering or responding
+    --pc-ease-spring     cubic-bezier(.34,1.36,.64,1)    small overshoot (~8%), for hover swap, release, thumb
+    --pc-ease-in-out     cubic-bezier(.65,0,.35,1)       for things already on screen moving to a new place
+    --pc-scale-press     .96     pressed buttons
+    --pc-scale-press-sm  .97     toggle options, small controls
+  Rules: animate transform, opacity and color only. Never width, height, padding or margin.
+  Hover motion only on devices with a real pointer (@media (hover:hover)).
+  prefers-reduced-motion: no transforms, colors still change.
+-->
+<style>
+@font-face{font-family:"Satoshi";font-weight:400;font-display:swap;src:url("../../fonts/satoshi-regular.woff2") format("woff2")}
+@font-face{font-family:"Satoshi";font-weight:500;font-display:swap;src:url("../../fonts/satoshi-medium.woff2") format("woff2")}
+@font-face{font-family:"Satoshi";font-weight:700;font-display:swap;src:url("../../fonts/satoshi-bold.woff2") format("woff2")}
+
+:root{
+  /* color (color-system v2 + button tokens) */
+  --pc-color-primary:#F94612;
+  --pc-color-primary-solid:#D93A0B;      /* primary default */
+  --pc-color-primary-active:#B32E08;     /* primary hover */
+  --pc-color-primary-press:#9C2706;      /* primary pressed: darker than hover (new) */
+  --pc-color-primary-disabled:#ECAB97;   /* solid pale tint, white text (new) */
+  --pc-color-soft:#E7E4E0;               /* soft button, from the Sign In reference (new) */
+  --pc-color-soft-hover:#DEDAD5;         /* (new) */
+  --pc-color-soft-press:#D3CEC8;         /* (new) */
+  --pc-color-bg-canvas:#FAF9F7; --pc-color-bg-surface:#FFFFFF; --pc-color-bg-subtle:#F8F6F4; --pc-color-bg-hover:#F1EEEB;
+  --pc-color-border:#E6E2DE; --pc-color-border-strong:#D6D0CA;
+  --pc-color-text-primary:#1E1A18; --pc-color-text-secondary:#655E58; --pc-color-text-disabled:#8A827B;
+  --pc-color-focus-ring:#F94612;
+
+  /* type */
+  --pc-font-sans:"Suisse Intl Trial","Suisse Intl","Satoshi",-apple-system,system-ui,sans-serif;
+  --pc-font-button:"Suisse Intl Trial","Suisse Intl","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --pc-font-mono:Menlo,"JetBrains Mono",monospace;
+
+  /* button geometry - one family, one size set */
+  --pc-btn-h:36px; --pc-btn-pad:16px; --pc-btn-radius:10px; --pc-btn-font:500 15px/1 var(--pc-font-button);
+  --pc-btn-h-sm:30px; --pc-btn-pad-sm:12px; --pc-btn-radius-sm:8px; --pc-btn-font-sm:500 13.5px/1 var(--pc-font-button);
+
+  /* motion */
+  --pc-motion-press:90ms; --pc-motion-release:220ms; --pc-motion-color:150ms; --pc-motion-hover:240ms; --pc-motion-toggle:260ms;
+  --pc-ease-out:cubic-bezier(.23,1,.32,1);
+  --pc-ease-spring:cubic-bezier(.34,1.36,.64,1);
+  --pc-ease-in-out:cubic-bezier(.65,0,.35,1);
+  --pc-scale-press:.96; --pc-scale-press-sm:.97;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--pc-color-bg-canvas);color:var(--pc-color-text-primary);font:400 15px/1.55 var(--pc-font-sans);-webkit-font-smoothing:antialiased;padding:72px 64px 96px}
+.wrap{max-width:1080px;margin:0 auto}
+.eyebrow{font:700 11px/1 var(--pc-font-sans);letter-spacing:.12em;text-transform:uppercase;color:var(--pc-color-text-secondary)}
+h1{font:700 40px/1.1 var(--pc-font-sans);letter-spacing:-.02em;margin:12px 0 12px}
+h2{font:700 20px/1.2 var(--pc-font-sans);letter-spacing:-.01em;margin:0 0 6px}
+.lead{max-width:680px;color:var(--pc-color-text-secondary)}
+section{margin-top:64px}
+.sec-p{color:var(--pc-color-text-secondary);font-size:14px;max-width:720px;margin-bottom:20px}
+.stage{background:var(--pc-color-bg-surface);border:1px solid var(--pc-color-border);border-radius:12px;padding:40px}
+.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.grid{display:grid;grid-template-columns:120px repeat(4,1fr);align-items:center;row-gap:20px;column-gap:16px}
+.grid .h{font:500 12px/1 var(--pc-font-sans);color:var(--pc-color-text-disabled)}
+code,.mono{font:400 12.5px/1.5 var(--pc-font-mono)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font:500 12px/1 var(--pc-font-sans);color:var(--pc-color-text-disabled);padding:0 12px 10px 0;border-bottom:1px solid var(--pc-color-border)}
+td{padding:12px 12px 12px 0;border-bottom:1px solid var(--pc-color-border);vertical-align:top}
+td:first-child{white-space:nowrap}
+.note{font-size:13px;color:var(--pc-color-text-secondary);margin-top:16px}
+
+/* ============ BUTTON ============ */
+.btn{
+  --bg:var(--pc-color-primary-solid); --bg-hover:var(--pc-color-primary-active); --bg-press:var(--pc-color-primary-press); --fg:#FFFFFF;
+  position:relative;display:inline-flex;align-items:center;justify-content:center;
+  height:var(--pc-btn-h);padding:0 var(--pc-btn-pad);border-radius:var(--pc-btn-radius);
+  border:0;background:var(--bg);color:var(--fg);font:var(--pc-btn-font);letter-spacing:0;white-space:nowrap;
+  cursor:pointer;overflow:hidden;isolation:isolate;
+  -webkit-tap-highlight-color:transparent;user-select:none;
+  transition:
+    transform var(--pc-motion-release) var(--pc-ease-spring),
+    background-color var(--pc-motion-color) var(--pc-ease-out),
+    color var(--pc-motion-color) var(--pc-ease-out);
+}
+.btn--soft{--bg:var(--pc-color-soft);--bg-hover:var(--pc-color-soft-hover);--bg-press:var(--pc-color-soft-press);--fg:var(--pc-color-text-primary)}
+.btn--outline{--bg:transparent;--bg-hover:var(--pc-color-bg-hover);--bg-press:var(--pc-color-soft);--fg:var(--pc-color-text-primary);box-shadow:inset 0 0 0 1px var(--pc-color-border-strong)}
+.btn--sm{height:var(--pc-btn-h-sm);padding:0 var(--pc-btn-pad-sm);border-radius:var(--pc-btn-radius-sm);font:var(--pc-btn-font-sm)}
+
+/* label swap: the reference video's motion. The label slides out one side and its twin slides in from the other, clipped by the button. */
+.btn .lb{position:relative;display:inline-grid}
+.btn .lb>span{grid-area:1/1;transition:transform var(--pc-motion-hover) var(--pc-ease-spring)}
+.btn .lb>span+span{transform:translateX(calc(100% + var(--pc-btn-pad) + 2px))}
+.btn--sm .lb>span+span{transform:translateX(calc(100% + var(--pc-btn-pad-sm) + 2px))}
+
+@media (hover:hover) and (pointer:fine){
+  .btn:hover{background:var(--bg-hover)}
+  .btn:hover .lb>span:first-child{transform:translateX(calc(-100% - var(--pc-btn-pad) - 2px))}
+  .btn--sm:hover .lb>span:first-child{transform:translateX(calc(-100% - var(--pc-btn-pad-sm) - 2px))}
+  .btn:hover .lb>span+span{transform:translateX(0)}
+}
+/* frozen demo state */
+.btn.is-hover{background:var(--bg-hover)}
+.btn.is-hover .lb>span:first-child{transform:translateX(calc(-100% - var(--pc-btn-pad) - 2px))}
+.btn.is-hover .lb>span+span{transform:translateX(0)}
+.btn.is-mid .lb>span:first-child{transform:translateX(calc(-50% - var(--pc-btn-pad)/2 - 1px))}
+.btn.is-mid .lb>span+span{transform:translateX(calc(50% + var(--pc-btn-pad)/2 + 1px))}
+/* press: smaller + darker, fast in, springy out */
+.btn:active,.btn.is-press{
+  transform:scale(var(--pc-scale-press));background:var(--bg-press);
+  transition:transform var(--pc-motion-press) var(--pc-ease-out),background-color var(--pc-motion-press) var(--pc-ease-out);
+}
+.btn:focus-visible{outline:2px solid var(--pc-color-focus-ring);outline-offset:2px}
+.btn:disabled,.btn.is-disabled{cursor:not-allowed;transform:none;pointer-events:none}
+.btn:disabled:not(.btn--soft):not(.btn--outline),.btn.is-disabled:not(.btn--soft):not(.btn--outline){background:var(--pc-color-primary-disabled);color:#FFFFFF}
+.btn--soft:disabled,.btn--soft.is-disabled{background:var(--pc-color-bg-hover);color:var(--pc-color-text-disabled)}
+.btn--outline:disabled,.btn--outline.is-disabled{color:var(--pc-color-text-disabled);box-shadow:inset 0 0 0 1px var(--pc-color-border)}
+
+/* ============ TOGGLE (flat) ============ */
+.tg{position:relative;display:inline-grid;grid-auto-flow:column;grid-auto-columns:1fr;height:34px;padding:3px;border-radius:9px;background:var(--pc-color-bg-hover);border:0}
+.tg input{position:absolute;opacity:0;pointer-events:none}
+.tg label{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;padding:0 14px;border-radius:7px;font:500 13px/1 var(--pc-font-button);color:var(--pc-color-text-secondary);cursor:pointer;user-select:none;
+  transition:color var(--pc-motion-color) var(--pc-ease-out),transform var(--pc-motion-release) var(--pc-ease-spring)}
+.tg label:active{transform:scale(var(--pc-scale-press-sm));transition:transform var(--pc-motion-press) var(--pc-ease-out)}
+.tg .th{position:absolute;z-index:0;top:3px;bottom:3px;left:3px;width:calc((100% - 6px)/2);border-radius:7px;background:var(--pc-color-bg-surface);
+  transition:transform var(--pc-motion-toggle) var(--pc-ease-spring)}
+.tg input:nth-of-type(1):checked~label:nth-of-type(1),.tg input:nth-of-type(2):checked~label:nth-of-type(2){color:var(--pc-color-text-primary)}
+.tg input:nth-of-type(2):checked~.th{transform:translateX(100%)}
+@media (hover:hover) and (pointer:fine){ .tg label:hover{color:var(--pc-color-text-primary)} }
+.tg input:focus-visible~.th{outline:2px solid var(--pc-color-focus-ring);outline-offset:1px}
+.tg--sm{height:28px;padding:2px;border-radius:8px}
+.tg--sm .th{top:2px;bottom:2px;left:2px;width:calc((100% - 4px)/2);border-radius:6px}
+.tg--sm label{font-size:12px;padding:0 10px;border-radius:6px}
+
+@media (prefers-reduced-motion:reduce){
+  .btn,.btn .lb>span,.tg label,.tg .th{transition-property:background-color,color!important;transition-duration:var(--pc-motion-color)!important}
+  .btn .lb>span+span{display:none}
+  .btn:hover .lb>span:first-child,.btn.is-hover .lb>span:first-child{transform:none}
+  .btn:active,.btn.is-press{transform:none}
+  .tg .th{transition:none!important}
+}
+
+/* static swatches of the motion curves */
+.curves{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.curve{border:1px solid var(--pc-color-border);border-radius:10px;padding:16px;background:var(--pc-color-bg-surface)}
+.curve svg{width:100%;height:96px;display:block;margin-bottom:10px}
+.curve b{display:block;font-size:14px}
+.curve span{font-size:12.5px;color:var(--pc-color-text-secondary)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Pink Cloud · design system · components</div>
+  <h1>Buttons + motion</h1>
+  <p class="lead">One button family and one flat toggle, sharing one motion system. Hover the buttons: the label slides out and back in (the motion from your reference video). Press: the button gets smaller and darker, then springs back. No shadows, no 3D.</p>
+
+  <!-- 01 -->
+  <section>
+    <h2>01 · Try it</h2>
+    <p class="sec-p">Live buttons. Hover, press and hold, and tab to them with the keyboard.</p>
+    <div class="stage">
+      <div class="row" style="gap:16px">
+        <button class="btn btn--soft"><span class="lb"><span>Sign in</span><span aria-hidden="true">Sign in</span></span></button>
+        <button class="btn"><span class="lb"><span>Export</span><span aria-hidden="true">Export</span></span></button>
+        <button class="btn btn--outline"><span class="lb"><span>Reject</span><span aria-hidden="true">Reject</span></span></button>
+        <span style="width:24px"></span>
+        <button class="btn btn--soft btn--sm"><span class="lb"><span>Reject</span><span aria-hidden="true">Reject</span></span></button>
+        <button class="btn btn--sm"><span class="lb"><span>Accept</span><span aria-hidden="true">Accept</span></span></button>
+        <span style="width:24px"></span>
+        <div class="tg" role="radiogroup" aria-label="Mode"><input type="radio" name="m" id="m1" checked><input type="radio" name="m" id="m2"><label for="m1">Auto</label><label for="m2">Review</label><span class="th"></span></div>
+        <div class="tg tg--sm" role="radiogroup" aria-label="Lens"><input type="radio" name="l" id="l1" checked><input type="radio" name="l" id="l2"><label for="l1">Confidence</label><label for="l2">Provenance</label><span class="th"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 -->
+  <section>
+    <h2>02 · States</h2>
+    <p class="sec-p">Frozen states, so you can compare them side by side. Same height, radius and label style across the family. Only the fill changes.</p>
+    <div class="stage">
+      <div class="grid">
+        <span></span><span class="h">Default</span><span class="h">Hover</span><span class="h">Pressed</span><span class="h">Disabled</span>
+        <span class="h">Primary</span>
+        <span><button class="btn"><span class="lb"><span>Export</span><span aria-hidden="true">Export</span></span></button></span>
+        <span><button class="btn is-hover" style="pointer-events:none"><span class="lb"><span>Export</span><span aria-hidden="true">Export</span></span></button></span>
+        <span><button class="btn is-press" style="pointer-events:none"><span class="lb"><span>Export</span><span aria-hidden="true">Export</span></span></button></span>
+        <span><button class="btn" disabled><span class="lb"><span>Export</span><span aria-hidden="true">Export</span></span></button></span>
+        <span class="h">Soft</span>
+        <span><button class="btn btn--soft"><span class="lb"><span>Sign in</span><span aria-hidden="true">Sign in</span></span></button></span>
+        <span><button class="btn btn--soft is-hover" style="pointer-events:none"><span class="lb"><span>Sign in</span><span aria-hidden="true">Sign in</span></span></button></span>
+        <span><button class="btn btn--soft is-press" style="pointer-events:none"><span class="lb"><span>Sign in</span><span aria-hidden="true">Sign in</span></span></button></span>
+        <span><button class="btn btn--soft" disabled><span class="lb"><span>Sign in</span><span aria-hidden="true">Sign in</span></span></button></span>
+        <span class="h">Outline</span>
+        <span><button class="btn btn--outline"><span class="lb"><span>Reject</span><span aria-hidden="true">Reject</span></span></button></span>
+        <span><button class="btn btn--outline is-hover" style="pointer-events:none"><span class="lb"><span>Reject</span><span aria-hidden="true">Reject</span></span></button></span>
+        <span><button class="btn btn--outline is-press" style="pointer-events:none"><span class="lb"><span>Reject</span><span aria-hidden="true">Reject</span></span></button></span>
+        <span><button class="btn btn--outline" disabled><span class="lb"><span>Reject</span><span aria-hidden="true">Reject</span></span></button></span>
+      </div>
+      <p class="note">The frozen hover column shows the end of the label swap (the twin label in place). The fill darkens one step on hover and one more on press.</p>
+    </div>
+  </section>
+
+  <!-- 03 -->
+  <section>
+    <h2>03 · Anatomy</h2>
+    <table>
+      <tr><th>Part</th><th>Value</th><th>Note</th></tr>
+      <tr><td>Size</td><td><code>36px</code> high, <code>0 16px</code> padding, radius <code>10px</code>. Small: <code>30px</code>, <code>0 12px</code>, radius <code>8px</code></td><td>One size set for the whole family</td></tr>
+      <tr><td>Label</td><td>Suisse Intl 500, <code>15px/1</code> (small <code>13.5px</code>), no letter-spacing</td><td>Stack: Suisse Intl → Helvetica Neue → Helvetica → Arial. Never Satoshi on buttons</td></tr>
+      <tr><td>Primary</td><td><code>#D93A0B</code> · hover <code>#B32E08</code> · press <code>#9C2706</code> · disabled <code>#ECAB97</code> + white text</td><td>Export, Accept. One per view</td></tr>
+      <tr><td>Soft</td><td><code>#E7E4E0</code> · hover <code>#DEDAD5</code> · press <code>#D3CEC8</code> · disabled <code>#F1EEEB</code> + <code>#8A827B</code> text</td><td>The Sign In style from your reference</td></tr>
+      <tr><td>Outline</td><td>transparent + 1px inset <code>#D6D0CA</code> line · hover <code>#F1EEEB</code> · press <code>#E7E4E0</code></td><td>The line is an inset box-shadow, so the size never changes. It is a border, not a drop shadow</td></tr>
+      <tr><td>Elevation</td><td>none</td><td>No drop shadows, gradients or 3D on any button or toggle</td></tr>
+      <tr><td>Focus</td><td>2px <code>#F94612</code> outline, 2px offset</td><td>Keyboard only (<code>:focus-visible</code>)</td></tr>
+      <tr><td>Toggle</td><td>Track <code>#F1EEEB</code>, 34px (small 28px), radius 9 · thumb flat white, radius 7</td><td>No inset, no shadow, no gradient. A radio group, so arrow keys work</td></tr>
+    </table>
+  </section>
+
+  <!-- 04 -->
+  <section>
+    <h2>04 · Motion</h2>
+    <p class="sec-p">One motion system for the whole UI. Only transform, opacity and color move, so everything stays on the compositor at 60fps. Nothing animates layout.</p>
+    <table>
+      <tr><th>Interaction</th><th>What moves</th><th>Duration · easing</th></tr>
+      <tr><td>Hover in / out</td><td>Label slides out one side while its twin slides in from the other, clipped by the button. Fill steps one shade darker</td><td><code>--pc-motion-hover</code> 240ms · <code>--pc-ease-spring</code>. Color 150ms · <code>--pc-ease-out</code></td></tr>
+      <tr><td>Press</td><td><code>scale(.96)</code> + fill one more shade darker</td><td><code>--pc-motion-press</code> 90ms · <code>--pc-ease-out</code></td></tr>
+      <tr><td>Release</td><td>Springs back to <code>scale(1)</code> with a small overshoot</td><td><code>--pc-motion-release</code> 220ms · <code>--pc-ease-spring</code></td></tr>
+      <tr><td>Toggle</td><td>Thumb slides; option text fades to primary; pressed option scales to .97</td><td><code>--pc-motion-toggle</code> 260ms · <code>--pc-ease-spring</code></td></tr>
+      <tr><td>Touch devices</td><td>No hover swap (<code>@media (hover:hover)</code>). Press still scales</td><td>-</td></tr>
+      <tr><td>Reduced motion</td><td>No transforms, no swap. Colors still change</td><td><code>prefers-reduced-motion: reduce</code></td></tr>
+    </table>
+    <div class="curves" style="margin-top:20px">
+      <div class="curve"><svg viewBox="0 0 100 60" preserveAspectRatio="none"><path d="M0 60 C23 0 32 0 100 0" fill="none" stroke="#D93A0B" stroke-width="1.6" vector-effect="non-scaling-stroke"/><line x1="0" y1="0" x2="100" y2="0" stroke="#E6E2DE" stroke-dasharray="2 2" vector-effect="non-scaling-stroke"/></svg><b>--pc-ease-out</b><span>cubic-bezier(.23,1,.32,1) · press, color, anything responding</span></div>
+      <div class="curve"><svg viewBox="0 -12 100 72" preserveAspectRatio="none"><path d="M0 60 C34 -21.6 64 0 100 0" fill="none" stroke="#D93A0B" stroke-width="1.6" vector-effect="non-scaling-stroke"/><line x1="0" y1="0" x2="100" y2="0" stroke="#E6E2DE" stroke-dasharray="2 2" vector-effect="non-scaling-stroke"/></svg><b>--pc-ease-spring</b><span>cubic-bezier(.34,1.36,.64,1) · hover swap, release, thumb (~8% overshoot)</span></div>
+      <div class="curve"><svg viewBox="0 0 100 60" preserveAspectRatio="none"><path d="M0 60 C65 60 35 0 100 0" fill="none" stroke="#D93A0B" stroke-width="1.6" vector-effect="non-scaling-stroke"/><line x1="0" y1="0" x2="100" y2="0" stroke="#E6E2DE" stroke-dasharray="2 2" vector-effect="non-scaling-stroke"/></svg><b>--pc-ease-in-out</b><span>cubic-bezier(.65,0,.35,1) · things already on screen moving somewhere new</span></div>
+    </div>
+    <div class="row" style="margin-top:20px;gap:10px"><span class="h" style="font:500 12px/1 var(--pc-font-sans);color:var(--pc-color-text-disabled);width:110px">Hover, frozen</span>
+      <button class="btn" style="pointer-events:none"><span class="lb"><span>Export</span><span aria-hidden="true">Export</span></span></button><span class="mono" style="color:#8A827B">→</span>
+      <button class="btn is-mid" style="pointer-events:none;background:#C6340A"><span class="lb"><span>Export</span><span aria-hidden="true">Export</span></span></button><span class="mono" style="color:#8A827B">→</span>
+      <button class="btn is-hover" style="pointer-events:none"><span class="lb"><span>Export</span><span aria-hidden="true">Export</span></span></button>
+      <span style="font-size:12.5px;color:#655E58;margin-left:8px">0ms · ~110ms · 240ms</span></div>
+    <p class="note">Values measured from the reference video (30fps): the swap travels in about 100-130ms, overshoots a little, and settles by about 230ms. The video shows no press scale, so the press values (.96, 90ms in, 220ms spring out) follow your "smaller and darker" note.</p>
+  </section>
+
+  <!-- 05 -->
+  <section>
+    <h2>05 · Markup</h2>
+    <p class="sec-p">The twin label is aria-hidden, so screen readers read the label once.</p>
+    <div class="stage" style="padding:20px 24px"><pre class="mono" style="white-space:pre-wrap">&lt;button class="btn"&gt;&lt;span class="lb"&gt;&lt;span&gt;Export&lt;/span&gt;&lt;span aria-hidden="true"&gt;Export&lt;/span&gt;&lt;/span&gt;&lt;/button&gt;
+&lt;button class="btn btn--soft"&gt;…&lt;/button&gt;     &lt;button class="btn btn--outline"&gt;…&lt;/button&gt;     add btn--sm for 30px
+
+&lt;div class="tg" role="radiogroup"&gt;&lt;input type="radio" name="m" id="m1" checked&gt;&lt;input type="radio" name="m" id="m2"&gt;
+  &lt;label for="m1"&gt;Auto&lt;/label&gt;&lt;label for="m2"&gt;Review&lt;/label&gt;&lt;span class="th"&gt;&lt;/span&gt;&lt;/div&gt;</pre></div>
+  </section>
+</div>
+</body>
+</html>
