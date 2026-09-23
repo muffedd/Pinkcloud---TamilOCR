@@ -5,6 +5,8 @@ apikey.txt
 
 # Python files only — ignore DB, uploads, caches
 pinkcloud.db
+flywheel.db
+flywheel.db-*
 uploads/
 __pycache__/
 *.pyc
