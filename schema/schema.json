@@ -5,7 +5,13 @@
   "description": "Stable output shape produced by the Pink Cloud Tamil OCR pipeline (FAST/HEAVY engines) after adapter normalization. Uses CICT (Central Institute of Classical Tamil) line-based field names.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["page", "profile", "quality", "lines", "text"],
+  "required": [
+    "page",
+    "profile",
+    "quality",
+    "lines",
+    "text"
+  ],
   "properties": {
     "page": {
       "type": "integer",
@@ -13,14 +19,21 @@
     },
     "profile": {
       "type": "string",
-      "enum": ["FAST", "HEAVY"],
+      "enum": [
+        "FAST",
+        "HEAVY"
+      ],
       "description": "OCR profile chosen by the router. FAST = local PP-OCRv5 mobile (det+rec). HEAVY = hosted PaddleOCR-VL via Baidu AI Studio API after repair preprocessing."
     },
-    "quality": { "$ref": "#/$defs/quality" },
+    "quality": {
+      "$ref": "#/$defs/quality"
+    },
     "lines": {
       "type": "array",
       "description": "CICT-style line records in reading order. Empty array allowed for unreadable pages.",
-      "items": { "$ref": "#/$defs/line" }
+      "items": {
+        "$ref": "#/$defs/line"
+      }
     },
     "text": {
       "type": "string",
@@ -33,17 +46,23 @@
     "words": {
       "type": "array",
       "description": "Optional word-level detail.",
-      "items": { "$ref": "#/$defs/word" }
+      "items": {
+        "$ref": "#/$defs/word"
+      }
     },
     "corrections": {
       "type": "array",
       "description": "Correction layer applied to raw OCR text.",
-      "items": { "$ref": "#/$defs/correction" }
+      "items": {
+        "$ref": "#/$defs/correction"
+      }
     },
     "verdicts": {
       "type": "array",
       "description": "Verifier chain results for uncertain words.",
-      "items": { "$ref": "#/$defs/verdict" }
+      "items": {
+        "$ref": "#/$defs/verdict"
+      }
     },
     "needs_review": {
       "type": "boolean",
@@ -84,13 +103,22 @@
     "doi": {
       "type": "string",
       "description": "CICT identity: DOI of the source material."
+    },
+    "suggestions": {
+      "type": "array",
+      "description": "Optional ranked replacement candidates for doubtful words (review queue).",
+      "items": {
+        "$ref": "#/$defs/suggestion"
+      }
     }
   },
   "$defs": {
     "bbox": {
       "type": "array",
       "description": "[x, y, width, height] in px on the 1600px-capped image.",
-      "items": { "type": "number" },
+      "items": {
+        "type": "number"
+      },
       "minItems": 4,
       "maxItems": 4
     },
@@ -102,7 +130,12 @@
     "quality": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["blur", "contrast", "noise", "skew_deg"],
+      "required": [
+        "blur",
+        "contrast",
+        "noise",
+        "skew_deg"
+      ],
       "properties": {
         "blur": {
           "type": "number",
@@ -120,7 +153,9 @@
         },
         "damage_flags": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "e.g. torn, stained, yellowed, faint-ink."
         },
         "ink_density": {
@@ -139,7 +174,13 @@
     "line": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "seq", "body", "bbox", "confidence"],
+      "required": [
+        "id",
+        "seq",
+        "body",
+        "bbox",
+        "confidence"
+      ],
       "properties": {
         "id": {
           "type": "string",
@@ -154,13 +195,18 @@
           "type": "string",
           "description": "Recognized Tamil line text (CICT: body)."
         },
-        "bbox": { "$ref": "#/$defs/bbox" },
+        "bbox": {
+          "$ref": "#/$defs/bbox"
+        },
         "confidence": {
           "$ref": "#/$defs/confidence",
           "description": "0-1 confidence; the UI highlights each line colored by this value."
         },
         "kural": {
-          "type": ["integer", "null"],
+          "type": [
+            "integer",
+            "null"
+          ],
           "description": "CICT: kural number, if applicable."
         },
         "margin": {
@@ -174,25 +220,42 @@
         "end_char": {
           "type": "string",
           "description": "CICT: line-ending character."
+        },
+        "needs_review": {
+          "type": "boolean",
+          "description": "True if this line goes to the human review queue: confidence below the review floor, stub output, or a HEAVY page."
         }
       }
     },
     "word": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["text", "bbox", "confidence"],
+      "required": [
+        "text",
+        "bbox",
+        "confidence"
+      ],
       "properties": {
         "text": {
           "type": "string"
         },
-        "bbox": { "$ref": "#/$defs/bbox" },
-        "confidence": { "$ref": "#/$defs/confidence" }
+        "bbox": {
+          "$ref": "#/$defs/bbox"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
       }
     },
     "correction": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["before", "after", "tier", "evidence"],
+      "required": [
+        "before",
+        "after",
+        "tier",
+        "evidence"
+      ],
       "properties": {
         "before": {
           "type": "string"
@@ -202,7 +265,10 @@
         },
         "tier": {
           "type": "string",
-          "enum": ["T1", "T2"],
+          "enum": [
+            "T1",
+            "T2"
+          ],
           "description": "T1 = glyph confusion, T2 = missing word."
         },
         "evidence": {
@@ -213,7 +279,11 @@
     "verdict": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["word", "probability", "source"],
+      "required": [
+        "word",
+        "probability",
+        "source"
+      ],
       "properties": {
         "word": {
           "type": "string"
@@ -223,7 +293,58 @@
         },
         "source": {
           "type": "string",
-          "enum": ["groq", "laya", "jev", "cache", "rules", "review"]
+          "enum": [
+            "groq",
+            "laya",
+            "jev",
+            "cache",
+            "rules",
+            "review"
+          ]
+        }
+      }
+    },
+    "suggestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "line",
+        "word",
+        "before",
+        "candidates"
+      ],
+      "properties": {
+        "line": {
+          "type": "string"
+        },
+        "word": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "before": {
+          "type": "string"
+        },
+        "candidates": {
+          "type": "array",
+          "maxItems": 9,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "text"
+            ],
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "score": {
+                "$ref": "#/$defs/confidence"
+              },
+              "source": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     }

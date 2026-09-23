@@ -131,7 +131,8 @@ def test_parse_output_passes_contract_builder():
     assert [l["id"] for l in page["lines"]] == ["L1", "L2", "L3", "L4", "L5"]
     assert page["text"].startswith("தகவிசொல்லியது,\nஎ - து")
     for l in page["lines"]:
-        assert set(l) == {"id", "seq", "body", "bbox", "confidence"}
+        # slice 2 added per-line needs_review (additive; schema.json updated)
+        assert set(l) == {"id", "seq", "body", "bbox", "confidence", "needs_review"}
         assert len(l["bbox"]) == 4 and 0 <= l["confidence"] <= 1
 
 

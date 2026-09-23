@@ -32,7 +32,8 @@ from . import db, storage
 from .ocr import engine_status, ocr_page, _get_engine
 from .pdfutil import load_pages, probe_decode, to_gray
 from .router import choose_profile, compute_scores
-from .schema_out import build_job_result, build_page_result, parse_job_result
+from .schema_out import (build_job_result, build_page_result, enrich_page,
+                         parse_job_result)
 
 # Both a supported content type AND a supported extension are required;
 # a mismatch on EITHER side is rejected with 400 before any job exists.
@@ -237,18 +238,27 @@ def create_job(file: UploadFile | None = File(None),
 
 @app.get("/jobs/{job_id}")
 def get_job(job_id: str):
-    """Return status + result JSON for one job."""
+    """Return status + result JSON for one job.
+
+    Every line carries confidence plus a per-line needs_review flag (the
+    receipt's human-review rule). enrich_page() back-fills the flag on jobs
+    stored before it existed, so old and new jobs answer in the same shape;
+    suggestions[] passes through untouched whenever the repair module put it
+    in the stored JSON."""
     job = db.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
 
+    result = parse_job_result(job["result_json"])
+    if result and isinstance(result.get("pages"), list):
+        result["pages"] = [enrich_page(p) for p in result["pages"]]
     return {
         "job_id": job["id"],
         "filename": job["filename"],
         "sha256": job["sha256"],
         "status": job["status"],
         "created_at": job["created_at"],
-        "result": parse_job_result(job["result_json"]),
+        "result": result,
     }
 
 

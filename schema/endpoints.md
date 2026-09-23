@@ -137,6 +137,7 @@ Each `lines[]` item:
 | `body` | string | Recognized Tamil line text |
 | `bbox` | `[x, y, w, h]` | Pixels on the 1600px-capped image; draw directly on the frontend |
 | `confidence` | number | 0-1; the UI colors each line by this |
+| `needs_review` | bool | Per-line review flag: confidence < 0.5, `[stub]` body, or a `HEAVY` page (same rule the receipt counts by). Back-filled on read for jobs stored before this field existed |
 
 Also emitted by the current backend:
 
@@ -146,7 +147,10 @@ Also emitted by the current backend:
 | `processing_ms` | int | Wall-clock ms for this page |
 
 Allowed by the schema but **not emitted yet**: `preprocessed`, `words[]`, `corrections[]`,
-`verdicts[]`, CICT identity fields (`specimen`, `chapter`, `work`, `manuscript_id`, `script`,
+`verdicts[]`, `suggestions[]` (page-level review candidates, shape per
+`schema/suggestions-contract.md`; passed through untouched when the HEAVY repair
+fix-list/dictionary module emits them, absent until then), CICT identity fields
+(`specimen`, `chapter`, `work`, `manuscript_id`, `script`,
 `material`, `license`, `doi`), extra `quality` keys (`damage_flags`, `ink_density`,
 `estimated_lines`, `quality_score`) and extra line keys (`kural`, `margin`, `numeral`,
 `end_char`). Clients should tolerate them appearing later.
