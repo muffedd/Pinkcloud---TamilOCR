@@ -188,6 +188,18 @@
   --pc-pill-bar-icon: 14px;
   --pc-prov-dot: 6px;
 
+  /* ---------- Library (library.html) ---------- */
+  --pc-sidebar-w: 216px;
+  --pc-sidebar-pad: 16px 12px;
+  --pc-nav-item-h: 32px;
+  --pc-nav-item-pad: 0 10px;
+  --pc-library-w: 920px;
+  --pc-library-pad: 32px 48px;
+  --pc-search-icon: 16px;
+  --pc-lib-row-h: 48px;
+  --pc-lib-hit-pad: 10px 16px;
+  --pc-lib-page-w: 56px;
+
   /* ---------- Buttons / pills / toggles / inputs ---------- */
   --pc-btn-h: 36px;
   --pc-btn-pad: 0 16px;

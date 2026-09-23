@@ -114,6 +114,53 @@ function saveCorrections(jobId, corrections) {
     });
 }
 
+/* Library list + search (library.html). Live on main (feat/jobs-search):
+     GET /jobs?limit=50&offset=0   (limit 1..200) -> {total, limit, offset,
+         jobs: [{job_id, filename, sha256, status, created_at, page_count,
+                 pages_needing_review, error, result_url, receipt_url,
+                 corrections_count?}]}  newest first; page_count /
+         pages_needing_review / receipt_url are null unless status is done.
+         corrections_count is being added on the backend side; the Library
+         shows "-" until it arrives.
+     GET /search?q=<1..200 chars>&limit=20&offset=0  (limit 1..100) ->
+         {query, total, limit, offset,
+          results: [{job_id, filename, page, line, snippet, score}]}
+         snippet wraps hits in <mark>...</mark> (raw text otherwise - render
+         it as text, never as HTML); lower score = better match.
+         Blank q -> 400, out-of-range limits -> 422, no FTS5 -> 503.
+   Both throw ApiError kind "down" (no response) | "missing" (404/405: this
+   backend predates the route) | "http" (any other error, with .status). */
+var LIST_JOBS = function (limit, offset) {
+  return API_BASE + "/jobs?limit=" + limit + "&offset=" + offset;
+};
+var SEARCH = function (q, limit, offset) {
+  return API_BASE + "/search?q=" + encodeURIComponent(q) + "&limit=" + limit + "&offset=" + offset;
+};
+
+function getListJson(url, label) {
+  return fetch(url, { cache: "no-store" })
+    .catch(function () { throw ApiError("Backend unreachable (" + label + ")", "down"); })
+    .then(function (res) {
+      if (res.ok) return res.json();
+      return res.json().catch(function () { return null; }).then(function (body) {
+        var d = detailText(body);
+        var err = httpError((d || label + " failed") + " (" + res.status + ")", res.status);
+        if (res.status === 404 || res.status === 405) err.kind = "missing";
+        throw err;
+      });
+    });
+}
+
+/* GET /jobs -> {total, limit, offset, jobs} */
+function listJobs(limit, offset) {
+  return getListJson(LIST_JOBS(limit || 50, offset || 0), "GET /jobs");
+}
+
+/* GET /search -> {query, total, limit, offset, results} */
+function searchJobs(q, limit, offset) {
+  return getListJson(SEARCH(q, limit || 20, offset || 0), "GET /search");
+}
+
 /* Best-effort URL for the scan image behind a page (see SCAN_IMAGE above). */
 function pageImageUrl(jobId, page) {
   return SCAN_IMAGE(jobId, page);
@@ -142,5 +189,7 @@ window.PC_API = {
   getJob: getJob,
   pageImageUrl: pageImageUrl,
   getCorrections: getCorrections,
-  saveCorrections: saveCorrections
+  saveCorrections: saveCorrections,
+  listJobs: listJobs,
+  searchJobs: searchJobs
 };
