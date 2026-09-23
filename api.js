@@ -21,13 +21,14 @@ var API_BASE = (QS.get("api") || "").replace(/\/+$/, "");
 
 var GET_JOB = function (id) { return API_BASE + "/jobs/" + encodeURIComponent(id); };
 
-/* Scan-image route: the backend owner is adding a safe route that serves the
-   stored scan image for a job page. The exact URL is TBD - update this ONE
-   constant when the route lands in schema/endpoints.md. Until then the editor
-   loads it best-effort and falls back to its placeholder paper on any error. */
-/* TODO(backend): confirm the scan-image route and update SCAN_IMAGE. */
+/* Scan-image route: GET /jobs/{job_id}/image serves the stored scan for a
+   job. It is per-JOB, not per-page - one image per job for now. This route
+   is pending merge into schema/endpoints.md; if the merged contract names a
+   different URL, update this ONE constant.
+   The editor loads it best-effort: it probes once per page (same URL on
+   multi-page jobs) and falls back to its placeholder paper on any error. */
 var SCAN_IMAGE = function (id, page) {
-  return API_BASE + "/jobs/" + encodeURIComponent(id) + "/pages/" + page + "/image";
+  return API_BASE + "/jobs/" + encodeURIComponent(id) + "/image";
 };
 
 /* Poll pacing for a job that is still "pending" (same shape as upload.js:
