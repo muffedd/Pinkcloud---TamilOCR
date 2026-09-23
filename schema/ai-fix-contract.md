@@ -53,6 +53,9 @@ Errors:
 
 The editor treats any non-2xx or network failure as one "AI unavailable"
 toast and hides the AI fix button for the session (`sessionStorage pc.aioff`).
+The button only shows on unfixed Doubt words while the connection badge
+reads Connected. The first candidate is shown as suggestion 1 with an "AI"
+label.
 
 `GET /health` now also reports `ai_suggest` (bool) and `ai_suggest_provider`
 (`"gemini"`, `"sarvam"` or null). It never reports the key.
