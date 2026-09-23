@@ -153,6 +153,7 @@ The output contract is in [`schema/schema.json`](schema/schema.json), the endpoi
 | `api.js` | Data access: live backend or `?mock=1` demo |
 | `translit.js` | Offline Tanglish → Tamil transliteration for fixes |
 | `tokens.css`, `ui.css` | Design tokens and shared components. Motion: `--pc-ease-bounce` / `--pc-ease-overshoot` (from `design-drafts/icon-motion-*`); solid and outline buttons lift 1px on hover and spring back after a press. Icon motion (from `design-drafts/icon-motion-a.html` spring + `icon-motion-b.html` draw-on): Library and Export status dots pop in and Processing dots pulse (A), spinners turn in springy quarter steps (A), Export not-found/failed icons pop in (A), Export download icons and a finished upload row's action icons draw on (B). Nothing in a sidebar or the intro moves. Reduced motion keeps color changes only |
+| `tokens.css` sizing scale | Generic steps for new work: spacing `--pc-space-0/1/2/3/4/5/6/8/10/12/16` (0-64px), font size `--pc-fs-xs`..`--pc-fs-4xl` (11-24px), line height `--pc-lh-*`, weight `--pc-fw-*`, tracking `--pc-track-*`, icons `--pc-icon-xs`..`xl` (12-24px), control heights `--pc-control-sm/md/lg` (30/36/44), radius `--pc-radius-xs`..`xl` (3-16px), containers `--pc-container-sm`..`xl` (640-1200px), stacking `--pc-z-*`, breakpoints `--pc-bp-*` (reference only). Role tokens (`--pc-fs-btn`, `--pc-btn-h`, ...) are unchanged |
 
 ## Design system
 
