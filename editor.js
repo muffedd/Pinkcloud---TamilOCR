@@ -165,6 +165,7 @@ function scrollToThird(container, node) {
 function refreshWordEl(w) {
   if (!w.el) return;
   w.el.className = "w tamil-editor is-" + w.bin + " pv-" + w.prov +
+    (w.fixed ? " is-fixed" : "") +
     (w.key === S.activeKey ? " is-active" : "") +
     (w.key === S.hoverKey ? " is-hover" : "");
   if (w.el.textContent !== w.text) w.el.textContent = w.text;
@@ -265,6 +266,9 @@ function renderText() {
 function boxClass(w) {
   if (w.key === S.activeKey) return "box box-active";
   if (w.key === S.hoverKey) return "box box-hover";
+  /* A fixed word is resolved: drop the doubt fill, keep a quiet box so it
+     stays clickable on the scan. */
+  if (w.fixed) return "box box-auto";
   if (w.bin === "doubt") return "box box-doubt";
   if (w.bin === "auto" && S.mode === "review") return "box box-auto";
   return "box";
@@ -308,14 +312,36 @@ function renderScan() {
   /* Placeholder sheet: each line body placed at its bbox. Skipped once the
      real scan image is on the paper (the text would double-draw). */
   if (!S.imageLoaded) {
+  /* Each word is drawn inside its own (approximate) word bbox, so the
+     placeholder text lines up with the word boxes drawn on top of it
+     instead of running past them. If a word is wider than its box, the
+     whole line's type is shrunk evenly to fit; nothing is clipped. */
   S.lines.forEach(function (line) {
     var d = document.createElement("div");
     d.className = "paper-line";
     d.style.left = Math.round(line.bbox[0] * s) + "px";
     d.style.top = Math.round(line.bbox[1] * s) + "px";
     d.style.width = Math.round(line.bbox[2] * s) + "px";
-    d.textContent = line.body;
+    d.style.height = Math.round(line.bbox[3] * s) + "px";
+    d.setAttribute("aria-label", line.body);
     el.paper.appendChild(d);
+    var fit = 1;
+    line.words.forEach(function (w) {
+      var span = document.createElement("span");
+      span.className = "paper-word";
+      span.setAttribute("aria-hidden", "true");
+      span.style.left = Math.round((w.bbox[0] - line.bbox[0]) * s) + "px";
+      span.style.width = Math.round(w.bbox[2] * s) + "px";
+      span.textContent = w.text;
+      d.appendChild(span);
+      var room = span.clientWidth;
+      var need = span.scrollWidth;
+      if (room > 0 && need > room) fit = Math.min(fit, room / need);
+    });
+    if (fit < 1) {
+      var fs = parseFloat(getComputedStyle(d).fontSize) || 18;
+      d.style.fontSize = (fs * fit * 0.94).toFixed(2) + "px"; /* small margin: glyph widths do not scale exactly linearly */
+    }
   });
   }
 
@@ -455,8 +481,14 @@ function renderBadges() {
   var b = document.createElement("button");
   b.type = "button";
   b.className = "pill pill--bar is-" + state + " pill--current";
-  b.innerHTML = ICONS.wrench + "<span></span>";
-  b.querySelector("span").textContent = "P" + S.page.page + " · Repaired · " + doubtLeft + " doubt";
+  /* Label and icon follow the real page state (was hardcoded "Repaired"). */
+  var STATE_LABEL = { repaired: "Repaired", clean: "Clean", precomputed: "Precomputed", queued: "Queued" };
+  var icon = state === "repaired" ? ICONS.wrench
+    : state === "clean" ? ICONS.checkCircle
+    : '<i class="pdot" aria-hidden="true"></i>';
+  b.innerHTML = icon + "<span></span>";
+  b.querySelector("span").textContent = "P" + S.page.page + " · " + (STATE_LABEL[state] || state) +
+    " · " + (doubtLeft ? doubtLeft + " doubt" : "no doubt left");
   b.addEventListener("click", function () {
     clearActive();
     el.scanScroll.scrollTop = 0;
@@ -493,7 +525,7 @@ function openPopup() {
   var dot = document.createElement("i");
   dot.className = "pdot";
   chip.appendChild(dot);
-  chip.appendChild(document.createTextNode(w.prov + " · " + (w.tier || "—")));
+  chip.appendChild(document.createTextNode(w.tier ? w.prov + " · " + w.tier : w.prov));
   head.appendChild(title);
   head.appendChild(spacer);
   head.appendChild(chip);
@@ -559,8 +591,9 @@ function openPopup() {
 function placePopup(w, arrow) {
   el.pop.hidden = false;
   var bodyW = el.textBody.clientWidth;
-  var maxLeft = Math.max(8, bodyW - 300 - 8);
-  var left = w.el.offsetLeft + w.el.offsetWidth / 2 - 150;
+  var popW = el.pop.offsetWidth || 288; /* --pc-popup-w, border-box */
+  var maxLeft = Math.max(8, bodyW - popW - 8);
+  var left = w.el.offsetLeft + w.el.offsetWidth / 2 - popW / 2;
   left = Math.max(8, Math.min(maxLeft, left));
   var popH = el.pop.offsetHeight;
   var viewTop = el.textScroll.scrollTop;
@@ -578,7 +611,7 @@ function placePopup(w, arrow) {
   el.pop.style.left = Math.round(left) + "px";
   el.pop.style.top = Math.round(top) + "px";
   var ax = w.el.offsetLeft + w.el.offsetWidth / 2 - left;
-  ax = Math.max(12, Math.min(300 - 24, ax));
+  ax = Math.max(12, Math.min(popW - 24, ax));
   arrow.style.left = Math.round(ax) + "px";
 }
 
@@ -730,21 +763,39 @@ function showOverlay(title, detail) {
   overlayEl.style.flexDirection = "column";
   overlayEl.style.alignItems = "center";
   overlayEl.style.justifyContent = "center";
-  overlayEl.style.gap = "10px";
-  overlayEl.style.padding = "24px";
+  overlayEl.style.gap = "var(--pc-gap-10)";
+  overlayEl.style.padding = "var(--pc-space-6)";
   overlayEl.style.textAlign = "center";
-  overlayEl.style.background = getComputedStyle(document.documentElement).getPropertyValue("--pc-bg") || "#fff";
+  overlayEl.style.background = "var(--pc-color-bg-canvas)";
+  overlayEl.setAttribute("role", "status");
+  overlayEl.setAttribute("aria-live", "polite");
   var t = document.createElement("div");
+  t.className = "pc-load-title";
   t.style.fontWeight = "600";
-  t.style.fontSize = "15px";
+  t.style.fontSize = "var(--pc-fs-btn)";
+  t.style.color = "var(--pc-color-text-primary)";
   t.textContent = title;
   var d = document.createElement("div");
-  d.style.opacity = "0.75";
+  d.className = "pc-load-detail";
+  d.style.color = "var(--pc-color-text-secondary)";
   d.style.maxWidth = "52ch";
-  d.style.fontSize = "13px";
+  d.style.fontSize = "var(--pc-fs-toast)";
   d.style.lineHeight = "1.5";
+  d.style.overflowWrap = "anywhere";
   d.textContent = detail;
   overlayEl.appendChild(t);
+  /* Visually hidden separator: keeps the title and detail from running
+     together in textContent, copied text and screen readers
+     ("Job still processingJob ..."). Out of flow, so the layout is unchanged. */
+  var sep = document.createElement("span");
+  sep.style.position = "absolute";
+  sep.style.width = "1px";
+  sep.style.height = "1px";
+  sep.style.overflow = "hidden";
+  sep.style.clipPath = "inset(50%)";
+  sep.style.whiteSpace = "nowrap";
+  sep.textContent = ". ";
+  overlayEl.appendChild(sep);
   overlayEl.appendChild(d);
   var host = document.querySelector(".panes");
   if (getComputedStyle(host).position === "static") host.style.position = "relative";
