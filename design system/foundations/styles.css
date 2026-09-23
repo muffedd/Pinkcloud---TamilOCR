@@ -1,0 +1,457 @@
+/* =====================================================
+   MINOLI — Typography-led tool page
+   Plain HTML + CSS. No JS. No CDN. Local fonts only.
+   ===================================================== */
+
+/* ---------- 1. LOCAL FONTS (@font-face) ---------- */
+/* Expected files inside ./fonts/. Satoshi: 400/500/600/700.
+   Noto Sans Tamil: 400/600. Mendel: 400 (code only). */
+
+@font-face {
+  font-family: "Satoshi";
+  src: url("./fonts/Satoshi-Regular.woff2") format("woff2"),
+       url("./fonts/satoshi-regular.woff2") format("woff2"),
+       url("./fonts/Satoshi-400.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Satoshi";
+  src: url("./fonts/Satoshi-Medium.woff2") format("woff2"),
+       url("./fonts/satoshi-medium.woff2") format("woff2"),
+       url("./fonts/Satoshi-500.woff2") format("woff2");
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Satoshi";
+  src: url("./fonts/Satoshi-Bold.woff2") format("woff2"),
+       url("./fonts/satoshi-bold.woff2") format("woff2"),
+       url("./fonts/Satoshi-600.woff2") format("woff2");
+  font-weight: 600; font-style: normal; font-display: swap;
+}
+/* Satoshi ships Black (900) in some packs; map it to 700 so
+   --type-display (700) still resolves to a local file. */
+@font-face {
+  font-family: "Satoshi";
+  src: url("./fonts/Satoshi-Black.woff2") format("woff2"),
+       url("./fonts/satoshi-black.woff2") format("woff2"),
+       url("./fonts/Satoshi-700.woff2") format("woff2"),
+       url("./fonts/Satoshi-Bold.woff2") format("woff2");
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Satoshi";
+  src: url("./fonts/Satoshi-Italic.woff2") format("woff2"),
+       url("./fonts/satoshi-italic.woff2") format("woff2"),
+       url("./fonts/Satoshi-Regular.woff2") format("woff2");
+  font-weight: 400; font-style: italic; font-display: swap;
+}
+@font-face {
+  font-family: "Noto Sans Tamil";
+  src: url("./fonts/NotoSansTamil-Regular.woff2") format("woff2"),
+       url("./fonts/notosanstamil-regular.woff2") format("woff2"),
+       url("./fonts/NotoSansTamil-400.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Noto Sans Tamil";
+  src: url("./fonts/NotoSansTamil-SemiBold.woff2") format("woff2"),
+       url("./fonts/notosanstamil-semibold.woff2") format("woff2"),
+       url("./fonts/NotoSansTamil-600.woff2") format("woff2");
+  font-weight: 600; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Mendel";
+  src: url("./fonts/Mendel-Regular.woff2") format("woff2"),
+       url("./fonts/mendel-regular.woff2") format("woff2"),
+       url("./fonts/Mendel-400.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+
+/* ---------- 2. TYPE SYSTEM + TOKENS (:root) ---------- */
+:root {
+  /* -- Color: warm paper canvas keeps 65%-opacity captions above AA -- */
+  --ink: #0e0e10;
+  --paper: #f5f3ee;
+  --surface: #faf8f3;
+  --surface-dark: #101014;
+  --line: #ddd8cd;
+  --accent: #c2410a;          /* deepened brand orange: passes AA on paper */
+  --accent-strong: #9a3412;
+  --accent-soft: #fde7dd;
+
+  /* -- Font stacks -- */
+  --stack-latin: "Satoshi", -apple-system, "Inter", sans-serif;
+  --stack-tamil: "Noto Sans Tamil", "Satoshi", sans-serif;
+  --stack-code: "Mendel", "JetBrains Mono", monospace;
+
+  /* -- Type scale (1.25 ratio; fluid display) -- */
+  --type-display: 700 clamp(2.5rem, 6vw, 4.5rem)/1.05 var(--stack-latin);
+  --type-h2: 600 2rem/1.15 var(--stack-latin);
+  --type-h3: 600 1.25rem/1.25 var(--stack-latin);
+  --type-lead: 400 1.25rem/1.5 var(--stack-latin);
+  --type-body: 400 1rem/1.6 var(--stack-latin);
+  --type-small: 500 0.875rem/1.45 var(--stack-latin);
+  --type-eyebrow: 700 0.75rem/1 var(--stack-latin);
+  --type-button: 600 1rem/1 var(--stack-latin);
+  --type-tamil-h: 600 1.3125rem/1.3 var(--stack-tamil);   /* h3 + 0.05rem */
+  --type-tamil-body: 400 1.0625rem/1.7 var(--stack-tamil);
+  --type-code: 400 0.9375rem/1.65 var(--stack-code);
+
+  /* -- Tracking (negative only at 18px+, never on Tamil/body) -- */
+  --track-display: -0.03em;
+  --track-h2: -0.02em;
+  --track-h3: -0.01em;
+  --track-lead: -0.005em;
+  --track-small: 0.01em;
+  --track-eyebrow: 0.12em;
+  --track-button: 0.01em;
+
+  /* -- Hierarchy opacities (never below 50%) -- */
+  --op-primary: 1;
+  --op-secondary: 0.8;
+  --op-caption: 0.65;
+  --op-eyebrow: 0.55;
+
+  /* -- Spacing scale (multiples of 0.5rem only) -- */
+  --space-1: 0.5rem;
+  --space-2: 1rem;
+  --space-3: 1.5rem;
+  --space-4: 2rem;
+  --space-6: 3rem;
+
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+}
+
+/* ---------- 3. BASE / RESET ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  font: var(--type-body);
+  font-family: var(--stack-latin);
+  font-kerning: normal;
+  color: var(--ink);
+  background: var(--paper);
+  min-height: 100vh;
+}
+
+/* Tabular numerals for all data/counts */
+.num { font-variant-numeric: tabular-nums; }
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* ---------- 4. PAGE FRAME ---------- */
+.page {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-2) var(--space-3);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- 5. HERO ---------- */
+.hero { text-align: center; margin-bottom: var(--space-4); }
+
+.eyebrow {
+  font: var(--type-eyebrow);
+  font-family: var(--stack-latin);
+  text-transform: uppercase;
+  letter-spacing: var(--track-eyebrow);
+  color: var(--accent);
+  opacity: var(--op-primary);
+  margin: 0 0 var(--space-2);
+}
+
+.display {
+  font: var(--type-display);
+  font-family: var(--stack-latin);
+  letter-spacing: var(--track-display);
+  font-kerning: normal;
+  max-width: 30ch;
+  margin: 0 auto var(--space-2);
+  text-wrap: balance;
+}
+
+.tamil-tagline {
+  font: var(--type-tamil-body);
+  font-family: var(--stack-tamil);
+  letter-spacing: 0;               /* Tamil: never negative tracking */
+  max-width: 58ch;
+  margin: 0 auto;
+  opacity: 0.75;
+}
+
+/* ---------- 6. MAIN LAYOUT (widget center + panel right) ---------- */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(17rem, 21rem);
+  gap: var(--space-3);
+  align-items: start;
+  flex: 1;
+}
+
+.main-col {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  min-width: 0;
+}
+
+/* ---------- 7. UPLOAD WIDGET ---------- */
+.upload {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  text-align: center;
+  box-shadow: 0 1px 2px rgba(14, 14, 16, 0.05), 0 8px 28px rgba(14, 14, 16, 0.06);
+}
+
+.upload-title {
+  font: var(--type-h3);
+  font-family: var(--stack-latin);
+  letter-spacing: var(--track-h3);
+  max-width: 30ch;
+  margin: 0 auto var(--space-1);
+}
+
+.upload-lead {
+  font: var(--type-lead);
+  font-family: var(--stack-latin);
+  font-size: 1rem;                 /* spec: lead at 1rem here */
+  letter-spacing: 0;               /* body-size text: never negative */
+  opacity: var(--op-secondary);
+  max-width: 65ch;
+  margin: 0 auto var(--space-2);
+}
+
+.upload-form {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: center;
+  margin-bottom: var(--space-2);
+}
+
+.dropzone {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 9rem;
+  padding: var(--space-2);
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  cursor: pointer;
+}
+.dropzone:hover, .dropzone:focus-within { border-color: var(--accent); }
+
+.dropzone-hint {
+  font: var(--type-small);
+  font-family: var(--stack-latin);
+  font-weight: 400;
+  font-style: italic;              /* drag-and-drop hint: italic Satoshi 400 */
+  letter-spacing: 0;
+  opacity: var(--op-caption);
+  max-width: 65ch;
+}
+.dropzone-link {
+  color: var(--accent);
+  opacity: var(--op-primary);
+  font-style: normal;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.btn-primary {
+  font: var(--type-button);
+  font-family: var(--stack-latin);
+  letter-spacing: var(--track-button);
+  color: #fff7f0;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-pill);
+  min-height: 3rem;
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+.btn-primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+
+.file-note {
+  font: var(--type-small);
+  font-family: var(--stack-latin);
+  letter-spacing: var(--track-small);
+  opacity: var(--op-caption);
+  max-width: 65ch;
+  margin: 0 auto;
+}
+
+/* ---------- 8. JSON OUTPUT AREA ---------- */
+.output { min-width: 0; }
+
+.output-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
+}
+
+.block-label {
+  font: var(--type-eyebrow);
+  font-family: var(--stack-latin);
+  text-transform: uppercase;
+  letter-spacing: var(--track-eyebrow);
+  opacity: var(--op-eyebrow);
+  margin: 0;
+}
+
+.btn-copy {
+  font: var(--type-button);
+  font-family: var(--stack-latin);
+  font-size: 0.875rem;             /* spec: button at 0.875rem */
+  letter-spacing: var(--track-button);
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-pill);
+  min-height: 2.5rem;
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+.btn-copy:hover { background: var(--accent-soft); }
+
+.code-block {
+  font: var(--type-code);
+  font-family: var(--stack-code);
+  letter-spacing: 0;
+  color: #f2efe8;
+  background: var(--surface-dark);
+  border: 1px solid #26262e;
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  margin: 0;
+  overflow-x: auto;
+  max-width: 100%;
+  tab-size: 2;
+}
+.code-block code { font: inherit; }
+
+/* ---------- 9. HOW IT WORKS PANEL ---------- */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2);
+}
+
+.panel-title {
+  font: var(--type-h3);
+  font-family: var(--stack-latin);
+  letter-spacing: var(--track-h3);
+  max-width: 30ch;
+  margin: 0 0 var(--space-2);
+}
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-1);
+  align-items: start;
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--line);
+}
+.step:first-child { border-top: 0; padding-top: 0; }
+
+.step-num {
+  font-family: var(--stack-code);
+  font-size: 0.75rem;
+  line-height: 1.3;
+  letter-spacing: 0;
+  color: var(--accent);
+  opacity: var(--op-primary);
+  padding-top: 0.25rem;
+}
+
+.step-body { min-width: 0; }
+
+.step-title {
+  font-family: var(--stack-latin);
+  font-weight: 600;
+  font-size: 1rem;
+  line-height: 1.3;
+  letter-spacing: 0;
+  max-width: 30ch;
+  margin: 0 0 var(--space-1);
+}
+
+.step-desc {
+  font: var(--type-small);
+  font-family: var(--stack-latin);
+  font-size: 1rem;                 /* spec: small at 1rem here */
+  letter-spacing: 0;
+  opacity: 0.7;
+  max-width: 65ch;
+  margin: 0 0 var(--space-1);
+}
+
+.step-desc-ta {
+  font: var(--type-tamil-body);
+  font-family: var(--stack-tamil);
+  font-size: 0.9375rem;            /* spec: Tamil at 0.9375rem here */
+  letter-spacing: 0;
+  opacity: 0.6;                   /* 60% on warm paper still clears AA */
+  max-width: 58ch;
+  margin: 0;
+}
+
+/* Explicit Tamil language hook: guarantees the Tamil stack */
+:lang(ta) { font-family: var(--stack-tamil); letter-spacing: 0; }
+
+/* ---------- 10. FOOTER ---------- */
+.footer { margin-top: var(--space-4); }
+
+.footer-line {
+  font: var(--type-small);
+  font-family: var(--stack-latin);
+  letter-spacing: var(--track-small);
+  text-align: center;
+  opacity: 0.5;
+  max-width: 65ch;
+  margin: 0 auto;
+}
+
+/* ---------- 11. RESPONSIVE ---------- */
+@media (max-width: 56rem) {
+  .layout { grid-template-columns: 1fr; }
+  .panel { order: 2; }
+}
+
+@media (max-width: 30rem) {
+  .page { padding: var(--space-2) var(--space-1) var(--space-2); }
+  .upload { padding: var(--space-2) var(--space-1); }
+  .code-block { padding: var(--space-2) var(--space-1); }
+}
+
