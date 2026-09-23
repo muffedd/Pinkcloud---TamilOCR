@@ -1,10 +1,17 @@
 # Pink Cloud — Tamil OCR
 
-Pink Cloud is an early-stage tool for reading scanned Tamil and English books. Its planned workflow repairs low-quality pages, supports human corrections, and exports searchable text.
+Pink Cloud reads scanned Tamil and English books. Its workflow repairs low-quality pages, supports human corrections, and exports searchable text.
 
 ## Status
 
-Design foundations are done. The backend application (FastAPI + SQLite, CPU-only) is written and running — see `fastapi/sqlite/`.
+The FastAPI + SQLite backend, upload screen, and correction editor are in the repo. Use `?mock=1` for the offline sample flow.
+
+## Frontend
+
+- `index.html` provides the upload screen; completed jobs open the editor.
+- `editor.html` shows the scan, Tamil text, and correction queue.
+- Serve the repo root with `python -m http.server 8877`. Open `index.html?mock=1` for the offline upload demo or `editor.html?mock=1` for the standalone editor demo.
+- Live mode uses the FastAPI API. When the frontend and backend use different origins, configure CORS and pass `?api=http://127.0.0.1:8000`.
 
 ## Application — FastAPI + SQLite backend
 
@@ -39,6 +46,14 @@ curl -s http://127.0.0.1:8000/jobs/<job_id>              # status + result JSON
 ```
 
 Full details in [`fastapi/sqlite/RUN.md`](fastapi/sqlite/RUN.md).
+
+### Backend tests
+
+With the backend virtual environment active, from `fastapi/sqlite` run:
+
+```bash
+python -m pytest tests/ -v
+```
 
 ## Design system
 
