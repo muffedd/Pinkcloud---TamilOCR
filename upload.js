@@ -29,8 +29,9 @@
      ======================================================= */
   const MOCK_DEFAULT = false;
   const QS = new URLSearchParams(location.search);
-  const DEMO = QS.has('demo'); // scripted drag-over -> drop demo; always runs on the mock engine
-  const MOCK = DEMO || (QS.has('mock') ? QS.get('mock') !== '0' : MOCK_DEFAULT);
+  const MOCK = QS.has('mock') ? QS.get('mock') !== '0' : MOCK_DEFAULT;
+  // Scripted drag-over -> drop demo: only with ?mock=1&demo, never on the live path.
+  const DEMO = MOCK && QS.has('demo');
   const API_BASE = (QS.get('api') || '').replace(/\/+$/, '');
 
   const HEALTH = API_BASE + '/health';
