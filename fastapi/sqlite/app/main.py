@@ -198,7 +198,9 @@ def _done_job(job_id: str) -> tuple[dict, list[dict]]:
     if job["status"] != "done":
         raise HTTPException(status_code=409, detail=f"job is {job['status']}, not done")
     result = parse_job_result(job["result_json"]) or {}
-    return job, result.get("pages") or []
+    # Reviewer corrections saved for this job (uploads/<id>/corrections.json)
+    # are applied to every export and counted in the receipt.
+    return job, _export.apply_saved_corrections(job_id, result.get("pages") or [])
 
 
 def _receipt(job: dict, pages: list[dict], reviewer: str | None) -> dict:
