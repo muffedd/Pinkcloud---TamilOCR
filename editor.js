@@ -46,8 +46,9 @@ var S = {
   dictCount: 0           /* fixes auto-applied to this page from the dictionary */
 };
 
-/* Confidence bands on the text-quality proxy scale. The Sarvam engine gives
-   no per-line recognition confidence, so line.confidence carries the backend's
+/* Bands on the text-quality proxy scale. The Sarvam engine gives no per-line
+   recognition confidence (line.confidence is a layout-block score), so the
+   editor scores each live line itself with textScore() below, a port of
    app/textcheck.py score_line(text): clean Tamil 0.99; flaws (orphan vowel
    signs, odd characters, repeats) 0.90 sliding to 0.62; garbage <= 0.54; low
    Tamil share slides toward 0; digits-only 0.3. Values come from tokens.css
@@ -111,6 +112,74 @@ function reviewBinOf(conf, doc) {
   return binOf(conf);
 }
 
+/* ---------------- text check (port of fastapi/sqlite/app/textcheck.py) ----------------
+   Live pages: Sarvam's line.confidence is a LAYOUT-BLOCK score (one value per
+   block, unrelated to how the text reads), so the editor does not bin or show
+   it. Each line is scored from its OCR text instead - the agreed text-quality
+   proxy scale: ~0.99 clean Tamil, ~0.90 one flaw (orphan vowel sign, odd
+   char, repeated sentence), <= 0.6 low Tamil share / garbage, 0.3 digits or
+   punctuation only, 0 empty. Keep in sync with textcheck.score_line; the
+   parity check (every line of the committed Sarvam samples) is in the
+   commit message. The offline mock/fixture pages keep their own confidence. */
+var TC = {
+  CLEAN: 0.99, LOW_CAP: 0.6, SHARE_OK: 0.95, SHARE_MIN: 0.5,
+  FIRST_FLAW: 0.09, EXTRA_FLAW: 0.04, FLAW_FLOOR: 0.62, GARBAGE_RATIO: 0.2
+};
+var TC_TYPO = "\u2010\u2011\u2012\u2013\u2014\u2015\u2018\u2019\u201c\u201d\u2022\u2026\u00ab\u00bb\u00b7\u00a0";
+var TC_LETTER = /\p{L}/u, TC_CN = /\p{Cn}/u, TC_SPACE = /\s/;
+function tcSign(c) { return (c >= 0x0BBE && c <= 0x0BCC) || c === 0x0BD7; }
+function tcCons(c) { return c >= 0x0B95 && c <= 0x0BB9; }
+
+function textScore(text) {
+  text = text == null ? "" : String(text);
+  if (!text.trim()) return 0;
+  var chars = Array.from(text);            /* code points, like Python str */
+  var letters = 0, tamil = 0, visible = 0, orphans = 0, odd = 0;
+  for (var i = 0; i < chars.length; i++) {
+    var ch = chars[i], code = ch.codePointAt(0);
+    var space = TC_SPACE.test(ch);
+    if (!space) visible++;
+    if (TC_LETTER.test(ch)) { letters++; if (code >= 0x0B80 && code <= 0x0BFF) tamil++; }
+    if (tcSign(code) || code === 0x0BCD) {
+      var prev = i ? chars[i - 1].codePointAt(0) : null;
+      if (prev === null || !(tcCons(prev) || tcSign(prev))) orphans++;
+    }
+    if (space || ch === "\u200c" || ch === "\u200d" || TC_TYPO.indexOf(ch) !== -1) continue;
+    if (code >= 0x0B80 && code <= 0x0BFF) { if (TC_CN.test(ch)) odd++; continue; }
+    if (code < 0x80) { if (code < 0x20 || code === 0x7F) odd++; continue; }
+    if (TC_LETTER.test(ch)) continue;
+    odd++;
+  }
+  /* repeated sentences + word repetition loop */
+  var seen = {}, repeated = 0;
+  (text.match(/[^.!?\u0964\u0965]+[.!?\u0964\u0965]*/g) || []).forEach(function (m) {
+    var k = m.trim();
+    if (!k) return;
+    if (seen[k]) repeated++; else seen[k] = true;
+  });
+  var words = text.match(/\S+/g) || [], loop = false;
+  if (words.length >= 4) {
+    var cnt = {}, top = 0;
+    words.forEach(function (w) { cnt[w] = (cnt[w] || 0) + 1; if (cnt[w] > top) top = cnt[w]; });
+    loop = top >= 3 && top / words.length > 0.5;
+  }
+  var share = letters ? tamil / letters : null, base;
+  if (share === null) base = 0.3;
+  else if (share >= TC.SHARE_OK) base = TC.CLEAN;
+  else if (share >= TC.SHARE_MIN) base = 0.75 + (TC.CLEAN - 0.75) * (share - TC.SHARE_MIN) / (TC.SHARE_OK - TC.SHARE_MIN);
+  else base = TC.LOW_CAP * share / TC.SHARE_MIN;
+  var flaws = orphans + odd + repeated, score = base;
+  if (flaws) score = Math.max(base - TC.FIRST_FLAW - TC.EXTRA_FLAW * (flaws - 1), Math.min(base, TC.FLAW_FLOOR));
+  if (odd / Math.max(visible, 1) > TC.GARBAGE_RATIO || loop) score = Math.min(score, TC.LOW_CAP * 0.9);
+  return Math.round(Math.max(0, Math.min(1, score)) * 10000) / 10000;
+}
+
+/* The number every band, heat colour and chip uses for a line. */
+function lineScore(line) {
+  if (window.PC_API && window.PC_API.USE_MOCK) return line.confidence;
+  return textScore(line.body);
+}
+
 function buildModel(doc) {
   S.page = doc;
   S.lines = [];
@@ -119,7 +188,8 @@ function buildModel(doc) {
   var corrections = doc.corrections || [];
   var ordered = doc.lines.slice().sort(function (a, b) { return a.seq - b.seq; });
   ordered.forEach(function (line) {
-    var entry = { id: line.id, seq: line.seq, body: line.body, bbox: line.bbox, conf: line.confidence, words: [] };
+    var score = lineScore(line);
+    var entry = { id: line.id, seq: line.seq, body: line.body, bbox: line.bbox, conf: score, words: [] };
     var parts = String(line.body).split(/\s+/).filter(Boolean);
     var total = parts.reduce(function (s, w) { return s + w.length; }, 0) || 1;
     var x = line.bbox[0];
@@ -142,8 +212,8 @@ function buildModel(doc) {
         text: text,
         orig: text,
         after: hit ? hit.after : "",
-        conf: line.confidence,
-        bin: reviewBinOf(line.confidence, doc),
+        conf: score,
+        bin: reviewBinOf(score, doc),
         prov: hit ? (TIER_PROV[hit.tier] || "raw") : "raw",
         tier: hit ? hit.tier : "",
         evidence: hit ? hit.evidence : "",
@@ -213,7 +283,8 @@ function attachSuggestions(doc) {
 
 /* Routing summary: a line is routed to the reviewer when its band is in the
    current queue scope (Auto mode: Doubt; Review mode: Doubt + OK). Derived
-   only from line.confidence and the page's needs_review / profile. */
+   only from the line's text-check score (lineScore) and the page's
+   needs_review / profile. */
 function routingSummary() {
   var total = S.lines.length;
   var routed = S.lines.filter(function (l) {
@@ -633,11 +704,10 @@ function boxClass(w) {
 }
 
 /* ---------------- heatmap color ----------------
-   The contract has no per-line damage field, only per-line OCR confidence,
-   so damage is derived from it. PaddleOCR confidences crowd near 1.0 even on
-   rough text, so two signals are combined:
+   The contract has no per-line damage field, so damage is derived from the
+   line's text-check score (lineScore). Two signals are combined:
      abs - fixed scale: conf >= HEAT_CLEAN -> 0, conf <= HEAT_BAD -> 1
-     rel - where the line sits in this page's own confidence spread; only
+     rel - where the line sits in this page's own score spread; only
            counts in proportion to how wide that spread is, so a clean page
            with a tiny spread does not paint its "worst" line red.
    0 = clean (green), 0.5 = rough (orange), 1 = damaged (red). */
@@ -775,7 +845,7 @@ function renderScan() {
       h.className = "box box-heat";
       h.style.background = heatColor(dmg, 0.16 + 0.30 * dmg);
       h.style.borderColor = heatColor(dmg, 0.85);
-      h.title = "Damage " + Math.round(dmg * 100) + "% (confidence " +
+      h.title = "Damage " + Math.round(dmg * 100) + "% (text check " +
         (typeof line.conf === "number" ? line.conf.toFixed(2) : "?") + ")";
       h.style.left = Math.round(line.bbox[0] * s - BOX_PAD) + "px";
       h.style.top = Math.round(line.bbox[1] * s - BOX_PAD) + "px";
