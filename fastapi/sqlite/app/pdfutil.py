@@ -10,12 +10,20 @@ Images-> cv2. Multi-page TIFFs are read with cv2.imreadmulti so ALL
          pages are kept (cv2.imdecode/imread would return only the first).
 """
 
+import threading
 from pathlib import Path
 
 import cv2
 import numpy as np
 
 MAX_SIDE = 1600  # cap the long side; smaller pages stay as-is
+
+# PDFium is NOT thread-safe, and FastAPI runs sync routes in a thread pool.
+# Two requests touching pypdfium2 at once (uploads, page renders, PDF export)
+# corrupt the native heap and kill the whole server process ("corrupted
+# double-linked list", exit 134). Every pypdfium2 call in the app must hold
+# this lock. RLock so export.build_pdf can hold it while calling load_pages.
+PDFIUM_LOCK = threading.RLock()
 
 
 def _cap_1600(img: np.ndarray) -> np.ndarray:
@@ -38,9 +46,10 @@ def probe_decode(ext: str, data: bytes) -> None:
     if ext == ".pdf":
         import pypdfium2 as pdfium  # lazy import
 
-        pdf = pdfium.PdfDocument(data)  # accepts bytes; raises on corrupt
-        page_count = len(pdf)
-        pdf.close()
+        with PDFIUM_LOCK:
+            pdf = pdfium.PdfDocument(data)  # accepts bytes; raises on corrupt
+            page_count = len(pdf)
+            pdf.close()
         if page_count == 0:
             raise ValueError("PDF has no pages")
         return
@@ -58,18 +67,19 @@ def load_pages(path: Path) -> list[np.ndarray]:
     if suffix == ".pdf":
         import pypdfium2 as pdfium  # imported lazily; cheap and CPU-only
 
-        pdf = pdfium.PdfDocument(str(path))
-        pages: list[np.ndarray] = []
-        # scale = zoom factor; 200/72 makes ~200 DPI renders.
-        for i in range(len(pdf)):
-            bitmap = pdf[i].render(scale=200 / 72)
-            # .to_pil() keeps us decoupled from pypdfium2's raw buffer API
-            # (requires Pillow — pinned in requirements.txt), and numpy can
-            # consume a PIL image directly.
-            pil_img = bitmap.to_pil().convert("RGB")
-            img = np.array(pil_img)[:, :, ::-1]  # RGB -> BGR for cv2
-            pages.append(_cap_1600(np.ascontiguousarray(img)))
-        pdf.close()
+        with PDFIUM_LOCK:
+            pdf = pdfium.PdfDocument(str(path))
+            pages: list[np.ndarray] = []
+            # scale = zoom factor; 200/72 makes ~200 DPI renders.
+            for i in range(len(pdf)):
+                bitmap = pdf[i].render(scale=200 / 72)
+                # .to_pil() keeps us decoupled from pypdfium2's raw buffer API
+                # (requires Pillow — pinned in requirements.txt), and numpy can
+                # consume a PIL image directly.
+                pil_img = bitmap.to_pil().convert("RGB")
+                img = np.array(pil_img)[:, :, ::-1]  # RGB -> BGR for cv2
+                pages.append(_cap_1600(np.ascontiguousarray(img)))
+            pdf.close()
         return pages
 
     if suffix in (".tif", ".tiff"):
