@@ -473,3 +473,30 @@ body {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+/* Connection badge: green only when a live backend answered /health.
+   Offline (mock or unreachable) is amber; the check in flight is muted. */
+.offline-badge .pdot {
+  background: var(--pc-color-warning);
+}
+
+.offline-badge[data-state="connected"] .pdot {
+  background: var(--pc-color-success);
+}
+
+.offline-badge[data-state="checking"] .pdot {
+  background: var(--pc-color-text-disabled);
+}
+
+/* Legend: wavy swatches (Doubt, LLM) hung below the shared underline line
+   and touched the bar's bottom edge. Pull their underline up so the wave
+   centres on the same line as the solid/dotted swatches. */
+.legend .sw.is-doubt,
+.legend .sw.pv-llm {
+  text-underline-offset: 0.2em;
+}
+
+/* Same for the thick double Human swatch, which also reached the edge. */
+.legend .sw.pv-human {
+  text-underline-offset: 0.22em;
+}

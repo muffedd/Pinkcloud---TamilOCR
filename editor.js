@@ -501,6 +501,31 @@ function renderBadges() {
   el.exportBtn.disabled = !open;
 }
 
+/* ---------------- connection badge (display only) ----------------
+   Mock / unreachable backend -> "Offline" (amber dot). Live mode checks
+   GET /health once, the same probe the upload page uses; a reachable
+   backend -> "Connected" (green dot). Independent of job loading/polling. */
+function setConn(state) {
+  var badge = $("connBadge");
+  var text = $("connText");
+  if (!badge || !text) return;
+  var LABEL = { offline: "Offline", checking: "Checking…", connected: "Connected" };
+  badge.setAttribute("data-state", state);
+  text.textContent = LABEL[state] || "Offline";
+  badge.title = state === "offline" && !window.PC_API.USE_MOCK
+    ? "No response from " + (window.PC_API.API_BASE || location.origin) + "/health"
+    : "";
+}
+
+function probeConn() {
+  if (window.PC_API.USE_MOCK) { setConn("offline"); return; }
+  setConn("checking");
+  fetch((window.PC_API.API_BASE || "") + "/health", { cache: "no-store" })
+    .then(function (res) { return res.ok ? res.json() : null; })
+    .then(function (b) { setConn(b && b.ok ? "connected" : "offline"); })
+    .catch(function () { setConn("offline"); });
+}
+
 /* ---------------- fix popup ---------------- */
 
 function openPopup() {
@@ -891,6 +916,7 @@ function init() {
   });
 
   wireHotkeys();
+  probeConn();
 
   var raf = 0;
   window.addEventListener("resize", function () {
