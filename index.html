@@ -12,6 +12,7 @@
 -->
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="ui.css">
+<link rel="stylesheet" href="upload.css">
 <style>
 /* Local fonts - expected files inside ./fonts/ (same names as design system/foundations). */
 @font-face {
@@ -52,7 +53,7 @@
 
 :root {
   /* Fallbacks mirror the design-system spec; tokens.css overrides these when present. */
-  --color-brand-primary: var(--color-brand-primary, #c2410c);
+  --color-brand-primary: var(--pc-color-primary, #c2410c);
   --color-bg-canvas: #faf9f7;
   --color-bg-surface: #f4f2ef;
   --color-border-subtle: #e5e1dc;
@@ -370,5 +371,6 @@ document.getElementById('queue').innerHTML = low.map(l =>
     l.body.replace(cor.before, cor.after) : l.body).split(' ').pop()) + '</span>' +
   '<span class="qm">p' + doc.page + ' · low</span></div>').join('');
 </script>
+<script src="upload.js"></script>
 </body>
 </html>

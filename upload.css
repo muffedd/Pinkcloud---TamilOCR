@@ -1,0 +1,200 @@
+/* =========================================================
+   Pink Cloud — slice 3: Upload screen (page 1, layout plan zone 2)
+   Own CSS for the slice, scoped to #upload-root.
+   Consumes ui.css components (.btn, .pill, .card, .toast) and
+   tokens.css --pc-* tokens. Only the pieces ui.css does not have
+   live here: dropzone, progress bar, processing spinner, file rows,
+   and the orange "live scan" pill tint.
+   ========================================================= */
+
+/* The mount is page 1: its own screen, hero centered, no navbar
+   (layout plan page-1 rules). The editor's 100vh .app frame sits
+   above it in index.html, so the slice takes the viewport while it
+   is mounted; the router slice hands over when OCR completes. */
+#upload-root.up-active {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  overflow-y: auto;
+  background: var(--pc-color-bg-canvas);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--pc-space-4);
+}
+
+.up-layout {
+  display: grid;
+  grid-template-columns: 560px 316px;
+  gap: var(--pc-space-6);
+  align-items: start;
+}
+
+/* Zone 2 — upload card (hero). Fixed height: adding files must not
+   make the page jump (layout plan rule 2). */
+.up-card {
+  height: 520px;
+  display: flex;
+  flex-direction: column;
+}
+.up-card h2 {
+  font: 600 1.25rem/1.25 var(--ui-font-sans);
+  letter-spacing: var(--pc-track-h3);
+  color: var(--pc-color-text-primary);
+  margin: 0 0 var(--pc-space-2);
+}
+
+/* Zone 2a — dropzone (transient UI; not in ui.css) */
+.up-dz {
+  border: 1.5px dashed var(--pc-color-border-strong);
+  border-radius: var(--ui-panel-radius);
+  background: var(--pc-color-bg-subtle);
+  padding: var(--pc-space-3) var(--pc-space-2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--pc-space-2);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.up-dz:hover { background: var(--pc-color-bg-hover); }
+/* Drag-over = the one live moment on this screen (orange = active scan) */
+.up-dz.is-drag {
+  border-color: var(--pc-color-scan-active-stroke);
+  background: var(--pc-color-scan-active-fill);
+}
+.up-dz-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-btn-gap);
+  font: 600 var(--ui-btn-fs)/1.4 var(--ui-font-sans);
+  color: var(--pc-color-text-primary);
+}
+.up-dz-head .up-glyph { color: var(--pc-color-primary); }
+.up-dz input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+
+/* Zone 2b — file-type hint */
+.up-hint {
+  margin: var(--pc-space-2) 0 0;
+  font: 500 12px/1.4 var(--ui-font-sans);
+  color: var(--pc-color-text-secondary);
+}
+
+/* Zone 2c — file list. Scrolls inside the card after ~3 rows. */
+.up-list {
+  list-style: none;
+  margin: var(--pc-space-2) 0;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pc-space-1);
+}
+.up-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "name badge del" "bar bar bar";
+  align-items: center;
+  column-gap: var(--ui-btn-gap);
+  row-gap: 4px;
+  border: 1px solid var(--pc-color-border-subtle);
+  border-radius: var(--ui-btn-radius);
+  background: var(--pc-color-bg-surface);
+  padding: 8px 10px;
+}
+.up-meta { grid-area: name; min-width: 0; }
+.up-name {
+  display: block;
+  font: 500 13px/1.4 var(--ui-font-sans);
+  color: var(--pc-color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.up-size { font: 400 11px/1.4 var(--ui-font-sans); color: var(--pc-color-text-secondary); }
+
+/* Status pills: ui.css .pill, compacted for rows. */
+.up-row .pill { height: 24px; padding: 0 9px; gap: 5px; font-size: 11px; }
+.up-row .pill .up-glyph { font-size: 12px; line-height: 1; }
+
+/* Progress bar — NOT in ui.css yet; scoped here, migrate in the
+   design-system pass (see layout plan inventory note). */
+.up-bar {
+  grid-area: bar;
+  height: 8px;
+  border-radius: var(--pc-radius-pill);
+  background: var(--pc-color-neutral-200);
+  overflow: hidden;
+}
+.up-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: var(--pc-radius-pill);
+  background: var(--pc-color-primary);
+  transition: width 0.25s linear;
+}
+.up-row[data-status="processing"] .up-fill { background: var(--pc-color-border-strong); }
+.up-row[data-status="done"] .up-fill { background: var(--pc-color-success); }
+.up-row[data-status="error"] .up-bar { visibility: hidden; }
+.up-why {
+  grid-area: bar;
+  font: 400 11px/1.4 var(--ui-font-sans);
+  color: var(--pc-color-error);
+}
+
+/* Live states (uploading / processing): orange = live scan only.
+   Reuses the scan-active tokens; everything else is a stock ui.css pill. */
+.pill--tinted.up-pill-live {
+  background: var(--pc-color-scan-active-fill);
+  color: var(--pc-color-scan-active-stroke);
+}
+
+/* Processing spinner — replaces the pill dot while work runs */
+.up-spin {
+  width: var(--ui-pill-dot);
+  height: var(--ui-pill-dot);
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  animation: up-spin 0.7s linear infinite;
+}
+@keyframes up-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .up-spin { animation-duration: 1.6s; }
+  .up-fill { transition: none; }
+}
+
+/* Rejected files — ui.css toast, error variant */
+.up-notices { display: flex; flex-direction: column; align-items: stretch; gap: var(--pc-space-1); margin-top: var(--pc-space-2); }
+.up-notices .toast { width: 100%; }
+.up-notices .toast__icon { font: 700 13px/1 var(--ui-font-sans); }
+
+/* Zone 2d — the only filled button on the page */
+.up-start { width: 100%; height: 48px; margin-top: var(--pc-space-2); font-size: 15px; }
+
+/* Zone 3 — help panel: quieter than the card */
+.up-help {
+  height: auto;
+  background: var(--pc-color-bg-subtle);
+  box-shadow: none;
+}
+.up-help h3 { font: 600 13px/1.4 var(--ui-font-sans); color: var(--pc-color-text-primary); margin: 0 0 var(--pc-space-1); }
+.up-steps { margin: 0 0 var(--pc-space-2); padding-left: 18px; color: var(--pc-color-text-secondary); font: 400 13px/1.5 var(--ui-font-sans); }
+.up-steps li { margin-bottom: 2px; }
+.up-rule { border: 0; border-top: 1px solid var(--pc-color-border-subtle); margin: var(--pc-space-2) 0; }
+.up-help p { font: 400 12px/1.5 var(--ui-font-sans); color: var(--pc-color-text-secondary); margin: 0 0 2px; }
+.up-offline { margin-top: var(--pc-space-4); }
+
+/* One column under 900px */
+@media (max-width: 900px) {
+  .up-layout { grid-template-columns: 1fr; gap: var(--pc-space-2); }
+  #upload-root.up-active { padding: var(--pc-space-2); }
+}
+@media (max-height: 700px) {
+  .up-card { height: auto; min-height: 420px; }
+}
