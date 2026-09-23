@@ -1,200 +1,416 @@
 /* =========================================================
-   Pink Cloud — slice 3: Upload screen (page 1, layout plan zone 2)
-   Own CSS for the slice, scoped to #upload-root.
-   Consumes ui.css components (.btn, .pill, .card, .toast) and
-   tokens.css --pc-* tokens. Only the pieces ui.css does not have
-   live here: dropzone, progress bar, processing spinner, file rows,
-   and the orange "live scan" pill tint.
+   Pink Cloud - Upload screen (page 1, layout plan zone 2 + 3)
+   Design pass v2: same language as the editor re-skin.
+   - One button family (solid / soft / ghost) and one motion.
+   - Hairlines, no drop shadows, no gradients.
+   - Suisse Intl UI (Satoshi fallback), never Satoshi on buttons.
+   Scoped to #upload-root. upload.js contract unchanged: it still
+   emits .card .btn .pill .toast + the up-* classes styled here.
+   Every token has a fallback, so this works on the current main
+   tokens.css/ui.css and on the re-skinned ones.
    ========================================================= */
 
-/* The mount is page 1: its own screen, hero centered, no navbar
-   (layout plan page-1 rules). The editor's 100vh .app frame sits
-   above it in index.html, so the slice takes the viewport while it
-   is mounted; the router slice hands over when OCR completes. */
+@font-face {
+  font-family: "Noto Sans Tamil";
+  src: url("./fonts/noto-sans-tamil.ttf") format("truetype");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+#upload-root {
+  /* local aliases -> design-system tokens (fallback = shipped value) */
+  --up-font: "Suisse Intl Trial", "Suisse Intl", "Satoshi", "Noto Sans Tamil", -apple-system, system-ui, sans-serif;
+  --up-font-btn: "Suisse Intl Trial", "Suisse Intl", "Helvetica Neue", Helvetica, Arial, "Noto Sans Tamil", sans-serif;
+  --up-font-mono: Menlo, "JetBrains Mono", monospace;
+  --up-canvas: var(--pc-color-bg-canvas, #FDFCFB);
+  --up-surface: var(--pc-color-bg-surface, #FFFFFF);
+  --up-subtle: var(--pc-color-bg-subtle, #F8F6F4);
+  --up-hover: var(--pc-color-bg-hover, #F1EEEB);
+  --up-line: var(--pc-color-border-subtle, #E6E2DE);
+  --up-line-2: var(--pc-color-border, #D2CCC6);
+  --up-text: var(--pc-color-text-primary, #1E1A18);
+  --up-text-2: var(--pc-color-text-secondary, #655E58);
+  --up-text-3: var(--pc-color-text-disabled, #8A827B);
+  --up-primary: var(--pc-color-primary, #F94612);
+  --up-solid: var(--pc-color-primary-solid, #D93A0B);
+  --up-solid-hover: var(--pc-color-primary-active, #B32E08);
+  --up-solid-press: var(--pc-color-primary-press, #9C2706);
+  --up-solid-disabled: var(--pc-color-primary-disabled, #ECAB97);
+  --up-on-solid: var(--pc-color-on-primary, #FFFFFF);
+  --up-soft: var(--pc-color-soft, #E7E4E0);
+  --up-soft-hover: var(--pc-color-soft-hover, #DEDAD5);
+  --up-soft-press: var(--pc-color-soft-press, #D3CEC8);
+  --up-live: var(--pc-color-scan-active-stroke, #D93A0B);
+  --up-live-fill: var(--pc-color-scan-active-fill, #F9461224);
+  --up-ok: var(--pc-color-success, #17754A);
+  --up-ok-bg: var(--pc-color-success-bg, #E6F4EC);
+  --up-info: var(--pc-color-info, #1F5FAE);
+  --up-info-bg: var(--pc-color-info-bg, #E7F0FB);
+  --up-err: var(--pc-color-error, #BE123C);
+  --up-err-bg: var(--pc-color-error-bg, #FDECEF);
+  --up-hairline: 1px solid var(--up-line);
+  --up-r-btn: var(--pc-radius-btn, 10px);
+  --up-r-sm: 8px;
+  --up-r-panel: var(--pc-radius-panel, 10px);
+  /* motion (buttons-motion.html) */
+  --up-press: var(--pc-motion-press, 90ms);
+  --up-release: var(--pc-motion-release, 220ms);
+  --up-color: var(--pc-motion-color, 150ms);
+  --up-ease: var(--pc-ease-out, cubic-bezier(.23, 1, .32, 1));
+  --up-spring: var(--pc-ease-spring, cubic-bezier(.34, 1.36, .64, 1));
+}
+
+/* ---------- Page 1 frame: its own screen, hero centred, no navbar ---------- */
 #upload-root.up-active {
   position: fixed;
   inset: 0;
   z-index: 40;
   overflow-y: auto;
-  background: var(--pc-color-bg-canvas);
+  background: var(--up-canvas);
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: var(--pc-space-4);
+  padding: 56px 24px 24px;
+  font-family: var(--up-font);
+  color: var(--up-text);
+  -webkit-font-smoothing: antialiased;
 }
 
 .up-layout {
   display: grid;
-  grid-template-columns: 560px 316px;
-  gap: var(--pc-space-6);
+  grid-template-columns: 560px 280px;
+  gap: 24px;
   align-items: start;
 }
 
-/* Zone 2 — upload card (hero). Fixed height: adding files must not
-   make the page jump (layout plan rule 2). */
+/* ---------- Upload card (hero). Fixed height: adding files never makes the page jump. ---------- */
+#upload-root .card {
+  background: var(--up-surface);
+  border: var(--up-hairline);
+  border-radius: 12px;
+  box-shadow: none;
+}
 .up-card {
-  height: 520px;
+  height: 620px;
+  padding: 24px;
   display: flex;
   flex-direction: column;
 }
 .up-card h2 {
-  font: 600 1.25rem/1.25 var(--ui-font-sans);
-  letter-spacing: var(--pc-track-h3);
-  color: var(--pc-color-text-primary);
-  margin: 0 0 var(--pc-space-2);
+  margin: 0 0 16px;
+  font: 600 20px/1.25 var(--up-font);
+  letter-spacing: -0.01em;
+  color: var(--up-text);
 }
 
-/* Zone 2a — dropzone (transient UI; not in ui.css) */
+/* ---------- Drop zone ---------- */
 .up-dz {
-  border: 1.5px dashed var(--pc-color-border-strong);
-  border-radius: var(--ui-panel-radius);
-  background: var(--pc-color-bg-subtle);
-  padding: var(--pc-space-3) var(--pc-space-2);
+  position: relative;
+  flex: none;
+  height: 156px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--pc-space-2);
+  justify-content: center;
+  gap: 12px;
   text-align: center;
+  border: 1.5px dashed var(--up-line-2);
+  border-radius: var(--up-r-panel);
+  background: var(--up-subtle);
   cursor: pointer;
-  transition: border-color 0.12s, background 0.12s;
+  transition:
+    border-color var(--up-color) var(--up-ease),
+    background-color var(--up-color) var(--up-ease);
 }
-.up-dz:hover { background: var(--pc-color-bg-hover); }
-/* Drag-over = the one live moment on this screen (orange = active scan) */
+@media (hover: hover) and (pointer: fine) {
+  .up-dz:hover { background: var(--up-hover); }
+}
 .up-dz.is-drag {
-  border-color: var(--pc-color-scan-active-stroke);
-  background: var(--pc-color-scan-active-fill);
+  border-style: solid;
+  border-color: var(--up-live);
+  background: var(--up-live-fill);
 }
 .up-dz-head {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--ui-btn-gap);
-  font: 600 var(--ui-btn-fs)/1.4 var(--ui-font-sans);
-  color: var(--pc-color-text-primary);
+  gap: 10px;
+  font: 500 15px/1.3 var(--up-font);
+  color: var(--up-text);
 }
-.up-dz-head .up-glyph { color: var(--pc-color-primary); }
-.up-dz input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+/* upload glyph sits in a white tile, lifts while a file is held over the zone */
+.up-dz-head .up-glyph {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--up-surface);
+  border: var(--up-hairline);
+  color: var(--up-solid);
+  font: 600 18px/1 var(--up-font-btn);
+  transition: transform var(--up-release) var(--up-spring), color var(--up-color) var(--up-ease);
+}
+.up-dz.is-drag .up-glyph { transform: translateY(-3px); color: var(--up-live); }
+.up-dz input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
 
-/* Zone 2b — file-type hint */
 .up-hint {
-  margin: var(--pc-space-2) 0 0;
-  font: 500 12px/1.4 var(--ui-font-sans);
-  color: var(--pc-color-text-secondary);
+  margin: 10px 0 0;
+  font: 500 12.5px/1.4 var(--up-font);
+  color: var(--up-text-3);
+  text-align: center;
 }
 
-/* Zone 2c — file list. Scrolls inside the card after ~3 rows. */
+/* ---------- Buttons: one family, one motion ---------- */
+#upload-root .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--up-r-btn);
+  font: 500 15px/1 var(--up-font-btn);
+  letter-spacing: 0;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  background: var(--up-soft);
+  color: var(--up-text);
+  box-shadow: none;
+  text-shadow: none;
+  opacity: 1;
+  transition:
+    transform var(--up-release) var(--up-spring),
+    background-color var(--up-color) var(--up-ease),
+    color var(--up-color) var(--up-ease);
+}
+#upload-root .btn:active {
+  transform: scale(.96);
+  transition: transform var(--up-press) var(--up-ease), background-color var(--up-press) var(--up-ease);
+}
+#upload-root .btn:focus-visible { outline: 2px solid var(--up-primary); outline-offset: 2px; }
+#upload-root .btn:disabled { cursor: not-allowed; pointer-events: none; transform: none; }
+
+/* soft (Browse) */
+#upload-root .btn--soft { background: var(--up-soft); color: var(--up-text); }
+@media (hover: hover) and (pointer: fine) { #upload-root .btn--soft:hover { background: var(--up-soft-hover); } }
+#upload-root .btn--soft:active { background: var(--up-soft-press); }
+
+/* solid (Start OCR) - the only filled button on the page */
+#upload-root .btn--primary { background: var(--up-solid); color: var(--up-on-solid); }
+@media (hover: hover) and (pointer: fine) { #upload-root .btn--primary:hover { background: var(--up-solid-hover); } }
+#upload-root .btn--primary:active { background: var(--up-solid-press); transform: scale(.98); }
+#upload-root .btn--primary:disabled { background: var(--up-solid-disabled); color: var(--up-on-solid); }
+.up-start { flex: none; width: 100%; height: 44px !important; margin-top: 16px; }
+
+/* ghost icon (row delete) */
+#upload-root .btn--ghost {
+  background: transparent;
+  color: var(--up-text-3);
+}
+#upload-root .btn--icon.btn--sm {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--up-r-sm);
+  font-size: 16px;
+}
+@media (hover: hover) and (pointer: fine) { #upload-root .btn--ghost:hover { background: var(--up-hover); color: var(--up-text); } }
+#upload-root .btn--ghost:active { background: var(--up-soft); }
+
+/* ---------- Rejected files: in-flow notice, hairline + red edge ---------- */
+.up-notices { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.up-notices:empty { display: none; }
+#upload-root .up-notices .toast {
+  position: static;
+  transform: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: none;
+  padding: 9px 12px;
+  border: var(--up-hairline);
+  border-left: 3px solid var(--up-err);
+  border-radius: var(--up-r-sm);
+  background: var(--up-surface);
+  box-shadow: none;
+  animation: up-in 200ms var(--up-ease);
+  font: 400 13px/1.4 var(--up-font);
+  color: var(--up-text);
+}
+#upload-root .up-notices .toast__icon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--up-err-bg);
+  color: var(--up-err);
+  font: 700 11px/1 var(--up-font-btn);
+}
+
+/* ---------- File list: scrolls inside the card ---------- */
 .up-list {
   list-style: none;
-  margin: var(--pc-space-2) 0;
+  margin: 12px 0 0;
   padding: 0;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: var(--pc-space-1);
+  gap: 6px;
 }
 .up-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   grid-template-areas: "name badge del" "bar bar bar";
   align-items: center;
-  column-gap: var(--ui-btn-gap);
-  row-gap: 4px;
-  border: 1px solid var(--pc-color-border-subtle);
-  border-radius: var(--ui-btn-radius);
-  background: var(--pc-color-bg-surface);
-  padding: 8px 10px;
+  column-gap: 8px;
+  row-gap: 8px;
+  padding: 10px 8px 10px 12px;
+  border: var(--up-hairline);
+  border-radius: var(--up-r-panel);
+  background: var(--up-surface);
+  animation: up-in 200ms var(--up-ease);
 }
-.up-meta { grid-area: name; min-width: 0; }
+.up-meta { grid-area: name; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
 .up-name {
-  display: block;
-  font: 500 13px/1.4 var(--ui-font-sans);
-  color: var(--pc-color-text-primary);
+  min-width: 0;
+  font: 500 14px/1.4 var(--up-font);
+  color: var(--up-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.up-size { font: 400 11px/1.4 var(--ui-font-sans); color: var(--pc-color-text-secondary); }
+.up-size {
+  flex: none;
+  font: 400 11.5px/1.4 var(--up-font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--up-text-3);
+}
 
-/* Status pills: ui.css .pill, compacted for rows. */
-.up-row .pill { height: 24px; padding: 0 9px; gap: 5px; font-size: 11px; }
-.up-row .pill .up-glyph { font-size: 12px; line-height: 1; }
+/* Status pill: flat, 24px, icon shape changes per state so colour is never alone */
+#upload-root .up-row .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  box-shadow: none;
+  font: 500 12px/1 var(--up-font);
+  cursor: default;
+}
+#upload-root .up-row .pill .pill__dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+#upload-root .up-row .pill .pill__dot:has(+ .up-glyph) { display: none; }
+#upload-root .up-row .pill .up-glyph { font: 700 11px/1 var(--up-font-btn); }
+#upload-root .pill--tinted.pill--default    { background: var(--up-subtle); color: var(--up-text-2); }
+#upload-root .pill--tinted.up-pill-live     { background: var(--up-live-fill); color: var(--up-live); }
+#upload-root .pill--tinted.pill--processing { background: var(--up-info-bg); color: var(--up-info); }
+#upload-root .pill--tinted.pill--success    { background: var(--up-ok-bg); color: var(--up-ok); }
+#upload-root .pill--tinted.pill--error      { background: var(--up-err-bg); color: var(--up-err); }
+.up-row .btn--icon { grid-area: del; }
 
-/* Progress bar — NOT in ui.css yet; scoped here, migrate in the
-   design-system pass (see layout plan inventory note). */
+/* Progress: 4px, flat fill */
 .up-bar {
   grid-area: bar;
-  height: 8px;
-  border-radius: var(--pc-radius-pill);
-  background: var(--pc-color-neutral-200);
+  height: 4px;
+  border-radius: 99px;
+  background: var(--up-hover);
   overflow: hidden;
 }
 .up-fill {
   display: block;
   height: 100%;
   width: 0;
-  border-radius: var(--pc-radius-pill);
-  background: var(--pc-color-primary);
-  transition: width 0.25s linear;
+  border-radius: 99px;
+  background: var(--up-primary);
+  transition: width 250ms linear, background-color var(--up-color) var(--up-ease);
 }
-.up-row[data-status="processing"] .up-fill { background: var(--pc-color-border-strong); }
-.up-row[data-status="done"] .up-fill { background: var(--pc-color-success); }
+.up-row[data-status="processing"] .up-fill { background: var(--up-info); }
+.up-row[data-status="done"] .up-fill { background: var(--up-ok); }
 .up-row[data-status="error"] .up-bar { visibility: hidden; }
 .up-why {
   grid-area: bar;
-  font: 400 11px/1.4 var(--ui-font-sans);
-  color: var(--pc-color-error);
+  font: 400 12px/1.4 var(--up-font);
+  color: var(--up-err);
 }
+.up-why:empty { display: none; }
 
-/* Live states (uploading / processing): orange = live scan only.
-   Reuses the scan-active tokens; everything else is a stock ui.css pill. */
-.pill--tinted.up-pill-live {
-  background: var(--pc-color-scan-active-fill);
-  color: var(--pc-color-scan-active-stroke);
-}
-
-/* Processing spinner — replaces the pill dot while work runs */
+/* Spinner replaces the dot while work runs */
 .up-spin {
-  width: var(--ui-pill-dot);
-  height: var(--ui-pill-dot);
+  width: 10px;
+  height: 10px;
   flex: none;
   border-radius: 50%;
-  border: 2px solid currentColor;
+  border: 1.5px solid currentColor;
   border-top-color: transparent;
-  animation: up-spin 0.7s linear infinite;
+  animation: up-spin 800ms linear infinite;
 }
 @keyframes up-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) {
-  .up-spin { animation-duration: 1.6s; }
-  .up-fill { transition: none; }
-}
+@keyframes up-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
-/* Rejected files — ui.css toast, error variant */
-.up-notices { display: flex; flex-direction: column; align-items: stretch; gap: var(--pc-space-1); margin-top: var(--pc-space-2); }
-.up-notices .toast { width: 100%; }
-.up-notices .toast__icon { font: 700 13px/1 var(--ui-font-sans); }
-
-/* Zone 2d — the only filled button on the page */
-.up-start { width: 100%; height: 48px; margin-top: var(--pc-space-2); font-size: 15px; }
-
-/* Zone 3 — help panel: quieter than the card */
-.up-help {
+/* ---------- Help panel: quieter than the card ---------- */
+#upload-root .up-help {
   height: auto;
-  background: var(--pc-color-bg-subtle);
-  box-shadow: none;
+  padding: 20px;
+  background: transparent;
+  border: var(--up-hairline);
+  border-radius: 12px;
 }
-.up-help h3 { font: 600 13px/1.4 var(--ui-font-sans); color: var(--pc-color-text-primary); margin: 0 0 var(--pc-space-1); }
-.up-steps { margin: 0 0 var(--pc-space-2); padding-left: 18px; color: var(--pc-color-text-secondary); font: 400 13px/1.5 var(--ui-font-sans); }
-.up-steps li { margin-bottom: 2px; }
-.up-rule { border: 0; border-top: 1px solid var(--pc-color-border-subtle); margin: var(--pc-space-2) 0; }
-.up-help p { font: 400 12px/1.5 var(--ui-font-sans); color: var(--pc-color-text-secondary); margin: 0 0 2px; }
-.up-offline { margin-top: var(--pc-space-4); }
+.up-help h3 {
+  margin: 0 0 10px;
+  font: 600 13px/1.3 var(--up-font);
+  color: var(--up-text);
+}
+.up-steps {
+  counter-reset: up-step;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font: 400 13px/1.45 var(--up-font);
+  color: var(--up-text-2);
+}
+.up-steps li { counter-increment: up-step; display: flex; align-items: baseline; gap: 10px; }
+.up-steps li::before {
+  content: counter(up-step);
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--up-hover);
+  color: var(--up-text-2);
+  font: 500 10.5px/1 var(--up-font-mono);
+  transform: translateY(-1px);
+}
+.up-rule { border: 0; border-top: var(--up-hairline); margin: 18px 0; }
+.up-help p { margin: 0; font: 500 12px/1.4 var(--up-font); color: var(--up-text-2); }
+.up-offline { margin-top: 18px !important; }
+.up-offline::first-letter { color: var(--up-ok); }
 
-/* One column under 900px */
+/* ---------- Small screens ---------- */
 @media (max-width: 900px) {
-  .up-layout { grid-template-columns: 1fr; gap: var(--pc-space-2); }
-  #upload-root.up-active { padding: var(--pc-space-2); }
+  .up-layout { grid-template-columns: 1fr; gap: 16px; width: 100%; max-width: 560px; }
+  #upload-root.up-active { padding: 16px; }
 }
 @media (max-height: 700px) {
-  .up-card { height: auto; min-height: 420px; }
+  .up-card { height: auto; min-height: 460px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #upload-root .btn, .up-dz, .up-dz-head .up-glyph, .up-fill { transition-property: background-color, color, border-color; }
+  #upload-root .btn:active, .up-dz.is-drag .up-glyph { transform: none; }
+  .up-row, #upload-root .up-notices .toast { animation: none; }
+  .up-spin { animation-duration: 1.6s; }
 }
