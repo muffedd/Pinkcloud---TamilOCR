@@ -2,6 +2,7 @@
 # Pinned for reproducible fresh-venv installs. Exactly ONE OpenCV package
 # (opencv-python-headless): contrib + headless both provide cv2 and conflict.
 fastapi==0.141.1
+starlette==1.7.0   # fastapi only floors starlette (>=0.46.0); pin the tested version so @app.on_event startup keeps working
 uvicorn==0.53.0
 python-multipart==0.0.32
 opencv-python-headless==5.0.0.93
