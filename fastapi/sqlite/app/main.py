@@ -352,6 +352,99 @@ def put_corrections(job_id: str, body: CorrectionsDoc):
     return {"job_id": job_id, **doc}
 
 
+# --------------------------------------------------------------------------
+# Export + receipt (slice: pipe-export-receipt) — logic lives in export.py
+# --------------------------------------------------------------------------
+
+from fastapi.responses import PlainTextResponse, Response  # noqa: E402
+
+from urllib.parse import quote as _quote  # noqa: E402
+
+from . import export as _export  # noqa: E402
+
+
+def _done_job(job_id: str) -> tuple[dict, list[dict]]:
+    """404 unknown job, 409 unfinished/failed job, else (job, pages)."""
+    job = db.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    if job["status"] != "done":
+        raise HTTPException(status_code=409, detail=f"job is {job['status']}, not done")
+    result = parse_job_result(job["result_json"]) or {}
+    # Reviewer corrections saved for this job (uploads/<id>/corrections.json)
+    # are applied to every export and counted in the receipt.
+    return job, _export.apply_saved_corrections(job_id, result.get("pages") or [])
+
+
+def _receipt(job: dict, pages: list[dict], reviewer: str | None) -> dict:
+    return _export.build_receipt(
+        job, pages, reviewer=reviewer,
+        ocr_engine=engine_status().get("ocr_engine"),
+    )
+
+
+def _download_name(job: dict, ext: str) -> str:
+    """ASCII-only download name. HTTP headers are latin-1, so a Tamil
+    filename here used to crash export.txt/export.pdf with a 500."""
+    stem = Path(job["filename"]).stem
+    safe = "".join(c if c.isascii() and (c.isalnum() or c in "-_") else "_"
+                   for c in stem).strip("_")
+    return f"{safe or 'pinkcloud'}.{ext}"
+
+
+def _content_disposition(job: dict, ext: str) -> str:
+    """attachment; ASCII filename= fallback + RFC 5987 filename*= that keeps
+    the original (e.g. Tamil) name for browsers that support it."""
+    stem = Path(job["filename"]).stem or "pinkcloud"
+    # Keep the real name (Tamil vowel signs are not isalnum); only drop
+    # path/quote/control chars. quote() makes the rest header-safe.
+    uni = "".join(c if c.isprintable() and c not in '/\\"' else "_"
+                  for c in stem)
+    return (f'attachment; filename="{_download_name(job, ext)}"; '
+            f"filename*=UTF-8''{_quote(f'{uni}.{ext}', safe='')}")
+
+
+@app.get("/jobs/{job_id}/receipt")
+def get_receipt(job_id: str, reviewer: str | None = None):
+    """Processing receipt: page count, auto vs human-review counts,
+    corrections, reviewer, times, master SHA-256 (re-verified on disk)."""
+    job, pages = _done_job(job_id)
+    return _receipt(job, pages, reviewer)
+
+
+@app.get("/jobs/{job_id}/export.txt")
+def export_txt(job_id: str, reviewer: str | None = None):
+    """Plain UTF-8 text with a '# ' provenance header, page by page."""
+    job, pages = _done_job(job_id)
+    body = _export.build_txt(pages, _receipt(job, pages, reviewer))
+    return PlainTextResponse(
+        body, media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": _content_disposition(job, "txt"),
+            "X-Master-SHA256": job["sha256"],
+        },
+    )
+
+
+@app.get("/jobs/{job_id}/export.pdf")
+def export_pdf(job_id: str, reviewer: str | None = None, receipt_page: bool = True):
+    """Searchable PDF: scan image + invisible Tamil text layer per line,
+    a visible receipt page at the end, provenance in the PDF Info dict."""
+    job, pages = _done_job(job_id)
+    master = storage.master_path(job_id)
+    if master is None:
+        raise HTTPException(status_code=410, detail="master file missing")
+    receipt = _receipt(job, pages, reviewer)
+    data = _export.build_pdf(master, pages, receipt, receipt_page=receipt_page)
+    return Response(
+        data, media_type="application/pdf",
+        headers={
+            "Content-Disposition": _content_disposition(job, "pdf"),
+            "X-Master-SHA256": job["sha256"],
+        },
+    )
+
+
 # --- demo box: serve the UI from the API origin (no CORS needed) ---------
 # Whitelist only: never expose pinkcloud.db or uploads/ over HTTP.
 #
