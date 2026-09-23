@@ -14,7 +14,7 @@
   /* =======================================================
      API SEAM — the only place that knows about the backend.
      Contract: schema/endpoints.md (fastapi/sqlite, app 0.2.0).
-       GET  /health          → {ok, ocr_engine: paddle|stub|not_initialized, ocr_error?}
+       GET  /health          → {ok, ocr_engine: sarvam|stub, sarvam_key_set, ocr_error?}
        POST /jobs  (form field "file", ONE file) → {job_id} | 400/422 {detail}
        GET  /jobs/{job_id}   → {status: pending|done|error,
                                 result: {pages:[…]} | {error} | null} | 404
@@ -268,7 +268,7 @@
       });
   }
 
-  /* /health → 'paddle' | 'stub' | 'not_initialized' | 'down' */
+  /* /health → 'sarvam' | 'stub' | 'down' */
   function realHealth() {
     return fetch(HEALTH, { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
@@ -845,9 +845,8 @@
   /* --- connection state: the footer line tells the truth --- */
   const HEALTH_TEXT = {
     mock: '● Demo mode: mock data, runs fully offline',
-    paddle: '● Connected: OCR engine ready',
+    sarvam: '● Connected: Sarvam OCR ready',
     stub: '● Connected: stub OCR, text is placeholder',
-    not_initialized: '● Connected: OCR engine starting',
     down: '● Backend unreachable',
     unknown: '● Connected',
     checking: '● Checking backend…'

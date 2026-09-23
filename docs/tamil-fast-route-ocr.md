@@ -11,9 +11,9 @@ config, license file, paper, or first-party repo); links are at the end.
 ## Where it plugs in
 
 `fastapi/sqlite/app/ocr.py::ocr_page(img)` is the single seam. It returns
-`[{body, bbox, confidence}]` and is switched by `OCR_ENGINE` (`sarvam` | `paddle`).
+`[{body, bbox, confidence}]` and today calls Sarvam only (PaddleOCR has been removed).
 `fastapi/sqlite/app/router.py::choose_profile()` already labels each page FAST or
-HEAVY. So a fast-route model is a **third engine branch**: FAST → local open model,
+HEAVY. So a fast-route model is a **second engine branch**: FAST → local open model,
 HEAVY → Sarvam. No contract change is needed if the model emits per-line `body`,
 `bbox`, and `confidence`.
 

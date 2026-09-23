@@ -1,7 +1,7 @@
 """Tests for the export/receipt slice (app/export.py + /jobs/{id}/export.*).
 
 Run from fastapi/sqlite/:  python -m pytest tests/test_export.py -v
-Works without paddle: the text-layer test feeds a hand-made page JSON.
+Works offline: the text-layer test feeds a hand-made page JSON.
 """
 
 import hashlib
@@ -53,7 +53,7 @@ def test_pdf_text_layer_has_tamil_word(tmp_path):
                    "bbox": [100, 100, 1000, 80], "confidence": 0.9}])
     job = {"id": "x" * 32, "filename": "t.png", "sha256": "0" * 64,
            "status": "done", "created_at": "2026-01-01T00:00:00+00:00"}
-    receipt = export.build_receipt(job, [page], reviewer="R", ocr_engine="paddle")
+    receipt = export.build_receipt(job, [page], reviewer="R", ocr_engine="sarvam")
     data = export.build_pdf(master, [page], receipt)
     assert data.startswith(b"%PDF")
     pdf = pdfium.PdfDocument(data)

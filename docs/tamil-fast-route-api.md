@@ -11,9 +11,9 @@ language tables, or API references); links are at the end.
 
 ## Where it plugs in
 
-`fastapi/sqlite/app/ocr.py::ocr_page(img)` returns `[{body, bbox, confidence}]` and is
-switched by `OCR_ENGINE`. A hosted FAST engine is a third branch next to `sarvam` and
-`paddle`. **Contract fit matters:** an OCR API that returns line/word boxes and
+`fastapi/sqlite/app/ocr.py::ocr_page(img)` returns `[{body, bbox, confidence}]` and
+today calls Sarvam only (PaddleOCR has been removed). A hosted FAST engine would be a
+second branch next to `sarvam`. **Contract fit matters:** an OCR API that returns line/word boxes and
 confidence drops in with no downstream change; a chat-style VLM that returns only text
 does not.
 
