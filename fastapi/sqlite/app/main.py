@@ -10,8 +10,15 @@ Pipeline per upload:
   5. score + route        -> router.py   (FAST / HEAVY badge per page)
   6. OCR fast pass        -> ocr.py      (Sarvam Document AI, marked stub
      fallback; engine failures are logged and shown in /health)
+  6b. text check          -> textcheck.py (per-line confidence = "text looks
+     malformed" score; Sarvam's layout score kept as layout_confidence)
   7. build contract JSON  -> schema_out.py
   8. store result         -> db.py
+
+Steps 2-8 run on a background thread (one per job, pages in order), so
+POST /jobs answers with the job_id as soon as the upload is validated and
+the job row exists; GET /jobs/{id} reports status "pending" (plus
+progress) until the job is "done" or "error".
 
 Run:  uvicorn app.main:app --reload
 Docs: see RUN.md
@@ -20,6 +27,7 @@ Docs: see RUN.md
 import json
 import logging
 import re
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -29,11 +37,12 @@ from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
 from . import db, storage
-from .ocr import engine_status, failed_page_lines, ocr_page, warn_legacy_env
+from .ocr import (_safe_error, engine_status, failed_page_lines, ocr_page,
+                  warn_legacy_env)
 from .pdfutil import load_pages, probe_decode, to_gray
 from .router import choose_profile, compute_scores
 from .schema_out import (build_job_result, build_page_result, enrich_page,
-                         parse_job_result)
+                         parse_job_result, score_ocr_lines)
 
 # Both a supported content type AND a supported extension are required;
 # a mismatch on EITHER side is rejected with 400 before any job exists.
@@ -108,12 +117,70 @@ def health():
     return {"ok": True, **engine_status()}
 
 
+# --------------------------------------------------------------------------
+# background jobs
+# --------------------------------------------------------------------------
+# In-process progress of running jobs: job_id -> (pages_done, pages_total).
+# Only a hint for GET /jobs/{id}; the DB status stays the source of truth
+# (a job is finished only when its row says done/error).
+_PROGRESS: dict[str, tuple[int, int | None]] = {}
+_PROGRESS_LOCK = threading.Lock()
+
+
+def _set_progress(job_id: str, done: int, total: int | None) -> None:
+    with _PROGRESS_LOCK:
+        _PROGRESS[job_id] = (done, total)
+
+
+def _clear_progress(job_id: str) -> None:
+    with _PROGRESS_LOCK:
+        _PROGRESS.pop(job_id, None)
+
+
+def job_progress(job_id: str) -> tuple[int, int | None] | None:
+    with _PROGRESS_LOCK:
+        return _PROGRESS.get(job_id)
+
+
+def _job_error_json(exc: Exception) -> str:
+    """Stored error for a failed job: one line, Sarvam key scrubbed."""
+    return json.dumps({"error": _safe_error(exc)})
+
+
+def _spawn_job(target, *args) -> threading.Thread:
+    """Run one job's processing on its own background thread.
+
+    One thread per job; pages inside a job run sequentially (Sarvam allows
+    10 requests/min). Returns the started thread (tests join it)."""
+    t = threading.Thread(target=target, args=args, daemon=True,
+                         name=f"pinkcloud-job-{args[0][:8]}")
+    t.start()
+    return t
+
+
+def _start_job(job_id: str, target, *args) -> None:
+    """Hand a job to the background; if even that fails, the job row is
+    marked error right away instead of staying pending forever."""
+    _set_progress(job_id, 0, None)
+    try:
+        _spawn_job(target, job_id, *args)
+    except Exception as exc:
+        logging.getLogger("pinkcloud.job").exception(
+            "job %s: could not start background processing", job_id)
+        _clear_progress(job_id)
+        db.set_result(job_id, "error", _job_error_json(exc))
+
+
 def _pipeline(job_id: str, master: Path | list[Path]) -> list[dict]:
     """Process the master file(s) -> list of per-page contract JSON objects."""
     pages_out: list[dict] = []
 
     # (4) Load every page as a 1600px-capped BGR image.
-    for page_number, img in enumerate(load_pages(master), start=1):
+    pages_in = load_pages(master)
+    total = len(pages_in)
+    _set_progress(job_id, 0, total)
+
+    for page_number, img in enumerate(pages_in, start=1):
         t_page = time.perf_counter()
         gray = to_gray(img)
 
@@ -134,6 +201,11 @@ def _pipeline(job_id: str, master: Path | list[Path]) -> list[dict]:
                 "job %s: OCR failed on page %d", job_id, page_number)
             ocr_lines, ocr_ms = failed_page_lines(img, exc), 0.0
 
+        # (6b) Per-line confidence from the text check ("text looks
+        #      malformed" score), not Sarvam's layout-block score, which
+        #      is kept as layout_confidence.
+        ocr_lines = score_ocr_lines(ocr_lines)
+
         # (7) Freeze the contract JSON for this page.
         page_ms = (time.perf_counter() - t_page) * 1000.0
         pages_out.append(
@@ -150,6 +222,7 @@ def _pipeline(job_id: str, master: Path | list[Path]) -> list[dict]:
                 processing_ms=page_ms,
             )
         )
+        _set_progress(job_id, page_number, total)
 
     return pages_out
 
@@ -167,7 +240,9 @@ def _run_multi_job(job_id: str, uploads: list[tuple[str, bytes]],
         db.set_result(job_id, "done", json.dumps(result, ensure_ascii=False))
     except Exception as exc:  # keep the server alive, record the failure
         logging.getLogger("pinkcloud.job").exception("job %s failed", job_id)
-        db.set_result(job_id, "error", json.dumps({"error": str(exc)}))
+        db.set_result(job_id, "error", _job_error_json(exc))
+    finally:
+        _clear_progress(job_id)
 
 
 def _run_job(job_id: str, filename: str, data: bytes) -> None:
@@ -189,7 +264,9 @@ def _run_job(job_id: str, filename: str, data: bytes) -> None:
         db.set_result(job_id, "done", json.dumps(result, ensure_ascii=False))
     except Exception as exc:  # keep the server alive, record the failure
         logging.getLogger("pinkcloud.job").exception("job %s failed", job_id)
-        db.set_result(job_id, "error", json.dumps({"error": str(exc)}))
+        db.set_result(job_id, "error", _job_error_json(exc))
+    finally:
+        _clear_progress(job_id)
 
 
 def _read_multi(files: list[UploadFile]) -> list[tuple[str, bytes]]:
@@ -228,7 +305,11 @@ def _read_multi(files: list[UploadFile]) -> list[tuple[str, bytes]]:
 @app.post("/jobs")
 def create_job(file: UploadFile | None = File(None),
                files: list[UploadFile] | None = File(None)):
-    """Accept an upload, process it, return the new job id.
+    """Accept an upload, start processing it, return the new job id.
+
+    Returns {"job_id": ...} (HTTP 200) as soon as the upload is validated
+    and the job row exists; OCR runs on a background thread. Poll
+    GET /jobs/{id} until status is "done" or "error".
 
     Send EITHER `file` (one PDF/image, unchanged behaviour) OR a repeated
     `files` field (images, in order -> one job, one page per image).
@@ -246,8 +327,8 @@ def create_job(file: UploadFile | None = File(None),
             [storage.sha256_bytes(d) for _, d in uploads])
         job_id = uuid.uuid4().hex
         db.create_job(job_id, uploads[0][0], digest)
-        _run_multi_job(job_id, uploads, digest)
-        return {"job_id": job_id}
+        _start_job(job_id, _run_multi_job, uploads, digest)
+        return {"job_id": job_id, "status": "pending"}
     if file is None:
         raise HTTPException(status_code=422, detail="no file uploaded")
 
@@ -282,11 +363,10 @@ def create_job(file: UploadFile | None = File(None),
     job_id = uuid.uuid4().hex  # also the folder name under uploads/
     db.create_job(job_id, filename, storage.sha256_bytes(data))
 
-    # Hackathon-pragmatic: process synchronously so POST returns when the
-    # result is ready. Swap _run_job for a background task later if needed.
-    _run_job(job_id, filename, data)
+    # OCR runs in the background; the client polls GET /jobs/{id}.
+    _start_job(job_id, _run_job, filename, data)
 
-    return {"job_id": job_id}
+    return {"job_id": job_id, "status": "pending"}
 
 
 @app.get("/jobs/{job_id}")
@@ -305,7 +385,7 @@ def get_job(job_id: str):
     result = parse_job_result(job["result_json"])
     if result and isinstance(result.get("pages"), list):
         result["pages"] = [enrich_page(p) for p in result["pages"]]
-    return {
+    out = {
         "job_id": job["id"],
         "filename": job["filename"],
         "sha256": job["sha256"],
@@ -313,6 +393,17 @@ def get_job(job_id: str):
         "created_at": job["created_at"],
         "result": result,
     }
+    if job["status"] == "pending":
+        # Additive progress hint while the background thread works
+        # (absent when this process is not running the job).
+        prog = job_progress(job["id"])
+        if prog is not None:
+            done, total = prog
+            out["pages_done"] = done
+            out["pages_total"] = total
+            if total:
+                out["progress"] = min(99, int(done * 100 / total))
+    return out
 
 
 def _job_summary(job: dict) -> dict:
@@ -629,9 +720,12 @@ def _done_job(job_id: str) -> tuple[dict, list[dict]]:
     if job["status"] != "done":
         raise HTTPException(status_code=409, detail=f"job is {job['status']}, not done")
     result = parse_job_result(job["result_json"]) or {}
+    # Same read-time line semantics as GET /jobs/{id} (old jobs get the
+    # text-check confidence/needs_review), so receipt counts match the API.
+    pages = [enrich_page(p) for p in (result.get("pages") or [])]
     # Reviewer corrections saved for this job (uploads/<id>/corrections.json)
     # are applied to every export and counted in the receipt.
-    return job, _export.apply_saved_corrections(job_id, result.get("pages") or [])
+    return job, _export.apply_saved_corrections(job_id, pages)
 
 
 def _receipt(job: dict, pages: list[dict], reviewer: str | None) -> dict:

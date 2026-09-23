@@ -63,10 +63,14 @@ How Sarvam output maps onto the contract:
 - Sarvam returns layout **blocks** (often a whole paragraph), not lines. Each
   block's text is split on newlines into contract lines, and the block box is
   divided evenly top to bottom. Line boxes are therefore approximate.
-- Every line gets its block's `confidence`. That is Sarvam's layout score
-  (observed 0.30-0.91 on real pages), not per-line recognition certainty.
-  The editor's Doubt/heatmap thresholds were tuned before the switch to
-  Sarvam and may need retuning for these lower scores.
+- Sarvam's per-block `confidence` is a layout score (observed 0.30-0.91 on
+  real pages), not per-line recognition certainty. It is kept on each line as
+  `layout_confidence` for reference only. The line `confidence` is the text
+  check `app/textcheck.py` `score_line()`: a text-quality proxy (how malformed
+  the text looks), not a recognition probability. A line is flagged
+  `needs_review` when it scores below 0.80 or is `[stub]` output, matching
+  the editor's bands (Auto >= 0.95, OK 0.80-0.95, Doubt < 0.80). A HEAVY page
+  keeps its page-level flag but only its bad lines are flagged.
 - Each page is one Sarvam job (about 10-17 s observed). Sarvam's Document
   Intelligence rate limit is 10 requests/minute on every plan, and each page
   uses several requests (submit, status polls, download link), so multi-page

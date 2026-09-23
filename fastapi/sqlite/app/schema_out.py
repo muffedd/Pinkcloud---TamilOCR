@@ -10,7 +10,7 @@ schema/schema.json (CICT line-based fields):
   "lines": [
      {"id": "L1", "seq": 1, "body": str,
       "bbox": [x, y, w, h], "confidence": 0..1,
-      "needs_review": bool}
+      "needs_review": bool, "layout_confidence": 0..1 (optional)}
   ],
   "text": "<line bodies stitched in seq order>",
   # optional keys
@@ -29,7 +29,21 @@ from __future__ import annotations
 
 from typing import Any
 
-# Pages whose best line confidence falls below this go to human review.
+from .textcheck import score_line
+
+# Line confidence is a TEXT-QUALITY score from textcheck.score_line(): it
+# says how malformed the line text looks (orphan vowel signs, odd chars,
+# low Tamil share, repeats). It is NOT a recognition probability - Sarvam
+# returns no per-line recognition confidence. Sarvam's own number (one
+# value per layout block) is kept separately as layout_confidence.
+
+# Per-line review floor on the text-quality score: a line whose text looks
+# malformed (below this) goes to a human. Matches the editor's Doubt band
+# (Auto >= 0.95, OK 0.80-0.95, Doubt < 0.80), tuned for textcheck.
+LINE_REVIEW_FLOOR = 0.80
+
+# Page-level floor (unchanged): a page whose BEST line scores below this,
+# a page with no lines, or a HEAVY page is flagged needs_review.
 # Zero-confidence stub pages and empty OCR results are always flagged.
 CONFIDENCE_REVIEW_FLOOR = 0.5
 
@@ -37,16 +51,52 @@ CONFIDENCE_REVIEW_FLOOR = 0.5
 STUB_MARK = "[stub]"
 
 
-def line_needs_review(line: dict, profile: str | None) -> bool:
-    """Per-line review flag: low confidence, stub output, or a HEAVY page.
+def _is_stub(line: dict) -> bool:
+    return str(line.get("body", "")).startswith(STUB_MARK)
+
+
+def text_confidence(body: str) -> float:
+    """Text-quality score for one line body (0..1, 4 decimals).
+
+    Marked [stub] lines stay at 0.0: they are placeholders, not OCR text."""
+    body = body or ""
+    if body.startswith(STUB_MARK):
+        return 0.0
+    return score_line(body)
+
+
+def score_ocr_lines(ocr_lines: list[dict]) -> list[dict]:
+    """Re-score raw engine lines with the text check.
+
+    Each line keeps the engine's number as layout_confidence and gets
+    confidence = text_confidence(body) ("text looks malformed" proxy).
+    Returns new dicts; the input is not modified."""
+    out = []
+    for line in ocr_lines:
+        try:
+            layout = float(line.get("confidence", 0.0))
+        except (TypeError, ValueError):
+            layout = 0.0
+        out.append({**line,
+                    "layout_confidence": max(0.0, min(1.0, layout)),
+                    "confidence": text_confidence(line.get("body", ""))})
+    return out
+
+
+def line_needs_review(line: dict, profile: str | None = None) -> bool:
+    """Per-line review flag: the line text looks malformed (text-quality
+    confidence below LINE_REVIEW_FLOOR) or it is stub output.
+
+    The page profile no longer forces every line: a HEAVY page with clean
+    text flags only its bad lines (the page itself is still flagged via the
+    page-level needs_review). `profile` is accepted for call compatibility.
 
     Same rule the receipt uses to count human-review lines
     (export._line_needs_human), so GET /jobs/{id} lines and the receipt
     can never disagree."""
     return (
-        float(line.get("confidence", 0.0)) < CONFIDENCE_REVIEW_FLOOR
-        or str(line.get("body", "")).startswith(STUB_MARK)
-        or profile == "HEAVY"
+        float(line.get("confidence", 0.0)) < LINE_REVIEW_FLOOR
+        or _is_stub(line)
     )
 
 
@@ -90,6 +140,9 @@ def build_page_result(
             "bbox": [int(v) for v in line["bbox"]],
             "confidence": round(float(line["confidence"]), 4),
         }
+        if "layout_confidence" in line:
+            # Sarvam's layout-block score, kept for reference only.
+            entry["layout_confidence"] = round(float(line["layout_confidence"]), 4)
         entry["needs_review"] = line_needs_review(entry, profile)
         lines.append(entry)
 
@@ -120,18 +173,27 @@ def build_page_result(
 
 
 def enrich_page(page: dict) -> dict:
-    """Fill per-line needs_review on a stored page that predates the field.
+    """Bring a stored page to the current line semantics at read time.
 
-    Idempotent: lines that already carry the flag keep it. Used by
-    GET /jobs/{id} so jobs stored before per-line flags existed answer in
-    the current shape without rewriting the DB."""
+    Lines that carry layout_confidence were scored by the text check when
+    processed; they only get needs_review filled if missing. Lines WITHOUT
+    it are from jobs processed before the text check was wired in: their
+    stored confidence is Sarvam's layout score, so it is moved to
+    layout_confidence, confidence is recomputed with text_confidence(body)
+    and needs_review is re-derived with the same rule new pages use (the
+    old flag was forced by HEAVY pages). Nothing is written back to the DB.
+    Idempotent."""
     profile = page.get("profile")
     lines = []
     for line in page.get("lines") or []:
-        if "needs_review" in line:
-            lines.append(line)
-        else:
-            lines.append({**line, "needs_review": line_needs_review(line, profile)})
+        if "layout_confidence" not in line:
+            line = {**line,
+                    "layout_confidence": round(float(line.get("confidence", 0.0) or 0.0), 4),
+                    "confidence": text_confidence(line.get("body", ""))}
+            line["needs_review"] = line_needs_review(line, profile)
+        elif "needs_review" not in line:
+            line = {**line, "needs_review": line_needs_review(line, profile)}
+        lines.append(line)
     return {**page, "lines": lines}
 
 

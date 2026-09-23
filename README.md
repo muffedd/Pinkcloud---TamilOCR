@@ -96,7 +96,7 @@ curl -s http://127.0.0.1:8000/jobs/<job_id>                        # status + re
 curl -s "http://127.0.0.1:8000/search?q=<word>"                    # full-text search
 ```
 
-Accepted types: pdf, jpg, jpeg, png, tiff, webp. Anything else returns HTTP 400. Repeat `-F "files=@p1.jpg" -F "files=@p2.png"` to send several images as one job, one page per image. Processing is synchronous, so the job is already `done` or `error` when `POST /jobs` returns.
+Accepted types: pdf, jpg, jpeg, png, tiff, webp. Anything else returns HTTP 400. Repeat `-F "files=@p1.jpg" -F "files=@p2.png"` to send several images as one job, one page per image. `POST /jobs` answers with the `job_id` (`status: "pending"`) as soon as the upload is validated; OCR runs in the background, so poll `GET /jobs/<job_id>` until `status` is `done` or `error`.
 
 ### 4. Live frontend against the backend
 
