@@ -1,0 +1,231 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pinkcloud.local/schema/ocr-page.schema.json",
+  "title": "Pink Cloud OCR Page Output",
+  "description": "Stable output shape produced by the Pink Cloud Tamil OCR pipeline (FAST/HEAVY engines) after adapter normalization. Uses CICT (Central Institute of Classical Tamil) line-based field names.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["page", "profile", "quality", "lines", "text"],
+  "properties": {
+    "page": {
+      "type": "integer",
+      "description": "1-based page number in the source document."
+    },
+    "profile": {
+      "type": "string",
+      "enum": ["FAST", "HEAVY"],
+      "description": "OCR profile chosen by the router. FAST = local PP-OCRv5 mobile (det+rec). HEAVY = hosted PaddleOCR-VL via Baidu AI Studio API after repair preprocessing."
+    },
+    "quality": { "$ref": "#/$defs/quality" },
+    "lines": {
+      "type": "array",
+      "description": "CICT-style line records in reading order. Empty array allowed for unreadable pages.",
+      "items": { "$ref": "#/$defs/line" }
+    },
+    "text": {
+      "type": "string",
+      "description": "Full refined paragraph: corrected line bodies stitched in exact seq order. Primary export text."
+    },
+    "preprocessed": {
+      "type": "boolean",
+      "description": "Whether repair preprocessing (denoise/binarize) was applied before OCR."
+    },
+    "words": {
+      "type": "array",
+      "description": "Optional word-level detail.",
+      "items": { "$ref": "#/$defs/word" }
+    },
+    "corrections": {
+      "type": "array",
+      "description": "Correction layer applied to raw OCR text.",
+      "items": { "$ref": "#/$defs/correction" }
+    },
+    "verdicts": {
+      "type": "array",
+      "description": "Verifier chain results for uncertain words.",
+      "items": { "$ref": "#/$defs/verdict" }
+    },
+    "needs_review": {
+      "type": "boolean",
+      "description": "True if this page was routed to the human review queue due to low confidence."
+    },
+    "processing_ms": {
+      "type": "number",
+      "description": "Wall-clock milliseconds spent processing this page."
+    },
+    "specimen": {
+      "type": "string",
+      "description": "CICT identity: specimen name/label."
+    },
+    "chapter": {
+      "type": "integer",
+      "description": "CICT identity: chapter number."
+    },
+    "work": {
+      "type": "string",
+      "description": "CICT identity: name of the classical work."
+    },
+    "manuscript_id": {
+      "type": "string",
+      "description": "CICT identity: manuscript identifier."
+    },
+    "script": {
+      "type": "string",
+      "description": "CICT identity: script used in the source."
+    },
+    "material": {
+      "type": "string",
+      "description": "CICT identity: physical material (e.g. palm-leaf, paper)."
+    },
+    "license": {
+      "type": "string",
+      "description": "CICT identity: license of the source material."
+    },
+    "doi": {
+      "type": "string",
+      "description": "CICT identity: DOI of the source material."
+    }
+  },
+  "$defs": {
+    "bbox": {
+      "type": "array",
+      "description": "[x, y, width, height] in px on the 1600px-capped image.",
+      "items": { "type": "number" },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blur", "contrast", "noise", "skew_deg"],
+      "properties": {
+        "blur": {
+          "type": "number",
+          "description": "Laplacian variance; lower means blurrier."
+        },
+        "contrast": {
+          "type": "number"
+        },
+        "noise": {
+          "type": "number"
+        },
+        "skew_deg": {
+          "type": "number",
+          "description": "Detected page skew in degrees."
+        },
+        "damage_flags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "e.g. torn, stained, yellowed, faint-ink."
+        },
+        "ink_density": {
+          "type": "number"
+        },
+        "estimated_lines": {
+          "type": "integer"
+        },
+        "quality_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        }
+      }
+    },
+    "line": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "seq", "body", "bbox", "confidence"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Line identifier, e.g. \"L1\"."
+        },
+        "seq": {
+          "type": "integer",
+          "description": "Reading order, 1-based.",
+          "minimum": 1
+        },
+        "body": {
+          "type": "string",
+          "description": "Recognized Tamil line text (CICT: body)."
+        },
+        "bbox": { "$ref": "#/$defs/bbox" },
+        "confidence": {
+          "$ref": "#/$defs/confidence",
+          "description": "0-1 confidence; the UI highlights each line colored by this value."
+        },
+        "kural": {
+          "type": ["integer", "null"],
+          "description": "CICT: kural number, if applicable."
+        },
+        "margin": {
+          "type": "string",
+          "description": "CICT: margin annotation."
+        },
+        "numeral": {
+          "type": "string",
+          "description": "CICT: numeral annotation."
+        },
+        "end_char": {
+          "type": "string",
+          "description": "CICT: line-ending character."
+        }
+      }
+    },
+    "word": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "bbox", "confidence"],
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "bbox": { "$ref": "#/$defs/bbox" },
+        "confidence": { "$ref": "#/$defs/confidence" }
+      }
+    },
+    "correction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["before", "after", "tier", "evidence"],
+      "properties": {
+        "before": {
+          "type": "string"
+        },
+        "after": {
+          "type": "string"
+        },
+        "tier": {
+          "type": "string",
+          "enum": ["T1", "T2"],
+          "description": "T1 = glyph confusion, T2 = missing word."
+        },
+        "evidence": {
+          "type": "string"
+        }
+      }
+    },
+    "verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["word", "probability", "source"],
+      "properties": {
+        "word": {
+          "type": "string"
+        },
+        "probability": {
+          "$ref": "#/$defs/confidence"
+        },
+        "source": {
+          "type": "string",
+          "enum": ["groq", "laya", "jev", "cache", "rules", "review"]
+        }
+      }
+    }
+  }
+}
