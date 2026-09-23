@@ -44,6 +44,7 @@
   --pc-color-conf-doubt-line: #A86A00;
   --pc-conf-auto-min: 0.90;
   --pc-conf-ok-min: 0.75;
+  --pc-conf-review-floor: 0.985; /* Doubt floor on needs_review/HEAVY pages */
 
   /* ---------- Provenance ---------- */
   --pc-color-prov-raw: #9A948F;

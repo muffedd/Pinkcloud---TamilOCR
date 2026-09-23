@@ -48,6 +48,13 @@ var S = {
 
 var AUTO_MIN = 0.9;
 var OK_MIN = 0.75;
+/* Review floor for pages the backend routed to review (needs_review, or
+   profile HEAVY). Paddle's line confidence averages per-character scores, so
+   a line with one or two misread glyphs still lands around 0.94-0.98 - far
+   above OK_MIN. On those pages any line below this floor is Doubt. Clean
+   pages keep the normal Auto/OK/Doubt bands. A higher-scoring misread can
+   still slip through: this raises recall, it is not proof of correctness. */
+var REVIEW_FLOOR = 0.985;
 var MOTION_BASE = 160;
 var TOAST_MS = 2400;
 
@@ -82,6 +89,19 @@ function binOf(conf) {
   return "doubt";
 }
 
+/* True when the backend flagged this page for review (HEAVY implies it in
+   schema_out.py; checked too in case an older result lacks the flag). */
+function isReviewPage(doc) {
+  return !!doc && (doc.needs_review === true || doc.profile === "HEAVY");
+}
+
+/* Review-queue bin for one line: the normal bands, raised to Doubt below
+   REVIEW_FLOOR on review pages. Only reads contract fields. */
+function reviewBinOf(conf, doc) {
+  if (isReviewPage(doc) && conf < REVIEW_FLOOR) return "doubt";
+  return binOf(conf);
+}
+
 function buildModel(doc) {
   S.page = doc;
   S.lines = [];
@@ -114,7 +134,7 @@ function buildModel(doc) {
         orig: text,
         after: hit ? hit.after : "",
         conf: line.confidence,
-        bin: binOf(line.confidence),
+        bin: reviewBinOf(line.confidence, doc),
         prov: hit ? (TIER_PROV[hit.tier] || "raw") : "raw",
         tier: hit ? hit.tier : "",
         evidence: hit ? hit.evidence : "",
@@ -721,8 +741,11 @@ function renderScan() {
 
 function renderLegend() {
   el.legend.className = "legend lens-" + S.lens;
+  var doubtLabel = isReviewPage(S.page)
+    ? "Doubt <" + REVIEW_FLOOR + " (review page)"
+    : "Doubt <" + OK_MIN.toFixed(2);
   var items = S.lens === "conf"
-    ? [["is-auto", "Auto ≥0.90"], ["is-ok", "OK"], ["is-doubt", "Doubt <0.75"]]
+    ? [["is-auto", "Auto ≥" + AUTO_MIN.toFixed(2)], ["is-ok", "OK"], ["is-doubt", doubtLabel]]
     : [["pv-raw", "Raw"], ["pv-rule", "Rule"], ["pv-swap", "Swap"], ["pv-llm", "LLM"], ["pv-human", "Human"]];
   el.legend.innerHTML = "";
   items.forEach(function (it) {
@@ -1228,6 +1251,7 @@ function loadPage(doc) {
 function init() {
   AUTO_MIN = cssNum("--pc-conf-auto-min", 0.9);
   OK_MIN = cssNum("--pc-conf-ok-min", 0.75);
+  REVIEW_FLOOR = cssNum("--pc-conf-review-floor", 0.985);
   MOTION_BASE = cssNum("--pc-motion-base", 160);
   TOAST_MS = cssNum("--pc-toast-duration", 2400);
 
