@@ -1,0 +1,5 @@
+lines dropped (<50% Tamil letters): 5
+exact repeated sentences removed: 0
+lines kept: 1
+confidence: layout-box score, not OCR certainty
+source line 4: KEEP (confidence=0.956902027130127, orphan sign columns=[])
