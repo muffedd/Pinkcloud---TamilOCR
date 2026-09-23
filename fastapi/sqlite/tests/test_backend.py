@@ -182,7 +182,7 @@ def test_health_ok(client):
     """ok:true plus the OCR engine marker (stub output must be visible)."""
     r = client.get("/health").json()
     assert r["ok"] is True
-    assert r["ocr_engine"] in {"paddle", "stub", "not_initialized"}
+    assert r["ocr_engine"] in {"sarvam", "paddle", "stub", "not_initialized"}
 
 
 # --------------------------------------------------------------------------

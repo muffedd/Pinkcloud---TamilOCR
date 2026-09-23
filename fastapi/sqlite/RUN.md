@@ -29,6 +29,60 @@ uvicorn app.main:app --reload
 - http://127.0.0.1:8000/health → `{"ok": true}`
 - http://127.0.0.1:8000/docs → auto-generated Swagger UI
 
+## OCR engine: Sarvam (default) or PaddleOCR (offline fallback)
+
+The OCR pass calls the **Sarvam Document AI Digitise API** (Sarvam Vision,
+`ta-IN`) by default. Set the key as an environment variable on the machine
+that runs the server. Never commit it and never paste it into chat.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `SARVAM_API_KEY` | (none) | Sarvam API subscription key. Required for Sarvam. |
+| `OCR_ENGINE` | `sarvam` | `sarvam` or `paddle`. `paddle` never calls the network. |
+| `SARVAM_FALLBACK` | `paddle` | If the key is missing or a Sarvam call fails, run local PaddleOCR for that page. `none` returns the marked `[stub]` page instead. |
+| `SARVAM_LANGUAGE` | `ta-IN` | Document language sent to Sarvam. |
+| `SARVAM_TIMEOUT_S` | `120` | Time budget per page (submit + poll + download). |
+| `SARVAM_POLL_S` | `3` | Seconds between status polls. |
+| `SARVAM_BASE_URL` | `https://api.sarvam.ai` | Override only for testing. |
+
+```bat
+:: Windows (current terminal only)
+set SARVAM_API_KEY=<paste key here, locally>
+uvicorn app.main:app
+
+:: Offline demo, no network
+set OCR_ENGINE=paddle
+uvicorn app.main:app
+```
+
+```bash
+# macOS / Linux
+export SARVAM_API_KEY='<paste key here, locally>'
+uvicorn app.main:app
+```
+
+`GET /health` shows which engine ran the last page (`ocr_engine`: `sarvam`,
+`paddle` or `stub`), what was selected (`ocr_engine_selected`), whether a key
+is present (`sarvam_key_set`, never the key itself), and the last Sarvam
+error (`sarvam_error`).
+
+How Sarvam output maps onto the contract:
+
+- Sarvam returns layout **blocks** (often a whole paragraph), not lines. Each
+  block's text is split on newlines into contract lines, and the block box is
+  divided evenly top to bottom. Line boxes are therefore approximate.
+- Every line gets its block's `confidence`. That is Sarvam's layout score
+  (observed 0.30-0.91 on real pages), not per-line recognition certainty, and
+  it runs much lower than PaddleOCR's scores. The editor's Doubt/heatmap
+  thresholds were tuned for PaddleOCR.
+- Each page is one Sarvam job (about 10-17 s observed). Sarvam's Document
+  Intelligence rate limit is 10 requests/minute on every plan, and each page
+  uses several requests (submit, status polls, download link), so multi-page
+  PDFs are slow; 429s are retried with backoff.
+
+Tests never call Sarvam: `tests/conftest.py` removes `SARVAM_API_KEY` and
+`tests/test_sarvam_ocr.py` uses a mocked HTTP transport.
+
 ## 3. POST a scanned page
 
 ```bash
