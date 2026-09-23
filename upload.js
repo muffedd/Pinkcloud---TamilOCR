@@ -55,8 +55,20 @@
     const s = q.toString();
     return './editor.html' + (s ? '?' + s : '');
   }
-  const POLL_MS = 400;
-  const POLL_MAX = 600; // depth cap ≈ 4 min per job
+  /* Resilient job loop (live only). The page keeps trying on its own until the
+     OCR result is in: Render cold starts (502/503/504), dropped connections,
+     a 404 right after the job is created and the browser going offline are all
+     retried with backoff. Only real rejections (400/413/422) or the long
+     window running out end a page in an error, and that row gets a Retry. */
+  const POLL_MS = 800;               // first poll gap while the job is pending
+  const POLL_MS_MAX = 3000;          // pending gap grows to this
+  const BACKOFF_MS = 1000;           // first retry gap after a failure
+  const BACKOFF_MS_MAX = 10000;      // retry gap cap
+  const POLL_WINDOW_MS = 8 * 60000;  // give up after this much online time
+  const FETCH_TIMEOUT_MS = 25000;    // one GET that hangs this long is a failure
+  const NOT_FOUND_GRACE_MS = 60000;  // 404s this soon after POST are retried
+  const RECOVER_MS = 90000;          // look for a job whose POST reply was lost
+  const POST_RESENDS = 2;            // re-sends after a delivered upload left no job
   const LIVE_PARALLEL = 2; // OCR runs inside POST: keep the server load small
 
   const ACCEPT_EXT = ['.pdf', '.jpg', '.jpeg', '.png', '.tif', '.tiff', '.zip'];
@@ -143,13 +155,21 @@
   }
 
   function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }
+  /* Retry gap: doubles per failure up to the cap, with ±20% jitter so two
+     pages (or two tabs) do not hit a waking server in lockstep. */
+  function backoff(n) {
+    const base = Math.min(BACKOFF_MS_MAX, BACKOFF_MS * Math.pow(2, Math.max(0, n - 1)));
+    return Math.round(base * (0.8 + Math.random() * 0.4));
+  }
 
   /* -------------------------------------------------------
      Real backend (fastapi/sqlite). POST processes one file
      synchronously, so the first poll normally reports done.
      ------------------------------------------------------- */
   class ApiError extends Error {
-    constructor(message, kind) { super(message); this.kind = kind; } // kind: 'down' | 'http'
+    // kind: 'down' | 'http' | 'cancel'; status: HTTP code when there was one;
+    // sent: the request body finished uploading before the failure.
+    constructor(message, kind, extra) { super(message); this.kind = kind; Object.assign(this, extra || {}); }
   }
   const MIME_BY_EXT = { '.pdf': 'application/pdf', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
     '.png': 'image/png', '.tif': 'image/tiff', '.tiff': 'image/tiff', '.webp': 'image/webp' };
@@ -236,36 +256,82 @@
       else fd.append('file', withMime(file), file.name);
       const xhr = new XMLHttpRequest();
       xhr.open('POST', POST_JOBS);
+      xhr.timeout = POLL_WINDOW_MS; // OCR runs inside the POST; past this, look the job up instead
       xhr.responseType = 'text';
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && opts.onProgress) opts.onProgress('uploading', Math.round((e.loaded / e.total) * 100));
       };
-      xhr.upload.onload = () => { if (opts.onProgress) opts.onProgress('processing', 100); };
-      xhr.onerror = () => reject(new ApiError('Backend unreachable (POST /jobs)', 'down'));
+      let sent = false;
+      xhr.upload.onload = () => { sent = true; if (opts.onProgress) opts.onProgress('processing', 100); };
+      xhr.onerror = () => reject(new ApiError('Backend unreachable (POST /jobs)', 'down', { sent }));
       xhr.onabort = () => reject(new ApiError('Upload cancelled', 'cancel'));
       if (opts.onXhr) opts.onXhr(xhr);
-      xhr.ontimeout = () => reject(new ApiError('Backend timed out (POST /jobs)', 'down'));
+      xhr.ontimeout = () => reject(new ApiError('Backend timed out (POST /jobs)', 'down', { sent }));
       xhr.onload = () => {
         let body = null;
         try { body = JSON.parse(xhr.responseText); } catch (e) { /* non-JSON */ }
         if (xhr.status >= 200 && xhr.status < 300 && body && body.job_id) { resolve({ job_id: body.job_id }); return; }
         const d = detailText(body);
-        if (xhr.status === 0) { reject(new ApiError('Backend unreachable (POST /jobs)', 'down')); return; }
-        reject(new ApiError((d ? d.charAt(0).toUpperCase() + d.slice(1) : 'Upload failed') + ' (' + xhr.status + ')', 'http'));
+        if (xhr.status === 0) { reject(new ApiError('Backend unreachable (POST /jobs)', 'down', { sent })); return; }
+        // Render answers 502/503/504 (and 408/429) while the service wakes or
+        // is busy: the upload may or may not have reached the app.
+        if (TRANSIENT_HTTP.has(xhr.status)) { reject(new ApiError('Server busy (' + xhr.status + ')', 'down', { sent, status: xhr.status })); return; }
+        reject(new ApiError((d ? d.charAt(0).toUpperCase() + d.slice(1) : 'Upload failed') + ' (' + xhr.status + ')', 'http', { status: xhr.status }));
       };
       if (opts.onProgress) opts.onProgress('uploading', 4);
       xhr.send(fd);
     });
   }
 
-  function realPollPage(jobId) {
-    return fetch(POLL_JOB(jobId), { cache: 'no-store' })
-      .catch(() => { throw new ApiError('Backend unreachable (GET /jobs)', 'down'); })
+  const TRANSIENT_HTTP = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+  /* GET with a timeout. Network failures, timeouts and transient statuses
+     reject as 'down' (retry); other non-OK statuses reject as 'http'. */
+  function getJson(url) {
+    const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+    const t = ctl ? setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS) : 0;
+    return fetch(url, { cache: 'no-store', signal: ctl ? ctl.signal : undefined })
+      .catch(() => { throw new ApiError('Backend unreachable', 'down'); })
       .then((res) => {
-        if (res.status === 404) throw new ApiError('Job not found on the server', 'http');
-        if (!res.ok) throw new ApiError('GET /jobs → ' + res.status, 'http');
-        return res.json(); // { job_id, filename, sha256, status, created_at, result }
-      });
+        if (res.status === 404) throw new ApiError('Job not found on the server', 'http', { status: 404 });
+        if (TRANSIENT_HTTP.has(res.status)) throw new ApiError('Server busy (' + res.status + ')', 'down', { status: res.status });
+        if (!res.ok) throw new ApiError('GET ' + url.replace(API_BASE, '') + ' → ' + res.status, 'http', { status: res.status });
+        return res.json()
+          .catch(() => { throw new ApiError('Bad reply from the server', 'down'); })
+          .then((body) => ({ body, date: Date.parse(res.headers.get('Date') || '') }));
+      })
+      .finally(() => { if (t) clearTimeout(t); });
+  }
+
+  function realPollPage(jobId) {
+    return getJson(POLL_JOB(jobId)).then((r) => r.body); // { job_id, filename, sha256, status, created_at, result }
+  }
+
+  /* SHA-256 the backend stores for this upload (storage.sha256_bytes for one
+     file, combined_sha256 for a ZIP's images), so a job whose POST reply got
+     lost can be found again in GET /jobs. null when WebCrypto is missing. */
+  async function sha256Hex(blob) {
+    if (!(window.crypto && crypto.subtle)) return null;
+    const buf = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+    return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  async function uploadHash(file, zipFiles) {
+    try {
+      if (!zipFiles) return await sha256Hex(file);
+      const parts = [];
+      for (const f of zipFiles) { const x = await sha256Hex(f); if (!x) return null; parts.push(x); }
+      return await sha256Hex(new Blob([parts.join('\n')]));
+    } catch (e) { return null; }
+  }
+  /* Newest job with this hash created since the POST started. Server time
+     comes from the reply's Date header, so client clock skew does not matter. */
+  async function findJob(hash, name, startedAt) {
+    const r = await getJson(POST_JOBS + '?limit=20');
+    const serverNow = isNaN(r.date) ? Date.now() : r.date;
+    const since = serverNow - (Date.now() - startedAt) - 15000;
+    const jobs = (r.body && r.body.jobs) || [];
+    const hit = jobs.find((j) => (hash ? j.sha256 === hash : j.filename === name) && Date.parse(j.created_at) >= since);
+    return hit ? hit.job_id : null;
   }
 
   /* /health → 'sarvam' | 'stub' | 'down' */
@@ -342,6 +408,7 @@
   const EYE = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M1.2 9s2.9-5.2 7.8-5.2S16.8 9 16.8 9s-2.9 5.2-7.8 5.2S1.2 9 1.2 9z" stroke-linejoin="round"/><circle cx="9" cy="9" r="2.4"/></svg>';
   const BIN = '<svg width="16" height="17" viewBox="0 0 16 17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 3.5h13M5.5 3.5V2a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1.5M3 3.5l.8 11a1.5 1.5 0 0 0 1.5 1.4h5.4a1.5 1.5 0 0 0 1.5-1.4l.8-11"/></svg>';
   const XC = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="9" cy="9" r="7.6"/><path d="M6.3 6.3l5.4 5.4M11.7 6.3l-5.4 5.4"/></svg>';
+  const RETRY = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15.2 9a6.2 6.2 0 1 1-1.8-4.4"/><path d="M15.4 2.6v3.2h-3.2"/></svg>';
   const DL = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2.2v9.2M5.2 7.8L9 11.6l3.8-3.8M2.5 12.6v1.6a1.6 1.6 0 0 0 1.6 1.6h9.8a1.6 1.6 0 0 0 1.6-1.6v-1.6"/></svg>';
   const BDG_OK = '<span class="up-bdg"><svg viewBox="0 0 10 10" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M1.8 5.3l2.1 2.1 4.3-4.6"/></svg></span>';
   let icoSeq = 0;
@@ -531,10 +598,10 @@
       pct.textContent = Math.round(v) + '%';
     } else if (p.status === 'processing') {
       fill.style.width = '100%';
-      pct.textContent = PCT_TEXT.processing;
+      pct.textContent = p.retryNote || PCT_TEXT.processing;
     } else if (p.status === 'queued') {
       fill.style.width = '0%';
-      pct.textContent = PCT_TEXT.queued;
+      pct.textContent = p.retryNote || PCT_TEXT.queued;
     }
     why.textContent = p.status === 'error' ? (p.error || 'OCR failed') : '';
     size.textContent = fmtSize(p.size) + (p.status === 'done' ? pageSummary(p.pages) : '');
@@ -581,6 +648,7 @@
       }
       acts.appendChild(iconButton('del', 'Remove ' + p.name, BIN));
     } else if (p.status === 'error') {
+      acts.appendChild(iconButton('retry', 'Retry ' + p.name, RETRY));
       acts.appendChild(iconButton('del', 'Remove ' + p.name, BIN));
     } else {
       acts.appendChild(iconButton('cancel', 'Cancel ' + p.name, XC));
@@ -655,6 +723,18 @@
     return key;
   }
 
+  /* Retry a failed page: back to the queue, same file, fresh job loop. */
+  function retryPage(key) {
+    const p = state.pages.get(key);
+    if (!p || p.status !== 'error') return;
+    p.error = null; p.jobId = null; p.retryNote = ''; p.procStart = 0; p.ocrProgress = undefined;
+    p.els.ic.querySelector('.up-bdg')?.remove();
+    Array.from(el.notices.children).forEach((n) => { if (n.textContent.indexOf(p.name + ':') === 1) n.remove(); });
+    applyPage(key, { status: 'queued', progress: 0 });
+    renderActs(p);
+    enqueue([key]);
+  }
+
   function removePage(key) {
     const p = state.pages.get(key);
     if (!p) return;
@@ -679,6 +759,7 @@
     const key = row && row.dataset.key;
     if (!key) return;
     if (b.dataset.a === 'del' || b.dataset.a === 'cancel') removePage(key);
+    else if (b.dataset.a === 'retry') retryPage(key);
     else if (b.dataset.a === 'view') {
       const p = state.pages.get(key);
       if (p && p.jobId) location.href = EDITOR_URL([p.jobId]);
@@ -767,8 +848,11 @@
     const prog = pages.reduce((a, q) => a + fileProgress(q, now), 0) / pages.length;
     LOADER.setProgress(prog);
     const pos = pages.indexOf(cur) + 1;
-    LOADER.setLabel(cur.status === 'uploading' ? 'Uploading page' : (cur.status === 'processing' ? 'Reading page' : 'Waiting'),
-      pages.length > 1 ? cur.name + ' - file ' + pos + ' of ' + pages.length : cur.name);
+    const where = pages.length > 1 ? cur.name + ' - file ' + pos + ' of ' + pages.length : cur.name;
+    const hs = el.offline.dataset.state;
+    if (hs === 'offline') LOADER.setLabel('Offline', 'Resumes by itself when you are back online · ' + where);
+    else if (cur.retryNote) LOADER.setLabel('Reconnecting', 'The server is slow to answer, still trying · ' + where);
+    else LOADER.setLabel(cur.status === 'uploading' ? 'Uploading page' : (cur.status === 'processing' ? 'Reading page' : 'Waiting'), where);
   }
 
   /* --- runner: POST /jobs per file (LIVE_PARALLEL at once), then poll GET /jobs/{id} --- */
@@ -782,12 +866,9 @@
       healthGate = probeHealth().then((hs) => { healthGate = null; return hs; });
     }
     healthGate.then((hs) => {
-      if (hs.state === 'down') {
-        const failed = state.queue.splice(0);
-        failed.forEach((key) => applyPage(key, { status: 'error', error: 'Backend unreachable: nothing was uploaded' }));
-        if (failed.length) addNotice('Backend unreachable at ' + (API_BASE || location.origin) + '. Start the API, or open ?mock=1 for the demo');
-        return;
-      }
+      // Down is often a cold start (Render wakes in ~30-60s): keep going, the
+      // per-page loop retries with backoff and fails kindly after the window.
+      if (hs.state === 'down') setHealth({ state: 'reconnecting' });
       pump();
     });
   }
@@ -817,30 +898,149 @@
         if (z.locked) extra.push(z.locked + ' password-protected skipped');
         if (extra.length) addNotice(p.name + ': ' + extra.join(' · ')); // the row shows the page count when OCR is done
       }
-      const { job_id } = await startPage(p.file, {
+      const startOpts = {
         files: zipFiles,
         fail: p.mockFail, delay: 0,
         onXhr: (xhr) => { p.xhr = xhr; },
         onProgress: (status, progress) => applyPage(key, { status, progress })
-      });
-      p.jobId = job_id;
-      if (!MOCK) applyPage(key, { status: 'processing', progress: 100 });
-      for (let i = 0; i < POLL_MAX; i++) {
-        if (!state.pages.has(key)) return; // removed meanwhile
-        const pg = await pollPage(job_id);
-        if (pg.status === 'processing' && typeof pg.progress === 'number' && pg.progress < 100) p.ocrProgress = pg.progress;
-        applyPage(key, pg);
-        if (pg.status === 'done' || pg.status === 'error') return;
-        await wait(MOCK ? 120 : POLL_MS);
+      };
+      if (MOCK) {
+        const { job_id } = await startPage(p.file, startOpts);
+        p.jobId = job_id;
+        for (;;) {
+          if (!state.pages.has(key)) return;
+          const pg = await pollPage(job_id);
+          applyPage(key, pg);
+          if (pg.status === 'done' || pg.status === 'error') return;
+          await wait(120);
+        }
       }
-      applyPage(key, { status: 'error', error: 'Timed out waiting for OCR' });
+      const job = { key, p, active: 0 }; // active = online ms spent on this page
+      p.jobId = await liveStart(job, zipFiles, startOpts);
+      if (!p.jobId) return; // removed meanwhile
+      applyPage(key, { status: 'processing', progress: 100 });
+      await livePoll(job);
     } catch (err) {
       if (err.kind === 'cancel' || !state.pages.has(key)) return;
       applyPage(key, { status: 'error', error: err.message });
-      if (err.kind === 'down') { setHealth({ state: 'down' }); addNotice(p.name + ': ' + err.message); }
-      else addNotice(p.name + ': ' + err.message);
+      addNotice(p.name + ': ' + err.message);
     }
   }
+
+  /* One step of the live loop: waits out an offline spell first (that time
+     does not count against the window), then sleeps ms of online time. */
+  async function liveWait(job, ms) {
+    await untilOnline();
+    const t0 = Date.now();
+    await wait(ms);
+    job.active += Date.now() - t0;
+    if (job.active > POLL_WINDOW_MS) {
+      throw new ApiError('Still not finished after ' + Math.round(POLL_WINDOW_MS / 60000) +
+        ' minutes. The server may still complete it: press Retry, or find it later in Documents', 'http');
+    }
+  }
+  function reconnecting(job, n, why) {
+    job.p.retryNote = n ? 'Reconnecting…' : '';
+    if (n) setHealth({ state: 'reconnecting', error: why });
+    applyPage(job.key, {});
+  }
+  function reconnected(job) {
+    if (job.p.retryNote) { job.p.retryNote = ''; applyPage(job.key, {}); }
+    if (el.offline.dataset.state === 'reconnecting' || el.offline.dataset.state === 'down') probeHealth();
+  }
+
+  /* POST /jobs until a job id comes back. OCR runs inside the POST, so a
+     long request is normal; when its reply is lost (dropped connection, proxy
+     502/504 while OCR still runs) the job is looked up by its hash instead of
+     being uploaded twice. It is re-sent only when no job ever turns up. */
+  async function liveStart(job, zipFiles, startOpts) {
+    const { p, key } = job;
+    let hash, resends = 0, fails = 0;
+    for (let attempt = 1; ; attempt++) {
+      await untilOnline();
+      const startedAt = Date.now();
+      try {
+        const { job_id } = await startPage(p.file, startOpts);
+        if (attempt > 1) reconnected(job);
+        return job_id;
+      } catch (err) {
+        if (err.kind !== 'down' || !state.pages.has(key)) throw err;
+        job.active += Date.now() - startedAt;
+        if (!err.sent) {
+          // Nothing reached the app (refused / cold-start 502 before the body
+          // went up): just send again after a backoff.
+          reconnecting(job, ++fails, err.message);
+          applyPage(key, { status: 'queued', progress: 0 });
+          await liveWait(job, backoff(fails));
+          continue;
+        }
+        // The upload went through, only the reply was lost: find the job.
+        if (hash === undefined) hash = await uploadHash(p.file, zipFiles);
+        const until = Date.now() + RECOVER_MS;
+        applyPage(key, { status: 'processing', progress: 100 });
+        while (Date.now() < until) {
+          if (!state.pages.has(key)) return null;
+          reconnecting(job, ++fails, err.message);
+          await liveWait(job, backoff(fails));
+          try {
+            const id = await findJob(hash, p.file.name, startedAt);
+            if (id) { reconnected(job); return id; }
+          } catch (e) { if (e.kind !== 'down') throw e; }
+        }
+        if (++resends > POST_RESENDS) throw new ApiError('The server did not answer after ' + attempt + ' uploads. Press Retry', 'http');
+      }
+    }
+  }
+
+  /* GET /jobs/{id} until done or error. Transient failures back off; a 404
+     is expected for a moment right after the job is created. */
+  async function livePoll(job) {
+    const { p, key } = job;
+    const t0 = Date.now();
+    let gap = POLL_MS, fails = 0;
+    for (;;) {
+      if (!state.pages.has(key)) return;
+      await untilOnline();
+      let pg;
+      const q0 = Date.now();
+      try {
+        pg = await pollPage(p.jobId);
+      } catch (err) {
+        job.active += Date.now() - q0;
+        const early404 = err.status === 404 && Date.now() - t0 < NOT_FOUND_GRACE_MS;
+        if (err.kind !== 'down' && !early404) throw err;
+        reconnecting(job, ++fails, err.message);
+        await liveWait(job, backoff(fails));
+        continue;
+      }
+      job.active += Date.now() - q0;
+      if (fails) { fails = 0; reconnected(job); }
+      if (pg.status === 'processing' && typeof pg.progress === 'number' && pg.progress < 100) p.ocrProgress = pg.progress;
+      applyPage(key, pg);
+      if (pg.status === 'done' || pg.status === 'error') return;
+      await liveWait(job, gap);
+      gap = Math.min(POLL_MS_MAX, Math.round(gap * 1.5));
+    }
+  }
+
+  /* Offline: park every loop until the browser is back online. */
+  let onlineWaiters = null;
+  function untilOnline() {
+    if (MOCK || navigator.onLine !== false) return Promise.resolve();
+    if (!onlineWaiters) {
+      setHealth({ state: 'offline' });
+      onlineWaiters = new Promise((resolve) => {
+        window.addEventListener('online', function on() {
+          window.removeEventListener('online', on);
+          onlineWaiters = null;
+          probeHealth();
+          resolve();
+        });
+      });
+    }
+    return onlineWaiters;
+  }
+  window.addEventListener('offline', () => { if (!MOCK && order.some((k) => isBusy(state.pages.get(k).status))) setHealth({ state: 'offline' }); });
 
   /* --- connection state: the footer line tells the truth --- */
   const HEALTH_TEXT = {
@@ -848,6 +1048,8 @@
     sarvam: '● Connected: Sarvam OCR ready',
     stub: '● Connected: stub OCR, text is placeholder',
     down: '● Backend unreachable',
+    reconnecting: '● Waking the server… retrying on its own',
+    offline: '● You are offline: pages resume when you are back',
     unknown: '● Connected',
     checking: '● Checking backend…'
   };
@@ -933,7 +1135,18 @@
   }
 
   refreshFooter();
-  if (MOCK) setHealth({ state: 'mock' }); else probeHealth();
+  /* On load a sleeping Render service answers 502/503 or nothing for ~30-60s:
+     keep checking with backoff (up to the poll window) instead of leaving
+     "Backend unreachable" on screen until the user reloads. */
+  function wakeHealth(n) {
+    (n === 1 ? probeHealth() : realHealth().then((hs) => { if (hs.state !== 'down') setHealth(hs); return hs; })).then((hs) => {
+      if (hs.state !== 'down') return;
+      setHealth({ state: 'reconnecting' });
+      if (n * BACKOFF_MS_MAX < POLL_WINDOW_MS) setTimeout(() => wakeHealth(n + 1), backoff(n + 1));
+      else setHealth(hs);
+    });
+  }
+  if (MOCK) setHealth({ state: 'mock' }); else wakeHealth(1);
 
   /* Watch-demo modal (markup in index.html): opens from the empty-state
      button; closes on backdrop, the X, or Esc. Pauses on close. */

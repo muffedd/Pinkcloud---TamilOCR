@@ -279,6 +279,8 @@ body:has(#upload-root.up-active) { margin: 0; }
 .up-offline { margin: 0; font-size: 12.5px; color: var(--up-ink2); text-align: center; flex: 1; }
 .up-offline::first-letter { color: var(--up-ok); }
 .up-offline[data-state="down"]::first-letter { color: var(--up-solid); }
+.up-offline[data-state="offline"]::first-letter { color: var(--up-solid); }
+.up-offline[data-state="reconnecting"]::first-letter { color: var(--up-muted); }
 .up-offline[data-state="checking"]::first-letter,
 .up-offline[data-state="unknown"]::first-letter,
 .up-offline[data-state="not_initialized"]::first-letter { color: var(--up-muted); }
