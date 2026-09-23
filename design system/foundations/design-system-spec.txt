@@ -1,0 +1,800 @@
+You are a senior product designer and front-end design-system engineer.
+
+Create a simple, polished, responsive DESIGN SYSTEM THEME using only:
+
+- HTML
+- CSS
+- No JavaScript unless absolutely necessary
+- No frameworks
+- No external UI libraries
+
+Output exactly two files:
+
+1. index.html
+2. styles.css
+
+The purpose of this page is NOT to design an application dashboard.
+
+It is a professional design-system reference page that documents and visually demonstrates the color tokens for an OCR / document-scanning product.
+
+The visual quality should feel similar to a mature internal design system from companies such as Linear, Stripe, Notion, GitHub, or modern government/digital-service products, while remaining original.
+
+--------------------------------------------------
+DESIGN PHILOSOPHY
+--------------------------------------------------
+
+The UI will be used by a broad audience, primarily Indian users including Tamil-speaking users.
+
+Follow these UX principles:
+
+1. Hick's Law
+   Reduce unnecessary choices and visual complexity.
+   Do not turn the page into a rainbow of colors.
+
+2. Jakob's Law
+   Use familiar semantic conventions:
+   - Green = success / accepted
+   - Amber = warning / requires attention
+   - Red = error / destructive
+   - Blue = information / focus
+   - Neutral gray = system/default/raw
+
+3. Von Restorff Effect
+   Orange is the product's distinctive accent.
+   It should stand out because it is used selectively, not everywhere.
+
+4. Aesthetic-Usability Effect
+   Keep the interface calm, professional, spacious and visually refined.
+
+5. Accessibility
+   Maintain strong readable contrast, especially on mobile.
+   Avoid pure #000000 and pure #FFFFFF.
+   Color must not be the ONLY way information is communicated.
+
+The visual direction is:
+
+WARM NEUTRALS
++
+CHARCOAL TYPOGRAPHY
++
+ORANGE BRAND ACCENT
++
+CONVENTIONAL SEMANTIC COLORS
+
+Do NOT introduce purple.
+
+Do NOT automatically make blue the primary brand color.
+
+--------------------------------------------------
+CORE DESIGN TOKENS
+--------------------------------------------------
+
+Create all colors as CSS custom properties inside :root.
+
+Use semantic token names, not names such as --green-1 or --color1.
+
+Example naming architecture:
+
+--color-brand-primary
+--color-brand-primary-hover
+--color-brand-primary-soft
+
+--color-confidence-auto
+--color-confidence-ok
+--color-confidence-doubt
+
+--color-provenance-raw
+--color-provenance-rules
+--color-provenance-swab
+--color-provenance-llm
+--color-provenance-human
+
+--color-success
+--color-warning
+--color-error
+--color-info
+
+--color-bg-canvas
+--color-bg-surface
+--color-bg-elevated
+
+--color-border-subtle
+--color-border-default
+--color-border-strong
+
+--color-text-primary
+--color-text-secondary
+--color-text-muted
+
+--color-scan-active
+--color-scan-selected
+--color-scan-success
+--color-scan-warning
+--color-scan-error
+
+--------------------------------------------------
+COLOR PALETTE
+--------------------------------------------------
+
+BRAND
+
+Brand Primary:
+#F25A1A
+
+Brand Strong / Hover:
+#D94A0F
+
+Brand Soft:
+#FDE7DD
+
+Brand Ink:
+#252321
+
+
+CONFIDENCE
+
+Auto:
+#6E7680
+
+OK:
+#27865A
+
+Doubt:
+#B67816
+
+
+PROVENANCE
+
+Raw:
+#777C82
+
+Rules:
+#526E84
+
+SWAB:
+#2F7D75
+
+LLM:
+#A66B2C
+
+Human:
+#78704F
+
+
+SEMANTIC COLORS
+
+Success:
+#27865A
+
+Warning:
+#B67816
+
+Error:
+#C83A3A
+
+Info:
+#356FA8
+
+
+NEUTRALS
+
+Canvas Background:
+#F4F3F0
+
+Surface:
+#ECEAE6
+
+Elevated Surface:
+#FAF8F4
+
+Border Subtle:
+#DDD9D3
+
+Border Default:
+#D7D3CC
+
+Border Strong:
+#B8B3AB
+
+Text Primary:
+#252321
+
+Text Secondary:
+#5F5A55
+
+Text Muted:
+#706B65
+
+
+SCAN BOX COLORS
+
+Active scan:
+#F25A1A
+
+Selected / focused OCR region:
+#356FA8
+
+Confirmed / accepted:
+#27865A
+
+Needs review:
+#B67816
+
+Invalid / OCR error:
+#C83A3A
+
+--------------------------------------------------
+IMPORTANT TOKEN ARCHITECTURE
+--------------------------------------------------
+
+Do not treat every token as an unrelated color.
+
+Reuse semantic meaning wherever possible.
+
+For example:
+
+--color-confidence-ok
+and
+--color-success
+
+may resolve to the same primitive color.
+
+Likewise:
+
+--color-confidence-doubt
+and
+--color-warning
+
+may share the same primitive.
+
+Create the CSS so the architecture resembles a professional token system.
+
+Ideally structure it conceptually as:
+
+1. Primitive / foundation colors
+2. Semantic tokens
+3. Component tokens
+
+For example:
+
+--orange-600: #F25A1A;
+--orange-700: #D94A0F;
+
+--color-brand-primary: var(--orange-600);
+
+--button-primary-bg: var(--color-brand-primary);
+
+Do this cleanly without creating hundreds of unnecessary variables.
+
+--------------------------------------------------
+PAGE STRUCTURE
+--------------------------------------------------
+
+The webpage should look like professional design-system documentation.
+
+Use a centered responsive container.
+
+Recommended structure:
+
+HEADER
+- Small eyebrow: "Foundations / Color"
+- Large heading: "Color"
+- Short description explaining how color communicates hierarchy, confidence, provenance and system states.
+
+Then create sections.
+
+01 — Brand
+02 — Confidence
+03 — Provenance
+04 — Semantic
+05 — Neutrals
+06 — Scan Highlighting
+07 — Component Examples
+08 — Usage Principles
+
+Each section should have:
+- section number
+- title
+- 1–2 sentence explanation
+- token demonstrations
+
+--------------------------------------------------
+COLOR TOKEN COMPONENT
+--------------------------------------------------
+
+Each color token card should contain:
+
+- color swatch
+- human-readable token name
+- CSS variable
+- HEX value
+- short usage description
+
+Example:
+
+Brand Primary
+
+--color-brand-primary
+#F25A1A
+
+"Primary actions, active scanning and distinctive product emphasis."
+
+Do NOT make every card huge.
+
+The design should remain compact enough to scan quickly.
+
+--------------------------------------------------
+CONFIDENCE SCALE
+--------------------------------------------------
+
+Show:
+
+Auto
+OK
+Doubt
+
+These should visually read like a coherent confidence system.
+
+Include realistic examples such as:
+
+AUTO
+System detected
+
+OK
+High confidence
+
+DOUBT
+Review required
+
+Use labels/icons/text in addition to color.
+
+--------------------------------------------------
+PROVENANCE
+--------------------------------------------------
+
+Show:
+
+Raw
+Rules
+SWAB
+LLM
+Human
+
+Provenance is secondary metadata.
+
+Therefore do NOT create large saturated colored buttons.
+
+Instead demonstrate provenance using something like:
+
+[ small colored dot ] Raw
+
+or
+
+a subtle tinted chip with:
+- small color indicator
+- neutral readable text
+- subtle border
+
+This section should intentionally feel quieter than semantic states.
+
+--------------------------------------------------
+SEMANTIC STATES
+--------------------------------------------------
+
+Show:
+
+Success
+Warning
+Error
+Info
+
+Demonstrate each as:
+
+- semantic token
+- small status badge
+- subtle notification / message example
+
+Do not use excessively saturated full-width blocks.
+
+--------------------------------------------------
+NEUTRALS
+--------------------------------------------------
+
+Separate into:
+
+SURFACES
+- Canvas
+- Surface
+- Elevated
+
+BORDERS
+- Subtle
+- Default
+- Strong
+
+TEXT
+- Primary
+- Secondary
+- Muted
+
+Clearly demonstrate hierarchy.
+
+The page itself should actually use these neutral tokens so the documentation is self-referential.
+
+Never use pure black.
+
+Never use pure white.
+
+--------------------------------------------------
+SCAN HIGHLIGHTING
+--------------------------------------------------
+
+This section is especially important.
+
+Create a simplified document/OCR preview.
+
+Show five scan states:
+
+1. Active Scan
+   Orange
+
+2. Selected Region
+   Blue
+
+3. Confirmed
+   Green
+
+4. Needs Review
+   Amber
+
+5. Error
+   Red
+
+Represent them as OCR bounding boxes around example text.
+
+Do not rely only on border color.
+
+Add a tiny label or icon.
+
+Example:
+
+┌ ACTIVE ──────────┐
+│ Invoice Number   │
+└──────────────────┘
+
+The box should demonstrate how the scanning system would work in an actual interface.
+
+Use translucent or very soft tinted fills rather than heavily saturated backgrounds.
+
+--------------------------------------------------
+COMPONENT EXAMPLES
+--------------------------------------------------
+
+Create one compact section demonstrating how the palette works in UI.
+
+Include:
+
+PRIMARY BUTTON
+Orange background
+
+SECONDARY BUTTON
+Neutral / outlined
+
+TEXT BUTTON
+Minimal
+
+SUCCESS BADGE
+
+WARNING BADGE
+
+ERROR BADGE
+
+INFO BADGE
+
+PROVENANCE CHIP
+
+CONFIDENCE CHIP
+
+TOGGLE
+
+FOCUS STATE
+
+Do not create an entire app.
+
+These are just small design-system specimens.
+
+--------------------------------------------------
+BRAND COLOR RULE
+--------------------------------------------------
+
+Orange is NOT a semantic warning color.
+
+Brand orange and warning amber must remain visually distinguishable.
+
+Orange should primarily represent:
+
+- primary actions
+- active scanning
+- active product emphasis
+- brand recognition
+- selected high-priority actions
+
+Warning amber represents:
+
+- uncertainty
+- caution
+- something requiring review
+
+--------------------------------------------------
+VON RESTORFF RULE
+--------------------------------------------------
+
+Because orange is the most distinctive color in the system, protect it.
+
+Do not put orange on:
+
+- every icon
+- every heading
+- every selected item
+- decorative backgrounds
+- every card
+
+The page should be approximately 80–90% neutral.
+
+Orange should feel intentional when it appears.
+
+--------------------------------------------------
+TYPOGRAPHY
+--------------------------------------------------
+
+Use a clean modern sans-serif stack.
+
+Do NOT depend on Google Fonts or external font requests.
+
+Use a good native/system stack such as:
+
+font-family:
+"Segoe UI",
+"SF Pro Text",
+"SF Pro Display",
+system-ui,
+sans-serif;
+
+Create clear typography tokens such as:
+
+--font-size-xs
+--font-size-sm
+--font-size-md
+--font-size-lg
+--font-size-xl
+--font-size-display
+
+and appropriate font weights.
+
+Avoid oversized marketing-style typography.
+
+This is documentation, not a landing page.
+
+--------------------------------------------------
+SPACING + SHAPE SYSTEM
+--------------------------------------------------
+
+Create a small professional spacing system.
+
+Example:
+
+--space-1
+--space-2
+--space-3
+--space-4
+--space-6
+--space-8
+--space-12
+
+Also define:
+
+--radius-sm
+--radius-md
+--radius-lg
+--radius-pill
+
+Keep corner radii moderate.
+
+Do not make everything extremely rounded.
+
+Use pills primarily where they semantically make sense:
+- statuses
+- metadata
+- tags
+- compact controls
+
+Cards should have restrained rounded corners.
+
+--------------------------------------------------
+SHADOWS
+--------------------------------------------------
+
+Avoid strong floating shadows.
+
+Prefer:
+
+- borders
+- subtle tonal differences
+- extremely soft shadow for elevated surfaces only
+
+The aesthetic should feel precise and engineered.
+
+--------------------------------------------------
+DESKTOP LAYOUT
+--------------------------------------------------
+
+On desktop:
+
+Maximum content width around 1100–1280px.
+
+Use responsive grids where appropriate.
+
+Examples:
+
+Brand:
+3 or 4 columns
+
+Confidence:
+3 columns
+
+Provenance:
+5 compact items if space allows
+
+Semantic:
+4 columns
+
+Neutrals:
+3 logical groups
+
+Avoid enormous empty spaces.
+
+--------------------------------------------------
+MOBILE LAYOUT
+--------------------------------------------------
+
+The design must work properly at approximately 360px width.
+
+Do not simply shrink the desktop design.
+
+For mobile:
+
+- reduce outer padding
+- stack complex grids
+- maintain readable font sizes
+- prevent token values overflowing
+- allow CSS variable names to wrap
+- make component specimens touch-friendly
+- preserve clear vertical rhythm
+- keep minimum interactive height around 44px where appropriate
+
+The mobile design should remain visually calm.
+
+--------------------------------------------------
+ACCESSIBILITY
+--------------------------------------------------
+
+The documentation should demonstrate accessibility-aware usage.
+
+Important:
+
+Do not reduce text contrast simply to make the interface look softer.
+
+Instead achieve softness through:
+
+- off-white backgrounds
+- charcoal rather than pure black
+- muted borders
+- restrained saturation
+- whitespace
+
+Normal body text must remain clearly legible.
+
+Use visible :focus-visible styles.
+
+Do not use color as the sole indication of state.
+
+--------------------------------------------------
+VISUAL STYLE
+--------------------------------------------------
+
+Target aesthetic:
+
+- restrained
+- minimal
+- premium
+- systematic
+- functional
+- warm
+- modern
+- approachable
+- highly legible
+
+Avoid:
+
+- gradients
+- glassmorphism
+- neon
+- purple
+- excessive shadows
+- excessive rounded cards
+- dashboard appearance
+- giant color blocks
+- marketing-page styling
+- unnecessary illustration
+- decorative noise
+
+--------------------------------------------------
+HTML REQUIREMENTS
+--------------------------------------------------
+
+Use semantic HTML.
+
+Examples:
+
+<header>
+<main>
+<section>
+<article>
+<footer>
+
+Use appropriate headings.
+
+Add ARIA attributes only where actually useful.
+
+Do not over-engineer accessibility markup.
+
+--------------------------------------------------
+CSS REQUIREMENTS
+--------------------------------------------------
+
+At the top of styles.css clearly organize tokens into sections:
+
+/* =========================
+   FOUNDATION TOKENS
+   ========================= */
+
+/* Color primitives */
+
+/* Semantic colors */
+
+/* Surfaces */
+
+/* Typography */
+
+/* Spacing */
+
+/* Radius */
+
+/* Shadows */
+
+/* =========================
+   COMPONENT TOKENS
+   ========================= */
+
+/* Buttons */
+
+/* Status */
+
+/* Provenance */
+
+/* Scan regions */
+
+Then write layout/component styling below.
+
+The CSS should be clean enough that another designer/developer could reuse the tokens later in the real product.
+
+--------------------------------------------------
+FINAL OUTPUT
+--------------------------------------------------
+
+Return:
+
+### index.html
+
+```html
+...
