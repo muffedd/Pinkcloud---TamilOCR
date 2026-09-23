@@ -171,6 +171,22 @@ h1, h2, h3, h4, h5, h6, p {
     background-color var(--pc-motion-color) var(--pc-ease-out),
     color var(--pc-motion-color) var(--pc-ease-out);
 }
+/* Solid + outline: 1px lift on hover (bounce), press release overshoots back */
+.btn--solid, .btn--outline {
+  transition:
+    transform var(--pc-motion-release) var(--pc-ease-overshoot),
+    background-color var(--pc-motion-color) var(--pc-ease-out),
+    color var(--pc-motion-color) var(--pc-ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .btn--solid:hover, .btn--outline:hover {
+    transform: translateY(var(--pc-lift-hover));
+    transition:
+      transform var(--pc-motion-hover) var(--pc-ease-bounce),
+      background-color var(--pc-motion-color) var(--pc-ease-out),
+      color var(--pc-motion-color) var(--pc-ease-out);
+  }
+}
 .btn svg {
   width: var(--pc-btn-icon);
   height: var(--pc-btn-icon);
@@ -788,6 +804,7 @@ h1, h2, h3, h4, h5, h6, p {
     transition-property: background-color, color !important;
   }
   .btn:active, .pill:active, .seg-opt:active { transform: none; }
+  .btn--solid:hover, .btn--outline:hover { transform: none; }
   .btn .lb > span + span { display: none; }
   .btn:hover .lb > span:first-child { transform: none; }
   .pop, .toast.show { animation: none; }

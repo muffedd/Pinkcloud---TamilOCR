@@ -152,6 +152,9 @@
   --pc-ease-out: cubic-bezier(.23, 1, .32, 1);
   --pc-ease-spring: cubic-bezier(.34, 1.36, .64, 1);
   --pc-ease-in-out: cubic-bezier(.65, 0, .35, 1);
+  --pc-ease-bounce: cubic-bezier(.22, 1.9, .36, 1);     /* from design-drafts/icon-motion-*: big overshoot, tiny moves only (1-2px) */
+  --pc-ease-overshoot: cubic-bezier(.34, 1.56, .64, 1); /* from icon-motion: press release springs back past rest */
+  --pc-lift-hover: -1px;                               /* solid/outline button hover lift */
   --pc-scale-press: .96;
   --pc-scale-press-sm: .97;
   --pc-motion-fast: 100ms;
