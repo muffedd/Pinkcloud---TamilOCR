@@ -56,7 +56,7 @@
       { before: 'வாழறிவன்', after: 'வாலறிவன்', tier: 'T1',
         evidence: 'ழ/ல glyph confusion on a stained, low-contrast stroke: the ல in வால் was misread as the looped ழ, yielding வாழறிவன் instead of வாலறிவன் (Kural 2).' }
     ],
-    text: 'அகர முதல எழுத்தெல்லாம் ஆதி பகவன் முதற்றே உலகு கற்றதனால் ஆய பயனென்கொல் வாலறிவன்',
+    text: 'அகர முதல எழுத்தெல்லாம் ஆதி\nபகவன் முதற்றே உலகு\nகற்றதனால் ஆய பயனென்கொல் வாழறிவன்',
     processing_ms: 4820, work: 'திருக்குறள்', chapter: 1, script: 'Tamil', material: 'paper'
   };
 
