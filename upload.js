@@ -453,25 +453,6 @@
     const dz = h('div', 'up-dz');
     dz.id = 'up-dz';
     dz.appendChild(svgEl('<svg class="up-dz-border" preserveAspectRatio="none" aria-hidden="true"><rect x="0.7" y="0.7" rx="8.5" ry="8.5" width="calc(100% - 1.4px)" height="calc(100% - 1.4px)"/></svg>'));
-    /* palm-leaf (olai) strips on both flanks: decoration only */
-    const leaves = h('div', 'up-leaves');
-    leaves.setAttribute('aria-hidden', 'true');
-    const KURAL = [
-      ['அகர முதல எழுத்தெல்லாம் ஆதி', 'பகவன் முதற்றே உலகு'],
-      ['கற்றதனால் ஆய பயனென்கொல்', 'வாலறிவன் நற்றாள் தொழாஅர்'],
-      ['மலர்மிசை ஏகினான் மாணடி', 'சேர்ந்தார் நிலமிசை நீடுவாழ்வார்']
-    ];
-    // [side, top px, rotate deg]
-    [['l', 70, -6], ['l', 142, -3], ['l', 214, -7], ['r', 58, 5], ['r', 132, 2], ['r', 206, 6]].forEach((pos, k) => {
-      const leaf = h('div', 'up-leaf up-leaf--' + pos[0] + (k % 3 === 1 ? ' is-near' : ''));
-      leaf.style.top = pos[1] + 'px';
-      leaf.style.setProperty('--r', pos[2] + 'deg');
-      leaf.appendChild(h('span', 'up-leaf-t', KURAL[k % 3][0]));
-      leaf.appendChild(h('span', 'up-leaf-b', KURAL[k % 3][1]));
-      leaf.appendChild(h('i', 'up-leaf-hole'));
-      leaves.appendChild(leaf);
-    });
-    dz.appendChild(leaves);
 
     const idle = h('div', 'up-idle');
     const tile = h('div', 'up-tile');

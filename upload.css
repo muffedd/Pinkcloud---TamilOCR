@@ -129,29 +129,6 @@ body:has(#upload-root.up-active) { margin: 0; }
 .up-note { margin-top: 16px; font-size: 12.5px; line-height: 17px; color: var(--up-ink2); text-align: center; }
 .up-note .ta { font-family: var(--pc-font-tamil, "Noto Sans Tamil", sans-serif); font-size: 13px; }
 
-/* palm-leaf (olai) strips on the drop zone flanks: decoration only,
-   under the content, never clickable, hidden while dragging */
-.up-leaves { position: absolute; inset: 0; z-index: 1; pointer-events: none; transition: opacity var(--dz-leave) var(--dz-leave-ease); }
-.up-dz.is-drag .up-leaves { opacity: 0; transition: opacity var(--dz-enter); }
-.up-leaf { position: absolute; width: 250px; height: 46px; border-radius: 23px / 50%; overflow: hidden; opacity: .75;
-  background: linear-gradient(180deg, #FFEDE4, #FFE0D1); box-shadow: inset 0 0 0 1px var(--up-soft-border);
-  transform: rotate(var(--r, 0deg)); }
-.up-leaf.is-near { opacity: .95; }
-.up-leaf--l { left: -40px; }
-.up-leaf--r { right: -40px; }
-.up-leaf:nth-child(2) { left: -18px; }
-.up-leaf:nth-child(3) { left: -50px; }
-.up-leaf:nth-child(5) { right: -58px; }
-.up-leaf:nth-child(6) { right: -30px; }
-.up-leaf span { position: absolute; left: 22px; right: 22px; font: 500 12.5px/1 var(--pc-font-tamil, "Noto Sans Tamil", sans-serif);
-  color: #F4A585; white-space: nowrap; overflow: hidden; }
-.up-leaf-t { top: 8px; }
-.up-leaf-b { bottom: 8px; }
-.up-leaf-hole { position: absolute; top: 50%; width: 7px; height: 7px; margin-top: -3.5px; border-radius: 50%; background: #fff;
-  box-shadow: inset 0 0 0 1px var(--up-soft-border); }
-.up-leaf--l .up-leaf-hole { left: 205px; }
-.up-leaf--r .up-leaf-hole { left: 38px; }
-
 /* "Try a sample page": quiet text link under Browse */
 #upload-root .up-sample { margin-top: 9px; padding: 2px 6px; border-radius: 6px; font-size: 13px; line-height: 18px; color: var(--up-solid);
   text-decoration: underline; text-decoration-color: var(--up-soft-border); text-underline-offset: 3px;
@@ -290,7 +267,6 @@ body:has(#upload-root.up-active) { margin: 0; }
   .up-page { padding: 32px 16px; }
 }
 @media (max-width: 640px) {
-  .up-leaves { display: none; }
   .up-stepper { width: auto; height: auto; transform: none; display: flex; flex-wrap: wrap; justify-content: center;
     column-gap: 16px; row-gap: 12px; margin-bottom: 16px; }
   .up-step { position: static; width: auto; margin-left: 0; display: flex; align-items: center; gap: 7px; text-align: left; }
