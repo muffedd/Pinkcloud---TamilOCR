@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pink Cloud - Reading page (shader variant D: 3D glyph swarm)</title>
+<style>
+  :root{
+    --pc-bg-canvas:#FDFCFB; --pc-primary:#F94612; --pc-primary-end:#FA683D;
+    --pc-primary-solid:#D93A0B; --pc-primary-active:#B32E08; --pc-primary-soft-border:#FFC9B3;
+    --pc-text:#1E1A18; --pc-text-2:#655E58;
+  }
+  html,body{margin:0;height:100%;background:var(--pc-bg-canvas);overflow:hidden;
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+  .pill{position:fixed;left:50%;bottom:7vh;transform:translateX(-50%);display:flex;align-items:center;gap:12px;
+    background:var(--pc-text);color:#fff;border-radius:14px;padding:13px 20px;font-weight:600;font-size:15px;
+    box-shadow:0 10px 30px rgba(179,46,8,.18)}
+  .pill b{font-weight:600;color:var(--pc-primary-soft-border);font-variant-numeric:tabular-nums;min-width:3ch;text-align:right}
+  .pick{position:fixed;right:18px;top:16px;font-size:12px;color:var(--pc-text-2);background:#fff;
+    border:1px solid #E6E2DE;border-radius:10px;padding:7px 11px;cursor:pointer}
+  .pick:hover{border-color:var(--pc-primary-soft-border);color:var(--pc-text)}
+  .pick input{display:none}
+  body.drag canvas{outline:2px dashed var(--pc-primary);outline-offset:-14px}
+  .noui .pick,.noui .pill{display:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="pill"><span id="lbl">Reading page</span><b id="pct">0%</b></div>
+<label class="pick">Use an image<input id="file" type="file" accept="image/*"></label>
+<script>
+/*  Pink Cloud loader, variant D ("3D glyph swarm").
+    Reference: cosmos.so/e/933016892 (Brik "Swarm Intelligence Type": a globe built from dot and plus glyphs).
+    Loop (10 s): swarm globe spins -> glyphs fly into a 3D tilted page built from the chosen image ->
+    a scan beam reads down and turns every dot into an orange plus -> page folds back into the globe.
+    For our UI: call pcLoader.setImage(urlOrImg) with the page the user uploaded, so the loader shows
+    their own scan being read. pcLoader.setProgress(0..1) drives the % (otherwise it follows the loop).
+    Also: drag and drop or "Use an image" to try any picture. ?t=SECONDS freezes a frame, ?ui=0 hides chrome. */
+(function(){
+  const Q=new URLSearchParams(location.search);
+  const frozen=Q.has('t')?parseFloat(Q.get('t')):null;
+  if(Q.get('ui')==='0')document.body.classList.add('noui');
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+  const C={bg:[253,252,251],ink:[30,26,24],dk:[179,46,8],solid:[217,58,11],or:[249,70,18],or2:[250,104,61],soft:[255,201,179]};
+  const COLS=27,ROWS=36,LOOP=10;
+  let pts=[],W=0,H=0,DPR=1,extProgress=null;
+
+  // ---------- default "selected image": a Tamil document page ----------
+  function defaultPage(){
+    const o=document.createElement('canvas');o.width=300;o.height=400;const g=o.getContext('2d');
+    g.fillStyle='#fff';g.fillRect(0,0,300,400);g.fillStyle='#111';
+    g.fillRect(20,22,150,20);                                  // headline
+    g.fillRect(200,22,80,78);                                  // photo block
+    g.font='bold 18px "Noto Sans Tamil",sans-serif';g.fillText('தமிழ் செய்தி',22,68);
+    let seed=7;const rnd=()=>((seed=(seed*16807)%2147483647)/2147483647);
+    for(let y=112;y<380;y+=21){                                // body text lines
+      let x=20;const end=y<180&&y>100?280:280;
+      while(x<end-20){const w=18+rnd()*46;if(x+w>end)break;g.fillRect(x,y,w,9);x+=w+8+rnd()*5;}
+      if(rnd()<.18)y+=8;                                       // paragraph gap
+    }
+    return o;
+  }
+
+  // ---------- sample image into glyph targets ----------
+  function build(src){
+    const s=document.createElement('canvas');s.width=COLS;s.height=ROWS;const g=s.getContext('2d');
+    g.fillStyle='#fff';g.fillRect(0,0,COLS,ROWS);
+    const iw=src.naturalWidth||src.width,ih=src.naturalHeight||src.height;
+    const k=Math.max(COLS/iw,ROWS/ih);g.imageSmoothingQuality='high';
+    g.drawImage(src,(COLS-iw*k)/2,(ROWS-ih*k)/2,iw*k,ih*k);    // cover-fit
+    const d=g.getImageData(0,0,COLS,ROWS).data;let mean=0;const L=[];
+    for(let i=0;i<COLS*ROWS;i++){const l=(.299*d[i*4]+.587*d[i*4+1]+.114*d[i*4+2])/255;L.push(l);mean+=l;}
+    mean/=L.length;const out=[];
+    for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+      const l=L[r*COLS+c],dark=Math.min(1,Math.max(0,(mean-l+.06)/.45));
+      if(dark<.12)continue;
+      out.push({c,r,w:dark});
+    }
+    // globe home: the chosen image is wrapped around the sphere (column -> longitude, row -> latitude),
+    // so the globe IS the page, and flattening it unrolls the page toward the camera row by row
+    out.forEach(p=>{
+      const lon=((p.c+.5)/COLS-.5)*Math.PI*2, lat=((ROWS-1)/2-p.r)/(ROWS-1)*Math.PI*.86;
+      p.sx=Math.sin(lon)*Math.cos(lat); p.sy=Math.sin(lat); p.sz=Math.cos(lon)*Math.cos(lat);
+      p.plus=p.w>.8;
+      p.px=(p.c-(COLS-1)/2)/(ROWS-1)*1.5; p.py=((p.r-(ROWS-1)/2)/(ROWS-1))*-2;  // page is 1.5 x 2 units
+      p.delay=(p.r/(ROWS-1))*.5+Math.abs(p.c-(COLS-1)/2)/COLS*.18;  // top rows land first, centre out
+    });
+    pts=out;
+  }
+  function setImage(x){
+    if(typeof x==='string'){const im=new Image();im.crossOrigin='anonymous';im.onload=()=>build(im);im.src=x;}
+    else build(x);
+  }
+
+  // ---------- easing ----------
+  const clamp=(v,a=0,b=1)=>Math.min(b,Math.max(a,v));
+  const backOut=t=>{const s=1.9;t-=1;return t*t*((s+1)*t+s)+1;};      // bouncy overshoot
+  const inOut=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+  const mix=(a,b,t)=>a+(b-a)*t;
+  const col=(a,b,t,al)=>`rgba(${mix(a[0],b[0],t)|0},${mix(a[1],b[1],t)|0},${mix(a[2],b[2],t)|0},${al})`;
+
+  function size(){DPR=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);}
+  addEventListener('resize',size);size();
+
+  const pctEl=document.getElementById('pct'),lblEl=document.getElementById('lbl');
+  function draw(T){
+    if(W!==innerWidth||H!==innerHeight)size();
+    const lt=((T%LOOP)+LOOP)%LOOP;
+    // phase weights: 0 globe .. 1 page
+    let form;                                                          // per-glyph progress base
+    if(lt<1.6)form=0; else if(lt<3.4)form=(lt-1.6)/1.8; else if(lt<8.4)form=1; else form=1-(lt-8.4)/1.6;
+    const toPage=lt<8.4;                                              // direction (back ease only on the way in)
+    const scan=clamp((lt-3.6)/3.8);                                   // 0..1 read progress
+    const readAll=lt>=7.4&&lt<8.4?1:0;
+    const S=Math.min(W*.8,H*0.86)*0.36, cx=W/2, cy=H*0.44;
+
+    // background: canvas + soft orange bloom
+    ctx.fillStyle='#FDFCFB';ctx.fillRect(0,0,W,H);
+    const gr=ctx.createRadialGradient(cx,cy,0,cx,cy,S*1.9);
+    gr.addColorStop(0,'rgba(255,201,179,.55)');gr.addColorStop(.55,'rgba(255,201,179,.18)');gr.addColorStop(1,'rgba(253,252,251,0)');
+    ctx.fillStyle=gr;ctx.fillRect(0,0,W,H);
+
+    // camera: globe spins; page rocks gently in 3D
+    const su=(((lt-8.4)%LOOP)+LOOP)%LOOP/4.6, spin=su<=1?Math.PI*2*inOut(su):0, rock=Math.sin(T*0.9)*0.38, tilt=0.30+Math.sin(T*0.6)*0.08;
+    const cell=S*2/(ROWS-1);
+    const list=[];
+    for(const p of pts){
+      let f=clamp((form*1.5-p.delay)/1.0);                            // staggered 0..1
+      f=toPage?backOut(f):inOut(f);
+      // globe position
+      let gx=p.sx*Math.cos(spin)+p.sz*Math.sin(spin), gz=-p.sx*Math.sin(spin)+p.sz*Math.cos(spin), gy=p.sy;
+      const gt=0.22; let gy2=gy*Math.cos(gt)-gz*Math.sin(gt), gz2=gy*Math.sin(gt)+gz*Math.cos(gt);
+      // page position (tilted plane)
+      let x=p.px,y=p.py,z=0;
+      let x1=x*Math.cos(rock)+z*Math.sin(rock), z1=-x*Math.sin(rock)+z*Math.cos(rock);
+      let y1=y*Math.cos(tilt)-z1*Math.sin(tilt), z2=y*Math.sin(tilt)+z1*Math.cos(tilt);
+      // wave ripple on the page, like the swarm is still alive
+      z2+=0.05*Math.sin(p.c*.5+p.r*.35-T*2.2)*f;
+      const X=mix(gx*1.05,x1,f), Y=mix(gy2*1.05,y1,f), Z=mix(gz2*1.05,z2,f);
+      const persp=3.2/(3.2-Z);
+      // read state: beam sweeps top->bottom in page rows
+      const rowN=p.r/(ROWS-1);
+      const beamD=rowN-scan*1.08;
+      const read=readAll||(f>.9&&beamD<0)?1:0;
+      const beam=f>.5?Math.exp(-Math.pow(beamD*9,2)):0;
+      list.push({X:cx+X*S*persp,Y:cy-Y*S*persp,Z,persp,w:p.w,read,beam,f,plus:p.plus});
+    }
+    list.sort((a,b)=>a.Z-b.Z);
+    // the page itself: a white sheet under the glyphs, same 3D transform, fades in as the swarm lands
+    if(form>0){
+      const sh=inOut(clamp(form*1.3-.3));
+      const proj=(x,y)=>{let x1=x*Math.cos(rock),z1=-x*Math.sin(rock);let y1=y*Math.cos(tilt)-z1*Math.sin(tilt),z2=y*Math.sin(tilt)+z1*Math.cos(tilt);
+        const pp=3.2/(3.2-z2);return [cx+x1*S*pp,cy-y1*S*pp];};
+      const m=.10,hw=((COLS-1)/2)/(ROWS-1)*1.5+m,hh=1+m;
+      const q=[proj(-hw,hh),proj(hw,hh),proj(hw,-hh),proj(-hw,-hh)];
+      ctx.save();ctx.globalAlpha=sh;ctx.shadowColor='rgba(179,46,8,.16)';ctx.shadowBlur=40;ctx.shadowOffsetY=18;
+      ctx.fillStyle='#FFFFFF';ctx.beginPath();ctx.moveTo(q[0][0],q[0][1]);for(let i=1;i<4;i++)ctx.lineTo(q[i][0],q[i][1]);ctx.closePath();ctx.fill();
+      ctx.shadowColor='transparent';ctx.strokeStyle='rgba(230,226,222,1)';ctx.lineWidth=1;ctx.stroke();ctx.restore();
+    }
+
+    // scan beam glow, centred on the glyphs the beam is crossing right now
+    if(form>.95&&scan>0&&scan<1){
+      let sy=0,sx=0,n=0;for(const g of list)if(g.beam>.5){sy+=g.Y;sx+=g.X;n++;}
+      if(n){sy/=n;sx/=n;ctx.save();ctx.translate(sx,sy);ctx.scale(1,.16);
+        const bg=ctx.createRadialGradient(0,0,0,0,0,S*1.05);
+        bg.addColorStop(0,'rgba(250,104,61,.32)');bg.addColorStop(.6,'rgba(255,201,179,.22)');bg.addColorStop(1,'rgba(255,201,179,0)');
+        ctx.fillStyle=bg;ctx.beginPath();ctx.arc(0,0,S*1.05,0,6.2832);ctx.fill();ctx.restore();}
+    }
+    for(const g of list){
+      const depth=clamp((g.Z+1)/2);                                  // 0 back .. 1 front
+      const globeA=clamp((g.Z+.05)*3.2);                             // globe: front hemisphere only, no faint back-side specks
+      const al=mix(globeA,1,g.f)*mix(.72,1,g.w);
+      if(al<.02)continue;
+      const sz=cell*g.persp;
+      const globePlus=g.plus&&g.f<.5;
+      if(g.read||g.beam>.4||globePlus){                                        // orange plus (read)
+        const t=clamp(g.beam);
+        ctx.strokeStyle=globePlus&&!g.read?col(C.dk,C.or,g.f*2,al):col(C.or,C.or2,t,al);ctx.lineWidth=Math.max(2,sz*.2);ctx.lineCap='round';
+        const a=sz*mix(.36,.48,t);
+        ctx.beginPath();ctx.moveTo(g.X-a,g.Y);ctx.lineTo(g.X+a,g.Y);ctx.moveTo(g.X,g.Y-a);ctx.lineTo(g.X,g.Y+a);ctx.stroke();
+      }else{                                                        // big deliberate dot (unread)
+        const r=Math.max(3,sz*mix(.30,.38,g.w));
+        ctx.fillStyle=col(C.ink,C.dk,.45+g.f*.4,al*.95);
+        ctx.beginPath();ctx.arc(g.X,g.Y,r,0,6.2832);ctx.fill();
+      }
+    }
+
+    // progress label
+    const pr=extProgress!==null?extProgress:(lt<3.6?lt/3.6*.1:lt<7.4?.1+scan*.9:1);
+    pctEl.textContent=Math.round(pr*100)+'%';
+    lblEl.textContent=lt<3.4?'Opening page':(lt<7.4?'Reading page':'Page read');
+  }
+
+  const t0=performance.now();
+  function frame(now){
+    draw(frozen!==null?frozen:(reduce?5.5:(now-t0)/1000));
+    if(frozen===null&&!reduce)requestAnimationFrame(frame);
+  }
+  build(defaultPage());
+  window.pcLoader={setImage,setProgress:v=>{extProgress=v==null?null:clamp(v);},redraw:()=>draw(frozen||0)};
+  // pick / drop any image
+  const fin=document.getElementById('file');
+  const useFile=f=>{if(!f||!f.type.startsWith('image/'))return;const u=URL.createObjectURL(f);const im=new Image();im.onload=()=>{build(im);URL.revokeObjectURL(u);if(frozen!==null||reduce)frame();};im.src=u;};
+  fin.onchange=()=>useFile(fin.files[0]);
+  addEventListener('dragover',e=>{e.preventDefault();document.body.classList.add('drag');});
+  addEventListener('dragleave',()=>document.body.classList.remove('drag'));
+  addEventListener('drop',e=>{e.preventDefault();document.body.classList.remove('drag');useFile(e.dataTransfer.files[0]);});
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

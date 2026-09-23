@@ -142,6 +142,7 @@ The output contract is in [`schema/schema.json`](schema/schema.json), the endpoi
 | `design system/foundations/` | Color systems, typography specimen, design brief, and shared styles |
 | `design system/components/` | Component sheet, library, and standalone button/toggle examples |
 | `design system/layout/` | Three-page layout plan and annotated editor mock |
+| `design-drafts/pink-cloud-loading-shader-D.html` | Loading shader, variant D (draft) |
 
 Open the HTML design files in a browser. No build step is needed.
 
