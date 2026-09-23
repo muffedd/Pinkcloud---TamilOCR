@@ -166,13 +166,15 @@ function pageImageUrl(jobId, page) {
   return SCAN_IMAGE(jobId, page);
 }
 
-/* ---------------- AI fix + learned-fix dictionary (V4, proposed) ----------------
-   Shapes: schema/ai-fix-contract.md.
+/* ---------------- AI fix + learned-fix dictionary (V4) ----------------
+   Shapes: schema/ai-fix-contract.md (shipped backend contract).
 
    POST /jobs/{job_id}/suggest  {page, line, word, before, context}
      -> {candidates: [{text, score?, source: "llm"}]}   (503 = AI unavailable)
-   The backend route is not built yet, so suggestWord() answers from a local
-   stub. Flip to the real endpoint with ONE line: */
+   The backend route exists (app/suggest.py) but answers 503 until
+   GEMINI_API_KEY is set on the server, so suggestWord() answers from a local
+   stub. Flip to the real endpoint with ONE line, after the key is set and a
+   real route test passes: */
 var AI_SUGGEST_LIVE = false;
 var SUGGEST = function (id) { return API_BASE + "/jobs/" + encodeURIComponent(id) + "/suggest"; };
 
