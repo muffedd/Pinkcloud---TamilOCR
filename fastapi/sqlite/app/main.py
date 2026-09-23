@@ -32,7 +32,8 @@ from . import db, storage
 from .ocr import engine_status, failed_page_lines, ocr_page, _get_engine
 from .pdfutil import load_pages, probe_decode, to_gray
 from .router import choose_profile, compute_scores
-from .schema_out import build_job_result, build_page_result, parse_job_result
+from .schema_out import (build_job_result, build_page_result, enrich_page,
+                         parse_job_result)
 
 # Both a supported content type AND a supported extension are required;
 # a mismatch on EITHER side is rejected with 400 before any job exists.
@@ -289,18 +290,27 @@ def create_job(file: UploadFile | None = File(None),
 
 @app.get("/jobs/{job_id}")
 def get_job(job_id: str):
-    """Return status + result JSON for one job."""
+    """Return status + result JSON for one job.
+
+    Every line carries confidence plus a per-line needs_review flag (the
+    receipt's human-review rule). enrich_page() back-fills the flag on jobs
+    stored before it existed, so old and new jobs answer in the same shape;
+    suggestions[] passes through untouched whenever the repair module put it
+    in the stored JSON."""
     job = db.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
 
+    result = parse_job_result(job["result_json"])
+    if result and isinstance(result.get("pages"), list):
+        result["pages"] = [enrich_page(p) for p in result["pages"]]
     return {
         "job_id": job["id"],
         "filename": job["filename"],
         "sha256": job["sha256"],
         "status": job["status"],
         "created_at": job["created_at"],
-        "result": parse_job_result(job["result_json"]),
+        "result": result,
     }
 
 
@@ -321,6 +331,12 @@ def _job_summary(job: dict) -> dict:
         "page_count": len(pages) if done else None,
         "pages_needing_review": (
             sum(1 for p in pages if p.get("needs_review")) if done else None
+        ),
+        # Saved reviewer fixes that still apply to the current OCR text
+        # (stale ones whose before-word no longer matches are not counted).
+        "corrections_count": (
+            _export.count_applicable_corrections(job["id"], pages)
+            if done else None
         ),
         "error": (result or {}).get("error") if job["status"] == "error" else None,
         "result_url": f"/jobs/{job['id']}",
@@ -350,8 +366,10 @@ def search(q: str = Query(..., min_length=1, max_length=200),
 
     q is matched as whole-word tokens (implicit AND). Results carry the
     job + page + line refs and a snippet with hits wrapped in <mark>.
-    Only 'done' jobs are searched; raw stored OCR text is indexed
-    (reviewer corrections are not)."""
+    Only 'done' jobs are searched. The index holds the FINAL line text:
+    saved reviewer corrections are folded in when the job finishes and the
+    index is refreshed on every corrections PUT, so searching a corrected
+    word hits the corrected page."""
     if not q.strip():
         raise HTTPException(status_code=400, detail="empty search query")
     if not db.fts_available():
@@ -584,6 +602,10 @@ def put_corrections(job_id: str, body: CorrectionsDoc):
             except OSError:
                 pass
             raise
+        # Corrections are the S2 save path: the FTS index holds FINAL
+        # (corrected) line text, so refresh this job's rows with the new
+        # map. A no-op for unfinished jobs and FTS-less builds.
+        db.reindex_job(job_id)
     return {"job_id": job_id, **doc}
 
 

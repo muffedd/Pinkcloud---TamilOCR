@@ -8,7 +8,10 @@
     "contrast": 0.27,
     "noise": 0.63,
     "skew_deg": 3.4,
-    "damage_flags": ["yellowed", "stained"],
+    "damage_flags": [
+      "yellowed",
+      "stained"
+    ],
     "ink_density": 0.14,
     "estimated_lines": 3,
     "quality_score": 34
@@ -18,25 +21,43 @@
       "id": "L1",
       "seq": 1,
       "body": "அகர முதல எழுத்தெல்லாம் ஆதி",
-      "bbox": [180, 320, 1240, 90],
+      "bbox": [
+        180,
+        320,
+        1240,
+        90
+      ],
       "confidence": 0.93,
-      "kural": 1
+      "kural": 1,
+      "needs_review": false
     },
     {
       "id": "L2",
       "seq": 2,
       "body": "பகவன் முதற்றே உலகு",
-      "bbox": [200, 470, 1180, 88],
+      "bbox": [
+        200,
+        470,
+        1180,
+        88
+      ],
       "confidence": 0.88,
-      "kural": 1
+      "kural": 1,
+      "needs_review": false
     },
     {
       "id": "L3",
       "seq": 3,
       "body": "கற்றதனால் ஆய பயனென்கொல் வாழறிவன்",
-      "bbox": [170, 620, 1270, 92],
+      "bbox": [
+        170,
+        620,
+        1270,
+        92
+      ],
       "confidence": 0.41,
-      "kural": 2
+      "kural": 2,
+      "needs_review": true
     }
   ],
   "corrections": [
@@ -52,5 +73,24 @@
   "work": "திருக்குறள்",
   "chapter": 1,
   "script": "Tamil",
-  "material": "paper"
+  "material": "paper",
+  "suggestions": [
+    {
+      "line": "L3",
+      "word": 4,
+      "before": "வாழறிவன்",
+      "candidates": [
+        {
+          "text": "வாலறிவன்",
+          "score": 0.93,
+          "source": "lexicon"
+        },
+        {
+          "text": "வாளறிவன்",
+          "score": 0.41,
+          "source": "lexicon"
+        }
+      ]
+    }
+  ]
 }

@@ -40,11 +40,10 @@ from typing import Any
 
 from . import pdfutil as _pdfutil
 from . import storage
-from .schema_out import CONFIDENCE_REVIEW_FLOOR
+from .schema_out import CONFIDENCE_REVIEW_FLOOR, STUB_MARK, line_needs_review
 
 PT_PER_PX = 72.0 / 150.0
 FONT_PATH = Path(__file__).resolve().parents[3] / "fonts" / "noto-sans-tamil.ttf"
-STUB_MARK = "[stub]"
 RECEIPT_VERSION = 1
 
 _log = logging.getLogger("pinkcloud.export")
@@ -162,18 +161,32 @@ def apply_saved_corrections(job_id: str, pages: list[dict]) -> list[dict]:
         return pages
 
 
+def count_applicable_corrections(job_id: str, pages: list[dict]) -> int:
+    """How many of the job's saved corrections still apply to the CURRENT
+    OCR text - the same still-applies rule as apply_corrections (a stale
+    correction whose `before` no longer matches the word is skipped, and a
+    word already changed by a later correction counts only the winner).
+    Powers GET /jobs' corrections_count, so the Library shows the fixes a
+    reviewer would actually see applied, not the raw corrections-array
+    length. Stored pages never carry tier "human" (the contract tiers are
+    T1/T2), so every "human" entry below came from this application."""
+    applied = apply_saved_corrections(job_id, pages)
+    return sum(
+        1 for p in applied for c in (p.get("corrections") or [])
+        if c.get("tier") == "human"
+    )
+
+
 # --------------------------------------------------------------------------
 # receipt
 # --------------------------------------------------------------------------
 
 def _line_needs_human(line: dict, page: dict) -> bool:
     """A line goes to a human if its confidence is under the review floor,
-    it is stub output, or its page was routed HEAVY."""
-    return (
-        float(line.get("confidence", 0.0)) < CONFIDENCE_REVIEW_FLOOR
-        or str(line.get("body", "")).startswith(STUB_MARK)
-        or page.get("profile") == "HEAVY"
-    )
+    it is stub output, or its page was routed HEAVY. The rule itself lives
+    in schema_out.line_needs_review (it is also the per-line needs_review
+    served by GET /jobs/{id}), so receipt counts and API flags agree."""
+    return line_needs_review(line, page.get("profile"))
 
 
 def build_receipt(job: dict, pages: list[dict], reviewer: str | None = None,
