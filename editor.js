@@ -1325,11 +1325,15 @@ function openPopup() {
     var undo = document.createElement("button");
     undo.type = "button";
     undo.className = "btn btn--outline btn--sm";
-    undo.innerHTML = "<span>Undo auto-fix</span>";
+    undo.innerHTML = "<span>Undo</span>";
+    undo.title = "Undo the learned fix and restore the OCR word";
     undo.addEventListener("click", doUndoAuto);
     actions.appendChild(undo);
   }
   actions.appendChild(accept);
+  /* Three actions do not fit the 288px popup with full button padding: the
+     secondary Esc hint drops (Esc still works; it is listed in the ? help). */
+  if (actions.children.length > 2) actions.classList.add("pop-actions--3");
 
   el.pop.appendChild(arrow);
   el.pop.appendChild(head);

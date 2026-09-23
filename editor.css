@@ -954,7 +954,12 @@ span.sn-item { cursor: default; }
 /* ---------- AI fix (V4) + learned fixes ----------
    AI uses the LLM provenance hue (--pc-color-prov-llm); the learned-fix
    chip uses the brand primary, same as the auto-applied word outline. */
-.pop-actions .pop-ai { margin-right: auto; padding-left: var(--pc-space-2); }
+/* Popup action buttons keep their full design-system padding
+   (--pc-btn-sm-pad-x): they never shrink; the row wraps instead. */
+.pop-actions { flex-wrap: wrap; row-gap: var(--pc-space-2); }
+.pop-actions .btn { flex: none; }
+.pop-actions .pop-ai { margin-right: auto; }
+.pop-actions--3 .btn--outline .kbd { display: none; }
 .pop-ai svg { color: var(--pc-color-prov-llm); }
 .pop-ai[aria-busy="true"] { color: var(--pc-color-text-disabled); cursor: progress; }
 .pop-ai[aria-busy="true"] svg { animation: pc-ai-pulse var(--pc-motion-pulse) var(--pc-ease-in-out) infinite; }
