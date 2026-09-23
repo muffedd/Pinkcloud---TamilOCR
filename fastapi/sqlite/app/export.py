@@ -29,10 +29,12 @@ import ctypes
 import io
 import json
 import re
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from . import pdfutil as _pdfutil
 from . import storage
 from .schema_out import CONFIDENCE_REVIEW_FLOOR
 
@@ -228,8 +230,23 @@ def _add_info_dict(pdf_bytes: bytes, info: dict[str, str]) -> bytes:
     return base + obj + xref
 
 
+# PDFium is not thread-safe and sync routes run in a thread pool: two
+# concurrent exports (or an export racing an upload / page render) corrupt
+# the native heap and kill the server. Share pdfutil's lock when it exists,
+# otherwise create it there so every pypdfium2 user in the app shares one.
+_PDFIUM_LOCK = getattr(_pdfutil, "PDFIUM_LOCK", None)
+if _PDFIUM_LOCK is None:
+    _PDFIUM_LOCK = _pdfutil.PDFIUM_LOCK = threading.RLock()
+
+
 def build_pdf(master: Path, pages: list[dict], receipt: dict,
               receipt_page: bool = True) -> bytes:
+    with _PDFIUM_LOCK:
+        return _build_pdf(master, pages, receipt, receipt_page)
+
+
+def _build_pdf(master: Path, pages: list[dict], receipt: dict,
+               receipt_page: bool) -> bytes:
     import pypdfium2 as pdfium
     import pypdfium2.raw as r
     from PIL import Image
