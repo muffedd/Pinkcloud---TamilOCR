@@ -826,7 +826,17 @@ function init() {
   });
 
   el.exportBtn.addEventListener("click", function () {
-    if (S.page) toast("Export ready · page " + S.page.page);
+    if (!S.page) return;
+    /* Mock mode: unchanged demo toast. */
+    if (window.PC_API.USE_MOCK || !S.jobId) {
+      toast("Export ready · page " + S.page.page);
+      return;
+    }
+    /* Live mode: open the backend's searchable-PDF export for the whole job
+       (GET /jobs/{job_id}/export.pdf, same origin unless ?api= overrides).
+       New tab: the browser shows or downloads the PDF. */
+    window.open(window.PC_API.API_BASE + "/jobs/" + encodeURIComponent(S.jobId) + "/export.pdf",
+      "_blank", "noopener");
   });
 
   wireHotkeys();
