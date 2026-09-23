@@ -788,7 +788,10 @@
       .finally(() => { el.sample.disabled = false; });
   });
   if (!MOCK) {
-    fetch(SAMPLE_URL, { method: 'HEAD', cache: 'no-store' })
+    /* GET, not HEAD: the FastAPI ui_sub_file route only implements GET and
+       answers HEAD with 405, which would hide the button even though the
+       sample exists. The body is tiny and unused - presence is all we need. */
+    fetch(SAMPLE_URL, { cache: 'no-store' })
       .then((r) => { el.sample.hidden = !r.ok; })
       .catch(() => { el.sample.hidden = true; });
   }

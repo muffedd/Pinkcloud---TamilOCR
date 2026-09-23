@@ -531,21 +531,28 @@ function boxClass(w) {
 function renderScan() {
   var paperW = el.paper.clientWidth;
   if (!paperW) return;
-  S.scale = paperW / IMG_W;
+  /* bboxes live in the rendered page's pixel space. The backend caps the
+     LONG side at 1600px (pdfutil MAX_SIDE), so a portrait page is e.g.
+     1200x1600 - the width is NOT always 1600. Once the scan image is loaded,
+     its natural size IS the bbox space; before that (and in mock mode) the
+     1600x1400 placeholder space applies. Every box, the heatmap and
+     click-hit-testing all use S.scale, so they follow this together. */
+  S.scale = paperW / (S.coordW || IMG_W);
   var s = S.scale;
   el.paper.style.height = Math.round((S.pageH || PAGE_H) * s) + "px";
   el.paper.innerHTML = "";
 
-  /* Live mode: draw the real scan behind the boxes when the backend's
-     scan-image route answers (SCAN_IMAGE in api.js - URL still TBD by the
-     backend owner). Probe it once per page; on any failure the placeholder
-     paper below stays, so the editor still works. Mock mode never probes. */
+  /* Live mode: draw the real scan behind the boxes (SCAN_IMAGE in api.js,
+     GET /jobs/{id}/pages/{n}/image). Probe it once per page; on any failure
+     the placeholder paper below stays, so the editor still works. Mock mode
+     never probes. */
   if (S.pageImageUrl && !S.imageTried) {
     S.imageTried = true;
     var probe = new Image();
     probe.onload = function () {
-      /* bboxes live in the 1600px-capped space: map the image height into it */
-      S.pageH = probe.naturalWidth ? Math.round(probe.naturalHeight * (IMG_W / probe.naturalWidth)) : PAGE_H;
+      /* The rendered PNG's pixel size is the bbox coordinate space. */
+      S.coordW = probe.naturalWidth || IMG_W;
+      S.pageH = probe.naturalHeight || PAGE_H;
       S.imageLoaded = true;
       renderScan();
     };
@@ -1273,6 +1280,7 @@ function loadJob(doc, meta) {
   S.imageTried = false;
   S.imageLoaded = false;
   S.imageFailed = false;
+  S.coordW = null;
   S.pageH = null;
   S.corrections = {};
   S.saveMode = "unknown";
