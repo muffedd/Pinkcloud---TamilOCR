@@ -1,38 +1,34 @@
-# Pinkcloud---TamilOCR
+# Pink Cloud — Tamil OCR
 
-Web tool for reading Tamil and English documents from scans.
+Pink Cloud is an early-stage tool for reading scanned Tamil and English books. Its planned workflow repairs low-quality pages, supports human corrections, and exports searchable text.
 
 ## Status
 
-Early. Design foundations are done. Application code is not written yet.
+Design foundations are in progress. The application code is not written yet.
 
-## Design system
+## Design files
 
-| File | What it holds |
+| File | What it contains |
 | --- | --- |
-| `pink-cloud-color-system-rename-to-.html` | Pink Cloud color system, tokens, scan states, and examples. |
-| `styles.css` | Shared layout styles. |
-| `comps.html` | Component sheet. Button states, icon buttons, modal footer. |
+| `pink-cloud-color-system-rename-to-.html` | Color tokens, scan states, provenance, and editor examples. |
+| `comps.html` | UI component examples and button states. |
 | `typography-suisse.html` | Suisse type and spacing specimen. |
+| `styles.css` | Shared design tokens and UI styles. |
 
-Open the HTML files in a browser. No build step. No server needed.
+Open the HTML design files in a browser. No build step is needed.
 
-## Colour rules
+## Product direction
 
-- Warm neutrals carry most of the view. Target: 80–90% neutral.
-- Orange `#F25A1A` is the brand accent. It marks main actions and live scan only.
-- Orange is not a warning colour. Warning amber `#B67816` is separate.
-- Green = pass. Amber = check. Red = fault. Blue = note.
-- No pure black. No pure white. No purple.
-- Colour never stands alone. Each state also carries an icon and a word.
+- Upload multi-page PDF and image scans, including TIFF.
+- Run a fast OCR pass on every page and send doubtful pages through repair and heavier OCR.
+- Review the scan beside Unicode Tamil text; make corrections explicit and traceable.
+- Export searchable PDF, TXT, and a processing receipt.
+- Keep runtime assets local. Any hosted OCR route remains a project decision.
 
-## Files in the pipeline
+## Project references
 
-- `design-system-spec.txt` — source brief for the colour page.
-- `pink-cloud-layout-plan-rename-to-.html` — layout plan draft.
+- `design-system-spec.txt` — design system brief.
+- `pink-cloud-layout-plan-rename-to-.html` — three-page layout plan.
+- `schema/schema.json` and `schema/doc_demo.json` — OCR output contract and demo page.
 
-## Notes
 
-- Plain HTML and CSS only. No frameworks or scripts. Tamil fonts are stored locally.
-- Font stack: Satoshi (local), then system fallbacks.
-- Built for 360px width and up.
