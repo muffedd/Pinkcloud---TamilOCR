@@ -1784,19 +1784,12 @@ function wireSidenav() {
   if (snExport) snExport.addEventListener("click", openExport);
   var snUpload = $("snUpload");
   if (snUpload && window.PC_API.USE_MOCK) snUpload.setAttribute("href", "./index.html?mock=1");
-  /* Library (Documents) lands with slice 3; until library.html is served the
-     item stays visible but inert instead of a dead link. */
+  /* Documents -> library.html. It is a plain link: library.html ships with
+     the UI, and the old HEAD probe failed on the deploy (the FastAPI UI
+     routes are GET-only and answer HEAD with 405), which stripped the href
+     and left the button dead. */
   var lib = $("snLibrary");
-  if (lib) {
-    fetch(lib.getAttribute("href"), { method: "HEAD", cache: "no-store" })
-      .then(function (res) { if (!res.ok) throw new Error(); })
-      .catch(function () {
-        lib.removeAttribute("href");
-        lib.setAttribute("aria-disabled", "true");
-        lib.classList.add("is-soon");
-        lib.title = "Documents library - coming with search";
-      });
-  }
+  if (lib && window.PC_API.USE_MOCK) lib.setAttribute("href", "./library.html?mock=1");
 }
 
 /* MOCK suggestions for the offline Kural demo, in the proposed contract
