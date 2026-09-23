@@ -1,6 +1,6 @@
 """Page loading for Pink Cloud.
 
-Turns any accepted upload (PDF/JPG/PNG/TIFF) into BGR images, one per
+Turns any accepted upload (PDF/JPG/PNG/TIFF/WEBP) into BGR images, one per
 page, with the long side capped at 1600 px so all downstream metrics and
 bboxes live in one consistent coordinate space.
 
@@ -59,8 +59,21 @@ def probe_decode(ext: str, data: bytes) -> None:
         raise ValueError("not a decodable image")
 
 
-def load_pages(path: Path) -> list[np.ndarray]:
-    """Return a list of page images (BGR) for the given master file."""
+def stack_images(paths: list[Path]) -> list[np.ndarray]:
+    """Multi-image job: load each master in order and stack the results
+    into one pages list (each capped by _cap_1600 via load_pages). A plain
+    image gives one page; a multi-page TIFF contributes all its pages."""
+    pages: list[np.ndarray] = []
+    for p in paths:
+        pages.extend(load_pages(p))
+    return pages
+
+
+def load_pages(path: Path | list[Path]) -> list[np.ndarray]:
+    """Return a list of page images (BGR) for the given master file, or
+    for an ordered list of masters (multi-image job, see stack_images)."""
+    if isinstance(path, (list, tuple)):
+        return stack_images(list(path))
     path = Path(path)
     suffix = path.suffix.lower()
 

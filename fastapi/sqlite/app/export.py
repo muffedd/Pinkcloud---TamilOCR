@@ -198,6 +198,8 @@ def build_receipt(job: dict, pages: list[dict], reviewer: str | None = None,
         "master": {
             "sha256": job["sha256"],
             "file": master.name if master else None,
+            # every master in page order (1 entry for single-file jobs)
+            "files": [m.name for m in storage.master_paths(job["id"])],
             "verified_on_disk": storage.verify_master(job["id"], job["sha256"]),
         },
         "page_count": len(pages),
@@ -382,13 +384,13 @@ if _PDFIUM_LOCK is None:
     _PDFIUM_LOCK = _pdfutil.PDFIUM_LOCK = threading.RLock()
 
 
-def build_pdf(master: Path, pages: list[dict], receipt: dict,
+def build_pdf(master: Path | list[Path], pages: list[dict], receipt: dict,
               receipt_page: bool = True) -> bytes:
     with _PDFIUM_LOCK:
         return _build_pdf(master, pages, receipt, receipt_page)
 
 
-def _build_pdf(master: Path, pages: list[dict], receipt: dict,
+def _build_pdf(master: Path | list[Path], pages: list[dict], receipt: dict,
                receipt_page: bool) -> bytes:
     import pypdfium2 as pdfium
     import pypdfium2.raw as r
