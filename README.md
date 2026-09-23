@@ -11,8 +11,10 @@ Early. Design foundations are done. Application code is not written yet.
 | File | What it holds |
 | --- | --- |
 | `colourscheme.html` | Colour foundations. Tokens, swatches, scan states, principles. |
-| `styles.css` | Tokens and layout for `colourscheme.html`. |
+| `styles.css` | Tokens and layout styles. |
 | `comps.html` | Component sheet. Button states, icon buttons, modal footer. |
+| `layout.html` | Minoli Tamil and English OCR upload page layout. |
+| `typography-helvetica.html` | Helvetica type and spacing specimen. |
 
 Open the HTML files in a browser. No build step. No server needed.
 
@@ -32,6 +34,6 @@ Open the HTML files in a browser. No build step. No server needed.
 
 ## Notes
 
-- Plain HTML and CSS only. No frameworks, no scripts, no external fonts.
+- Plain HTML and CSS only. No frameworks or scripts. Tamil fonts are stored locally.
 - Font stack: Satoshi (local), then system fallbacks.
 - Built for 360px width and up.
