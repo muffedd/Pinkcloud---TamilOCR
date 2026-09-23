@@ -86,7 +86,7 @@ def test_export_endpoints(client, job_id):
 
 
 def test_unknown_job_404(client):
-    for path in ("receipt", "export.pdf", "export.txt"):
+    for path in ("receipt", "export.pdf", "export.txt", "export.docx"):
         assert client.get(f"/jobs/{'f' * 32}/{path}").status_code == 404
 
 
@@ -97,7 +97,7 @@ def test_tamil_filename_export_no_500(client):
     r = client.post("/jobs", files={"file": ("தமிழ்.png", buf.tobytes(), "image/png")})
     assert r.status_code == 200
     jid = r.json()["job_id"]
-    for path in ("export.txt", "export.pdf"):
+    for path in ("export.txt", "export.pdf", "export.docx"):
         resp = client.get(f"/jobs/{jid}/{path}")
         assert resp.status_code == 200
         cd = resp.headers["content-disposition"]
@@ -130,3 +130,65 @@ def test_saved_corrections_applied_to_exports(client):
     assert fixed in layer and raw not in layer
     rc = client.get(f"/jobs/{jid}/receipt").json()
     assert rc["corrections"]["total"] == 1 and rc["corrections"]["by_tier"] == {"human": 1}
+
+
+# --------------------------------------------------------------------------
+# DOCX export
+# --------------------------------------------------------------------------
+
+DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+def _docx_text(data: bytes) -> str:
+    import io
+    import zipfile
+    from docx import Document
+    assert zipfile.is_zipfile(io.BytesIO(data))
+    assert "word/document.xml" in zipfile.ZipFile(io.BytesIO(data)).namelist()
+    return "\n".join(p.text for p in Document(io.BytesIO(data)).paragraphs)
+
+
+def test_export_docx_endpoint(client, job_id):
+    r = client.get(f"/jobs/{job_id}/export.docx", params={"reviewer": "Anu"})
+    assert r.status_code == 200
+    assert r.headers["content-type"] == DOCX_TYPE
+    assert r.content[:2] == b"PK"
+    assert 'filename="page.docx"' in r.headers["content-disposition"]
+    sha = hashlib.sha256(storage.master_path(job_id).read_bytes()).hexdigest()
+    assert r.headers["x-master-sha256"] == sha
+    text = _docx_text(r.content)
+    assert "Page 1" in text and "Processing receipt" in text
+    assert sha in text
+    assert "Reviewer: Anu" in text
+
+
+def test_export_docx_corrections_applied(client):
+    import json
+    img = np.full((600, 1200, 3), 240, np.uint8)
+    ok, buf = cv2.imencode(".png", img)
+    jid = client.post("/jobs", files={"file": ("d.png", buf.tobytes(), "image/png")}).json()["job_id"]
+    raw, fixed = "வாழறிவன்", TAMIL_WORD
+    page = _page([{"id": "L1", "seq": 1, "body": "கற்றதனால் ஆய " + raw,
+                   "bbox": [100, 100, 1000, 80], "confidence": 0.9}])
+    db.set_result(jid, "done", json.dumps({"pages": [page]}, ensure_ascii=False))
+    assert raw in _docx_text(client.get(f"/jobs/{jid}/export.docx").content)
+    (storage.UPLOAD_ROOT / jid / "corrections.json").write_text(json.dumps({"corrections": [
+        {"page": 1, "line": "L1", "word": 3, "before": raw, "after": fixed},
+    ]}, ensure_ascii=False), encoding="utf-8")
+    text = _docx_text(client.get(f"/jobs/{jid}/export.docx").content)
+    assert fixed in text and raw not in text and "கற்றதனால்" in text
+    assert "Corrections: 1" in text
+    # receipt is the final section
+    assert text.index("Processing receipt") > text.index(fixed)
+
+
+def test_export_docx_unfinished_job_409(client):
+    img = np.full((400, 600, 3), 235, np.uint8)
+    ok, buf = cv2.imencode(".png", img)
+    jid = client.post("/jobs", files={"file": ("q.png", buf.tobytes(), "image/png")}).json()["job_id"]
+    db.set_result(jid, "processing", None)
+    assert client.get(f"/jobs/{jid}/export.docx").status_code == 409
+
+
+def test_export_docx_unknown_job_404(client):
+    assert client.get(f"/jobs/{'e' * 32}/export.docx").status_code == 404
