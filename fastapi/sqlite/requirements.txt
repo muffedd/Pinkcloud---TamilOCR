@@ -1,16 +1,26 @@
-# Pink Cloud backend — core dependencies (all CPU-only, Windows-friendly)
-fastapi
-uvicorn
-python-multipart
-opencv-python-headless
-pypdfium2
-numpy
+# Pink Cloud backend - core dependencies (all CPU-only, Windows-friendly)
+# Every version is pinned so a clean install matches the tested stack.
+# Needs Python 3.10+.
+fastapi==0.141.1
+uvicorn==0.53.0
+python-multipart==0.0.32
+pypdfium2==5.13.0
+pillow==12.3.0            # pdfutil.py renders PDF pages via bitmap.to_pil()
+numpy==2.2.6              # paddlex 3.7.2 needs numpy<2.4
+
+# Exactly ONE OpenCV package. Do not also install opencv-python or
+# opencv-python-headless: they all provide cv2 and overwrite each other.
+# contrib 4.10.0.84 is the exact build paddleocr/paddlex pulls in, so adding
+# the optional OCR stack below does not bring in a second cv2.
+opencv-contrib-python==4.10.0.84
 
 # ---- Optional: real OCR ----------------------------------------------------
 # Install these only if you want actual Tamil OCR instead of the stub result.
 # They are large downloads; the backend runs fine without them.
+# Known-working stack (verified live in the aafe501 code review):
 #
-#   pip install paddlepaddle paddleocr
+#   pip install paddlepaddle==3.3.1 paddleocr==3.7.0 paddlex==3.7.2
 #
-# paddlepaddle   # CPU build
-# paddleocr      # PP-OCRv5_mobile_det + ta_PP-OCRv5_mobile_rec models
+# paddlepaddle==3.3.1   # CPU build
+# paddleocr==3.7.0      # PP-OCRv5_mobile_det + ta_PP-OCRv5_mobile_rec models
+# paddlex==3.7.2
