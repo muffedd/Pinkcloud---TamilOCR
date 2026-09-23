@@ -24,6 +24,7 @@
       <button type="button" class="seg-opt" role="radio" aria-checked="true" data-val="auto" tabindex="0">Auto</button>
       <button type="button" class="seg-opt" role="radio" aria-checked="false" data-val="review" tabindex="-1">Review</button>
     </div>
+    <button type="button" class="hint-btn topbar-help" id="kbHelpBtn" aria-haspopup="dialog" aria-controls="kbHelp" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)"><span class="kbd">?</span></button>
     <span class="offline-badge" id="connBadge" data-state="offline" role="status"><i class="pdot" aria-hidden="true"></i><span id="connText">Offline</span></span>
     <button type="button" class="btn btn--solid" id="exportBtn" disabled><span class="lb"><span>Export</span><span aria-hidden="true">Export</span></span></button>
   </header>
@@ -107,6 +108,44 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<!-- Export notice: calm inline info under the Export button (never an error banner). -->
+<div class="export-notice" id="exportNotice" role="status" aria-live="polite" hidden>
+  <span class="export-notice-icon" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.1"/></svg>
+  </span>
+  <span class="export-notice-text" id="exportNoticeText"></span>
+  <button type="button" class="export-notice-close" id="exportNoticeClose" aria-label="Dismiss">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+  </button>
+</div>
+
+<!-- Keyboard shortcut overlay: "?" toggles; Esc, "?" or a click outside closes. -->
+<div class="kb-help" id="kbHelp" hidden>
+  <div class="kb-card" role="dialog" aria-modal="true" aria-labelledby="kbHelpTitle" tabindex="-1">
+    <div class="kb-head">
+      <h2 class="kb-title" id="kbHelpTitle">Keyboard shortcuts</h2>
+      <span class="kbd">Esc</span>
+    </div>
+    <p class="kb-group">Review queue</p>
+    <ul class="kb-list">
+      <li><span class="kb-keys"><span class="kbd">J</span></span><span>Next flagged word</span></li>
+      <li><span class="kb-keys"><span class="kbd">K</span></span><span>Previous flagged word</span></li>
+      <li><span class="kb-keys"><span class="kbd">↵</span></span><span>Fix the selected word</span></li>
+      <li><span class="kb-keys"><span class="kbd">Esc</span></span><span>Clear the selection</span></li>
+    </ul>
+    <p class="kb-group">Fix popup</p>
+    <ul class="kb-list">
+      <li><span class="kb-keys"><span class="kbd">↵</span></span><span>Accept the fix</span></li>
+      <li><span class="kb-keys"><span class="kbd">Esc</span></span><span>Reject and close</span></li>
+    </ul>
+    <p class="kb-group">Anywhere</p>
+    <ul class="kb-list">
+      <li><span class="kb-keys"><span class="kbd">←</span><span class="kbd">→</span></span><span>Switch a focused toggle</span></li>
+      <li><span class="kb-keys"><span class="kbd">?</span></span><span>Show or hide this list</span></li>
+    </ul>
+  </div>
+</div>
+
 <!-- Watch-demo modal: same clip as the upload page (demo.mp4, repo root).
      Styles in editor.css (.demo-modal*); the inline wiring below is
      self-contained - editor.js logic is untouched. -->
@@ -157,5 +196,163 @@
 <script src="./api.js"></script>
 <script src="./translit.js"></script>
 <script src="./editor.js"></script>
+<script>
+/* Editor polish: shortcut overlay + graceful Export. Self-contained; does not
+   touch editor.js state. Runs in the capture phase so it can step in before
+   editor.js's own Export click / keydown handlers.
+   Export: if editor.js holds local corrections for this job, its own
+   corrected-text export runs untouched; otherwise a failed export.pdf shows
+   a calm notice instead of a dead click.
+   Test hooks (mock mode only):
+     editor.html?mock=1&sim-export=404        -> export request fails (real 404)
+     editor.html?mock=1&sim-filename=<name>   -> pretend the job has this filename */
+(function () {
+  "use strict";
+  var QS = new URLSearchParams(location.search);
+  var API = window.PC_API || {};
+  var MOCK = !!API.USE_MOCK;
+  var JOB = QS.get("job");
+  var NOTICE_MS = 6000;
+  var MSG_STARTING = "Export is starting up - try again in a moment";
+  var MSG_FILENAME = "Export works best with an English filename right now";
+
+  /* ---------- export notice ---------- */
+  var notice = document.getElementById("exportNotice");
+  var noticeText = document.getElementById("exportNoticeText");
+  var noticeTimer = 0;
+  function hideNotice() {
+    clearTimeout(noticeTimer);
+    notice.classList.remove("show");
+    notice.hidden = true;
+  }
+  function showNotice(msg) {
+    clearTimeout(noticeTimer);
+    noticeText.textContent = msg;
+    notice.hidden = false;
+    notice.classList.remove("show");
+    void notice.offsetWidth; /* restart the entrance animation */
+    notice.classList.add("show");
+    noticeTimer = setTimeout(hideNotice, NOTICE_MS);
+  }
+  document.getElementById("exportNoticeClose").addEventListener("click", hideNotice);
+
+  /* ---------- job filename (for the ASCII guard) ---------- */
+  var filename = MOCK ? (QS.get("sim-filename") || "") : "";
+  if (!MOCK && JOB && API.getJob) {
+    API.getJob(JOB).then(function (job) { filename = (job && job.filename) || ""; })
+      .catch(function () { /* editor.js already reports load errors */ });
+  }
+  function nonAscii(name) { return /[^\x00-\x7F]/.test(name || ""); }
+
+  /* editor.js keeps accepted fixes in localStorage["pc.corrections." + job id]
+     ("demo-kural" in mock mode). A non-empty list means local corrections. */
+  function hasLocalCorrections() {
+    var id = MOCK ? "demo-kural" : JOB;
+    if (!id) return false;
+    try {
+      var v = JSON.parse(window.localStorage.getItem("pc.corrections." + id) || "[]");
+      return Array.isArray(v) && v.length > 0;
+    } catch (err) { return false; }
+  }
+
+  function exportUrl() {
+    if (MOCK) return "./jobs/mock-demo/export.pdf"; /* no such file: exercises the 404 path */
+    return (API.API_BASE || "") + "/jobs/" + encodeURIComponent(JOB) + "/export.pdf";
+  }
+  function nameFrom(res) {
+    var cd = res.headers.get("Content-Disposition") || "";
+    var star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    if (star) { try { return decodeURIComponent(star[1]); } catch (e) { /* fall through */ } }
+    var plain = /filename="?([^";]+)"?/i.exec(cd);
+    return plain ? plain[1] : "pink-cloud-export.pdf";
+  }
+
+  var busy = false;
+  function runExport(btn) {
+    busy = true;
+    btn.setAttribute("aria-busy", "true");
+    fetch(exportUrl(), { cache: "no-store" })
+      .then(function (res) {
+        if (!res.ok) throw new Error(String(res.status));
+        var name = nameFrom(res);
+        return res.blob().then(function (blob) {
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement("a");
+          a.href = url;
+          a.download = name;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
+          hideNotice();
+        });
+      })
+      .catch(function () { showNotice(MSG_STARTING); })
+      .then(function () { busy = false; btn.removeAttribute("aria-busy"); });
+  }
+
+  document.addEventListener("click", function (e) {
+    var btn = e.target && e.target.closest && e.target.closest("#exportBtn");
+    if (!btn || btn.disabled) return;
+    var simFail = MOCK && QS.get("sim-export") === "404";
+    var live = !MOCK && !!JOB;
+    if (!live && !simFail && !nonAscii(filename)) return; /* plain mock demo: editor.js toast */
+    if (nonAscii(filename)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      showNotice(MSG_FILENAME);
+      return;
+    }
+    /* Reviewer corrections saved locally (editor.js save-back fallback): hand
+       the click to editor.js untouched so its corrected-text export runs. */
+    if (hasLocalCorrections()) { hideNotice(); return; }
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (busy) return;
+    runExport(btn);
+  }, true);
+
+  /* ---------- keyboard shortcut overlay ---------- */
+  var help = document.getElementById("kbHelp");
+  var card = help.querySelector(".kb-card");
+  var helpBtn = document.getElementById("kbHelpBtn");
+  var lastFocus = null;
+  function helpOpen() { return !help.hidden; }
+  function openHelp() {
+    lastFocus = document.activeElement;
+    help.hidden = false;
+    help.classList.add("show");
+    helpBtn.setAttribute("aria-expanded", "true");
+    card.focus();
+  }
+  function closeHelp() {
+    help.classList.remove("show");
+    help.hidden = true;
+    helpBtn.setAttribute("aria-expanded", "false");
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+  helpBtn.setAttribute("aria-expanded", "false");
+  helpBtn.addEventListener("click", function () { helpOpen() ? closeHelp() : openHelp(); });
+  help.addEventListener("click", function (e) { if (!card.contains(e.target)) closeHelp(); });
+
+  window.addEventListener("keydown", function (e) {
+    var t = e.target;
+    var inField = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+    if (helpOpen()) {
+      if (e.key === "Escape" || e.key === "?") { e.preventDefault(); closeHelp(); }
+      if (e.key !== "Tab") { e.stopImmediatePropagation(); } /* J/K/Enter wait until it closes */
+      if (e.key === "Tab") { e.preventDefault(); card.focus(); }
+      return;
+    }
+    var demo = document.getElementById("demo-modal");
+    if (demo && !demo.hidden) return; /* the demo video modal owns the keys while open */
+    if (e.key === "?" && !inField && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      openHelp();
+    }
+  }, true);
+})();
+</script>
 </body>
 </html>

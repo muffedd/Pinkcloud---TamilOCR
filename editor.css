@@ -534,3 +534,181 @@ body.demo-open { overflow: hidden; }
 @keyframes demo-fade { from { opacity: 0; } }
 @keyframes demo-pop { from { opacity: 0; transform: translateY(8px) scale(.98); } }
 .rail-foot .spacer { flex: 1; }
+
+/* ==========================================================================
+   Polish: shortcut overlay + export notice (values from tokens.css only)
+   ========================================================================== */
+.hint-btn {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-radius: var(--pc-radius-chip);
+  transition: color var(--pc-motion-color) var(--pc-ease-out);
+}
+.hint-btn .kbd { transition: color var(--pc-motion-color) var(--pc-ease-out), box-shadow var(--pc-motion-color) var(--pc-ease-out); }
+@media (hover: hover) and (pointer: fine) {
+  .hint-btn:hover { color: var(--pc-color-primary-solid); }
+  .hint-btn:hover .kbd { color: var(--pc-color-primary-solid); box-shadow: inset 0 0 0 1px var(--pc-color-primary-soft-border); }
+}
+.hint-btn:focus-visible {
+  outline: 2px solid var(--pc-color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ---------- Export notice: soft orange info, sits under the Export button ---------- */
+.export-notice {
+  position: fixed;
+  top: calc(var(--pc-topbar-h) + var(--pc-space-2));
+  right: var(--pc-space-4);
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-2);
+  max-width: 460px;
+  padding: var(--pc-space-2) var(--pc-space-2) var(--pc-space-2) var(--pc-space-3);
+  border: 1px solid var(--pc-color-primary-soft-border);
+  border-radius: var(--pc-radius-panel);
+  background: var(--pc-color-primary-soft);
+  color: var(--pc-color-text-primary);
+  box-shadow: var(--pc-shadow-sm);
+  font-family: var(--pc-font-sans);
+  font-weight: 500;
+  font-size: var(--pc-fs-toast);
+  line-height: 1.45;
+}
+.export-notice[hidden] { display: none; }
+.export-notice.show { animation: pc-notice-in var(--pc-motion-slow) var(--pc-ease-out); }
+
+.export-notice-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--pc-color-primary);
+}
+.export-notice-icon svg,
+.export-notice-close svg {
+  width: var(--pc-btn-icon);
+  height: var(--pc-btn-icon);
+}
+.export-notice-text { flex: 1; }
+
+.export-notice-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--pc-kbd-min);
+  height: var(--pc-kbd-min);
+  padding: 0;
+  border: 0;
+  border-radius: var(--pc-radius-chip);
+  background: none;
+  color: var(--pc-color-primary-solid);
+  cursor: pointer;
+  transition: background-color var(--pc-motion-color) var(--pc-ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .export-notice-close:hover { background: var(--pc-color-primary-soft-border); }
+}
+.export-notice-close:focus-visible {
+  outline: 2px solid var(--pc-color-focus-ring);
+  outline-offset: 1px;
+}
+
+@keyframes pc-notice-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+#exportBtn[aria-busy="true"] { cursor: progress; }
+
+/* ---------- Keyboard shortcut overlay ---------- */
+.kb-help {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--pc-color-inverse) 28%, transparent);
+}
+.kb-help[hidden] { display: none; }
+.kb-help.show { animation: pc-fade-in var(--pc-motion-base) var(--pc-ease-out); }
+.kb-help.show .kb-card { animation: pc-card-in var(--pc-motion-slow) var(--pc-ease-out); }
+
+.kb-card {
+  width: 320px;
+  padding: var(--pc-space-4) var(--pc-space-4) var(--pc-space-3);
+  border-top: 3px solid var(--pc-color-primary);
+  border-radius: var(--pc-radius-panel);
+  background: var(--pc-color-bg-surface);
+  box-shadow: var(--pc-shadow-sm);
+  font-family: var(--pc-font-sans);
+  color: var(--pc-color-text-primary);
+  outline: none;
+}
+
+.kb-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--pc-space-1);
+}
+.kb-title {
+  margin: 0;
+  font-size: var(--pc-fs-badge-full);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--pc-color-text-primary);
+}
+
+.kb-group {
+  margin: var(--pc-space-3) 0 var(--pc-space-1);
+  font-size: var(--pc-fs-eyebrow);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pc-color-primary-solid);
+}
+
+.kb-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.kb-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-3);
+  padding: var(--pc-gap-6) 0;
+  border-bottom: 1px solid var(--pc-color-row-divider);
+  font-size: var(--pc-fs-toast);
+  line-height: 1.45;
+  color: var(--pc-color-text-secondary);
+}
+.kb-list li:last-child { border-bottom: 0; }
+
+.kb-card .kbd {
+  min-width: 30px;
+  background: var(--pc-color-primary-soft);
+  box-shadow: inset 0 0 0 1px var(--pc-color-primary-soft-border);
+  color: var(--pc-color-primary-solid);
+}
+.kb-keys { display: inline-flex; flex: none; gap: var(--pc-space-1); width: 72px; }
+.kb-head .kbd { min-width: 0; }
+
+@keyframes pc-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pc-card-in {
+  from { opacity: 0; transform: translateY(6px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .export-notice.show,
+  .kb-help.show,
+  .kb-help.show .kb-card { animation: none; }
+}
+.topbar-help { display: inline-flex; align-items: center; color: var(--pc-color-text-secondary); }
