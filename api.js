@@ -12,7 +12,11 @@
      GET /jobs/{job_id} -> {job_id, filename, sha256, status, created_at, result}
                            status: pending | done | error
                            result: {pages:[...]} | {error} | null
-                           404 -> {"detail": "job not found"} */
+                           404 -> {"detail": "job not found"}
+   Plus, live on main:
+     GET /jobs/{job_id}/pages/{n}/image  -> per-page scan PNG (bbox space)
+     GET|PUT /jobs/{job_id}/corrections  -> reviewer fix map
+                                            (schema/corrections-endpoint.md) */
 
 var MOCK_DEFAULT = false;
 var QS = new URLSearchParams(location.search);
@@ -21,14 +25,13 @@ var API_BASE = (QS.get("api") || "").replace(/\/+$/, "");
 
 var GET_JOB = function (id) { return API_BASE + "/jobs/" + encodeURIComponent(id); };
 
-/* Scan-image route: GET /jobs/{job_id}/image serves the stored scan for a
-   job. It is per-JOB, not per-page - one image per job for now. This route
-   is pending merge into schema/endpoints.md; if the merged contract names a
-   different URL, update this ONE constant.
-   The editor loads it best-effort: it probes once per page (same URL on
-   multi-page jobs) and falls back to its placeholder paper on any error. */
+/* Scan-image route: GET /jobs/{job_id}/pages/{n}/image serves page n
+   (1-based) of a finished job as a PNG rendered in the OCR bbox coordinate
+   space - draw bboxes directly on it. The editor loads it best-effort and
+   falls back to its placeholder paper on any error (404 = unknown/unfinished
+   job or out-of-range page). */
 var SCAN_IMAGE = function (id, page) {
-  return API_BASE + "/jobs/" + encodeURIComponent(id) + "/image";
+  return API_BASE + "/jobs/" + encodeURIComponent(id) + "/pages/" + page + "/image";
 };
 
 /* Poll pacing for a job that is still "pending" (same shape as upload.js:
@@ -70,16 +73,45 @@ function getJob(jobId) {
     });
 }
 
-/* Corrections save-back: schema/endpoints.md defines NO endpoint for
-   persisting reviewer corrections yet, so edits stay client-side.
-   TODO(backend): once a corrections endpoint lands in schema/endpoints.md,
-   implement this against it and have the editor call it after each accepted
-   fix. Do not invent a route before the contract names one. */
-function saveCorrections(/* jobId, page, corrections */) {
-  return Promise.reject(ApiError(
-    "Corrections save-back is not implemented: no endpoint in schema/endpoints.md yet",
-    "http"
-  ));
+var CORRECTIONS = function (id) { return API_BASE + "/jobs/" + encodeURIComponent(id) + "/corrections"; };
+
+/* Attach the HTTP status to an ApiError so callers can split 404 (route not
+   deployed on an older backend -> silent local fallback) from a real server
+   error like 500 (surface it, never a silent fallback). */
+function httpError(message, status) {
+  var err = ApiError(message, "http");
+  err.status = status;
+  return err;
+}
+
+/* GET /jobs/{job_id}/corrections -> {job_id, corrections, updated_at}
+   (corrections: [] and updated_at: null when none saved yet).
+   Throws ApiError kind "down" (network) | "http" with .status.
+   Contract: schema/corrections-endpoint.md. */
+function getCorrections(jobId) {
+  return fetch(CORRECTIONS(jobId), { cache: "no-store" })
+    .catch(function () { throw ApiError("Backend unreachable (GET corrections)", "down"); })
+    .then(function (res) {
+      if (!res.ok) throw httpError("GET corrections -> " + res.status, res.status);
+      return res.json();
+    });
+}
+
+/* PUT /jobs/{job_id}/corrections - REPLACES the job's full correction map.
+   corrections: [{page:int, line:str, word:int, before:str, after:str}, ...],
+   soft cap 10k per job. An empty array clears the job's corrections.
+   Same error split as getCorrections. */
+function saveCorrections(jobId, corrections) {
+  return fetch(CORRECTIONS(jobId), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ corrections: corrections })
+  })
+    .catch(function () { throw ApiError("Backend unreachable (PUT corrections)", "down"); })
+    .then(function (res) {
+      if (!res.ok) throw httpError("PUT corrections -> " + res.status, res.status);
+      return res.json();
+    });
 }
 
 /* Best-effort URL for the scan image behind a page (see SCAN_IMAGE above). */
@@ -109,5 +141,6 @@ window.PC_API = {
   getPage: getPage,
   getJob: getJob,
   pageImageUrl: pageImageUrl,
+  getCorrections: getCorrections,
   saveCorrections: saveCorrections
 };

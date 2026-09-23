@@ -1,9 +1,10 @@
 /* Pink Cloud correction editor (page 2 of 3).
    Vanilla JS, fully offline. One selection model drives the scan,
    the text pane and the review queue.
-   Accepted fixes are saved back to the backend (schema/corrections-endpoint.md,
-   localStorage fallback until the route ships) and feed a client-side
-   corrections dictionary that auto-applies to future jobs. */
+   Accepted fixes are saved back to the backend (GET+PUT /jobs/{id}/corrections,
+   schema/corrections-endpoint.md; localStorage fallback only when the backend
+   is unreachable or predates the route) and feed a client-side corrections
+   dictionary that auto-applies to future jobs. */
 
 (function () {
 "use strict";
@@ -40,6 +41,8 @@ var S = {
   scale: 1,
   corrections: {},       /* word key -> {page, line, word, before, after} */
   saveMode: "unknown",   /* "unknown" | "server" | "local" */
+  saveError: false,      /* last server save/load failed with a real error (500 etc.) */
+  corrDirty: false,      /* correction map changed since the last successful sync */
   dictCount: 0           /* fixes auto-applied to this page from the dictionary */
 };
 
@@ -48,9 +51,11 @@ var OK_MIN = 0.75;
 var MOTION_BASE = 160;
 var TOAST_MS = 2400;
 
-/* Corrections save-back (contract: schema/corrections-endpoint.md). PUT
-   replaces the job's full correction map; while the route is not deployed
-   (404) corrections fall back to localStorage keyed by job id, silently. */
+/* Corrections save-back (contract: schema/corrections-endpoint.md; route
+   live via PC_API.getCorrections / PC_API.saveCorrections). PUT replaces the
+   job's full correction map. localStorage keyed by job id is the fallback
+   cache ONLY for network failure or a 404 (older backend without the route);
+   a server error (500) is surfaced to the reviewer, never silently absorbed. */
 var CORR_SAVE_MS = 800;
 var LS_CORR = "pc.corrections.";  /* + job id: saved correction list */
 var LS_DICT = "pc.fixdict";       /* global across jobs: OCR word -> accepted correction */
@@ -168,10 +173,6 @@ function storageId() {
   return S.jobId || (window.PC_API.USE_MOCK ? MOCK_STORAGE_ID : null);
 }
 
-function corrUrl(jobId) {
-  return window.PC_API.API_BASE + "/jobs/" + encodeURIComponent(jobId) + "/corrections";
-}
-
 /* Full-map payload, sorted into reading order (page, line, word). */
 function corrPayload() {
   var list = Object.keys(S.corrections).map(function (k) { return S.corrections[k]; });
@@ -205,35 +206,50 @@ function scheduleSave() {
   saveTimer = setTimeout(flushSave, CORR_SAVE_MS);
 }
 
+/* Awaitable: callers (Export) can wait for the pending write. Flushes NOW -
+   clears a pending debounce timer. Sends whenever the map changed since the
+   last successful sync, INCLUDING an empty map: a reviewer who cleared every
+   fix must clear the server's copy too (PUT [] empties it), otherwise export
+   would keep applying stale fixes. */
 function flushSave() {
-  saveTimer = null;
-  if (window.PC_API.USE_MOCK || !S.jobId) return; /* the demo stays local-only */
-  if (!Object.keys(S.corrections).length) return;
-  if (S.saveMode === "local") return; /* route known missing - local copy is current */
-  fetch(corrUrl(S.jobId), {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(corrPayload())
-  }).then(function (res) {
-    if (res.status === 404) {
-      /* Route not deployed yet (the job itself loaded fine): switch to the
-         silent local fallback for the rest of the session. No error. */
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  if (window.PC_API.USE_MOCK || !S.jobId) return Promise.resolve(); /* the demo stays local-only */
+  if (!S.corrDirty) return Promise.resolve(); /* nothing changed since the last sync */
+  if (S.saveMode === "local") { /* route known missing - local copy is current */
+    S.corrDirty = false;
+    return Promise.resolve();
+  }
+  return window.PC_API.saveCorrections(S.jobId, corrPayload().corrections).then(function () {
+    S.saveMode = "server";
+    S.saveError = false;
+    S.corrDirty = false;
+  }).catch(function (err) {
+    if (err && err.status === 404) {
+      /* Older backend without the route (the job itself loaded fine): switch
+         to the silent local fallback for the rest of the session. No error. */
       S.saveMode = "local";
       return;
     }
-    if (!res.ok) throw new Error("save failed (" + res.status + ")");
-    S.saveMode = "server";
-  }).catch(function () {
-    /* Network/server trouble: the local copy is already written; say so once. */
-    if (!saveWarned) {
-      saveWarned = true;
-      toast("Corrections saved locally · backend endpoint unreachable");
+    if (err && err.kind === "down") {
+      /* Network failure: the local copy is already written; say so once. */
+      if (!saveWarned) {
+        saveWarned = true;
+        toast("Corrections saved locally · backend endpoint unreachable");
+      }
+      return;
     }
+    /* Real server error (500 "corrections unreadable", 422 bad payload, ...):
+       NOT a fallback case - surface it. The localStorage cache still has the
+       fixes for this session, but they are NOT on the server. */
+    S.saveError = true;
+    toast("Server could not save corrections (" + ((err && err.status) || "error") +
+      ") · fixes kept locally for this session only");
   });
 }
 
 function recordCorrection(w) {
   S.corrections[w.key] = { page: w.page, line: w.lineId, word: w.idx, before: w.orig, after: w.text };
+  S.corrDirty = true;
   scheduleSave();
 }
 
@@ -329,18 +345,25 @@ function bootstrapCorrections(done) {
     done();
   };
   if (window.PC_API.USE_MOCK || !S.jobId) { applyLocal(null); return; }
-  fetch(corrUrl(S.jobId), { cache: "no-store" }).then(function (res) {
-    if (res.status === 404) {
+  window.PC_API.getCorrections(S.jobId).then(function (body) {
+    S.saveMode = "server";
+    S.saveError = false;
+    applyLocal((body && body.corrections) || []);
+  }).catch(function (err) {
+    if (err && err.status === 404) {
+      /* Older backend without the route (the job loaded fine): quiet local. */
       S.saveMode = "local";
       applyLocal(null);
       return;
     }
-    if (!res.ok) { applyLocal(null); return; }
-    res.json().then(function (body) {
-      S.saveMode = "server";
-      applyLocal((body && body.corrections) || []);
-    }, function () { applyLocal(null); });
-  }).catch(function () { applyLocal(null); });
+    if (err && err.kind === "down") { applyLocal(null); return; } /* network: quiet local cache */
+    /* Server error (500 = saved corrections unreadable): show them the local
+       cache, but say plainly the server copy could not be read. */
+    S.saveError = true;
+    toast("Could not read saved corrections from the server (" + ((err && err.status) || "error") +
+      ") · showing the local cache");
+    applyLocal(null);
+  });
 }
 
 /* ---------------- scroll (the only animated thing besides the toggle) ---------------- */
@@ -904,8 +927,9 @@ function doAccept() {
   refreshWordEl(w);
   retext();
   /* Save-back (schema/corrections-endpoint.md): debounced PUT of the full
-     correction map, localStorage fallback until the route ships. The fix
-     also teaches the dictionary so the next scan can auto-apply it. */
+     correction map to the live route; localStorage is the fallback cache for
+     network failure / older backends (404) only. The fix also teaches the
+     dictionary so the next scan can auto-apply it. */
   recordCorrection(w);
   dictAdd(w.orig, w.text);
   closePopup();
@@ -1190,27 +1214,37 @@ function init() {
       toast("Export ready · page " + S.page.page);
       return;
     }
-    if (S.saveMode === "local") {
-      /* The corrections route is not deployed, so the backend's export would
-         use raw OCR. Apply the corrections client-side to this page's text
-         and hand it over as a download instead. */
-      var blob = new Blob([S.page.text + "\n"], { type: "text/plain;charset=utf-8" });
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement("a");
-      a.href = url;
-      a.download = "pink-cloud-" + S.jobId.slice(0, 8) + "-p" + S.page.page + "-corrected.txt";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-      toast("Exported with corrections applied locally");
-      return;
-    }
-    /* Live mode: open the backend's searchable-PDF export for the whole job
-       (GET /jobs/{job_id}/export.pdf, same origin unless ?api= overrides).
-       New tab: the browser shows or downloads the PDF. */
-    window.open(window.PC_API.API_BASE + "/jobs/" + encodeURIComponent(S.jobId) + "/export.pdf",
-      "_blank", "noopener");
+    /* Flush any pending debounced save BEFORE exporting: the PDF is built
+       from the server's correction map, and a fix accepted in the last
+       800ms would otherwise be missing from it. flushSave never throws. */
+    flushSave().then(function () {
+      if (S.saveMode === "local") {
+        /* This backend predates the corrections route (or is unreachable), so
+           its export would use raw OCR. Apply the corrections client-side to
+           this page's text and hand it over as a download instead. */
+        var blob = new Blob([S.page.text + "\n"], { type: "text/plain;charset=utf-8" });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = "pink-cloud-" + S.jobId.slice(0, 8) + "-p" + S.page.page + "-corrected.txt";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+        toast("Exported with corrections applied locally");
+        return;
+      }
+      /* A server-side save/read failed earlier (500 etc.): the PDF is built
+         from the server's correction map, so it may miss the latest fixes. */
+      if (S.saveError) {
+        toast("Warning: the latest fixes were not saved on the server · the PDF may not include them");
+      }
+      /* Live mode: open the backend's searchable-PDF export for the whole job
+         (GET /jobs/{job_id}/export.pdf, same origin unless ?api= overrides).
+         New tab: the browser shows or downloads the PDF. */
+      window.open(window.PC_API.API_BASE + "/jobs/" + encodeURIComponent(S.jobId) + "/export.pdf",
+        "_blank", "noopener");
+    });
   });
 
   wireHotkeys();
@@ -1242,6 +1276,8 @@ function loadJob(doc, meta) {
   S.pageH = null;
   S.corrections = {};
   S.saveMode = "unknown";
+  S.saveError = false;
+  S.corrDirty = false;
   S.dictCount = 0;
   saveWarned = false;
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
