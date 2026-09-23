@@ -528,6 +528,48 @@ function boxClass(w) {
   return "box";
 }
 
+/* ---------------- heatmap color ----------------
+   The contract has no per-line damage field, only per-line OCR confidence,
+   so damage is derived from it. PaddleOCR confidences crowd near 1.0 even on
+   rough text, so two signals are combined:
+     abs - fixed scale: conf >= HEAT_CLEAN -> 0, conf <= HEAT_BAD -> 1
+     rel - where the line sits in this page's own confidence spread; only
+           counts in proportion to how wide that spread is, so a clean page
+           with a tiny spread does not paint its "worst" line red.
+   0 = clean (green), 0.5 = rough (orange), 1 = damaged (red). */
+var HEAT_CLEAN = 0.97;
+var HEAT_BAD = 0.70;
+var HEAT_SPREAD_FULL = 0.15;
+
+function heatConfRange(lines) {
+  var lo = Infinity, hi = -Infinity;
+  lines.forEach(function (l) {
+    if (typeof l.conf !== "number" || isNaN(l.conf)) return;
+    if (l.conf < lo) lo = l.conf;
+    if (l.conf > hi) hi = l.conf;
+  });
+  return lo <= hi ? { lo: lo, hi: hi } : null;
+}
+
+function heatDamage(line, range) {
+  var c = line.conf;
+  if (typeof c !== "number" || isNaN(c)) return 1;
+  var abs = (HEAT_CLEAN - c) / (HEAT_CLEAN - HEAT_BAD);
+  abs = Math.max(0, Math.min(1, abs));
+  var rel = 0;
+  if (range && range.hi - range.lo > 0.02) {
+    var spread = range.hi - range.lo;
+    rel = ((range.hi - c) / spread) * Math.min(1, spread / HEAT_SPREAD_FULL);
+  }
+  return Math.max(abs, Math.max(0, Math.min(1, rel)));
+}
+
+/* green (hue 130) -> orange (hue 30) at 0.5 -> red (hue 0) at 1 */
+function heatColor(d, alpha) {
+  var hue = d <= 0.5 ? 130 - 200 * d : 60 - 60 * d;
+  return "hsla(" + Math.round(hue) + ", 85%, 45%, " + alpha.toFixed(2) + ")";
+}
+
 function renderScan() {
   var paperW = el.paper.clientWidth;
   if (!paperW) return;
@@ -538,8 +580,18 @@ function renderScan() {
      1600x1400 placeholder space applies. Every box, the heatmap and
      click-hit-testing all use S.scale, so they follow this together. */
   S.scale = paperW / (S.coordW || IMG_W);
+  el.paper.style.height = Math.round((S.pageH || PAGE_H) * S.scale) + "px";
+  /* Setting the height can add the scan pane's vertical scrollbar (a tall
+     portrait page), which narrows the paper. The background image stretches
+     to the new width, so re-read it and rescale or the boxes drift. */
+  var paperW2 = el.paper.clientWidth;
+  if (paperW2 && paperW2 !== paperW) {
+    paperW = paperW2;
+    S.scale = paperW / (S.coordW || IMG_W);
+    el.paper.style.height = Math.round((S.pageH || PAGE_H) * S.scale) + "px";
+  }
+  S.renderedW = paperW;
   var s = S.scale;
-  el.paper.style.height = Math.round((S.pageH || PAGE_H) * s) + "px";
   el.paper.innerHTML = "";
 
   /* Live mode: draw the real scan behind the boxes (SCAN_IMAGE in api.js,
@@ -611,9 +663,15 @@ function renderScan() {
 
   /* Heatmap fills sit at the bottom (per line: no words[] in the mock). */
   if (S.heat) {
+    var confRange = heatConfRange(S.lines);
     S.lines.forEach(function (line) {
       var h = document.createElement("div");
-      h.className = "box box-heat heat-" + binOf(line.conf);
+      var dmg = heatDamage(line, confRange);
+      h.className = "box box-heat";
+      h.style.background = heatColor(dmg, 0.16 + 0.30 * dmg);
+      h.style.borderColor = heatColor(dmg, 0.85);
+      h.title = "Damage " + Math.round(dmg * 100) + "% (confidence " +
+        (typeof line.conf === "number" ? line.conf.toFixed(2) : "?") + ")";
       h.style.left = Math.round(line.bbox[0] * s - BOX_PAD) + "px";
       h.style.top = Math.round(line.bbox[1] * s - BOX_PAD) + "px";
       h.style.width = Math.round(line.bbox[2] * s + BOX_PAD * 2) + "px";
@@ -1258,6 +1316,15 @@ function init() {
   probeConn();
 
   var raf = 0;
+  /* The paper can change width without a window resize (the scan pane's
+     scrollbar appearing, the heat legend toggling): keep boxes in step. */
+  if (window.ResizeObserver) {
+    new ResizeObserver(function () {
+      if (S.page && el.paper.clientWidth && el.paper.clientWidth !== S.renderedW) {
+        renderScan();
+      }
+    }).observe(el.paper);
+  }
   window.addEventListener("resize", function () {
     if (raf) return;
     raf = requestAnimationFrame(function () {

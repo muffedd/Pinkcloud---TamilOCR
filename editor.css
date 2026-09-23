@@ -712,3 +712,12 @@ body.demo-open { overflow: hidden; }
   .kb-help.show .kb-card { animation: none; }
 }
 .topbar-help { display: inline-flex; align-items: center; color: var(--pc-color-text-secondary); }
+
+/* Heatmap is a continuous damage scale (editor.js heatColor): one gradient
+   swatch, same hues/alpha as the fills: green -> orange -> red. */
+.heat-legend .h-scale {
+  width: 64px;
+  background: linear-gradient(90deg,
+    hsla(130, 85%, 45%, 0.40), hsla(30, 85%, 45%, 0.50), hsla(0, 85%, 45%, 0.60));
+  box-shadow: none;
+}
