@@ -2,7 +2,7 @@
 """CER / WER for Tamil OCR output vs ground truth. Python 3 stdlib only.
 
 Usage:
-  python3 cer.py ground_truth.txt ocr_output.txt [--keep-unknown] [--no-punct] [--show-diff]
+  python3 scripts/cer.py ground_truth.txt ocr_output.txt [--keep-unknown] [--no-punct] [--show-diff]
 
 Both files are read as UTF-8, NFC-normalized, zero-width chars removed,
 and all whitespace (spaces, tabs, newlines) collapsed to a single space.

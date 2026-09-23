@@ -81,13 +81,16 @@ The gate logs each decision and metric when running `repair/repair.py`. Sample1'
 Commands run and successful:
 
 ```sh
-python3 test_text_filter.py
+python3 -m scripts.test_text_filter
 # text_filter checks passed
 
-~/ocrfix/bin/python test_repair_gate.py
+~/ocrfix/bin/python -m scripts.test_repair_gate
 # gate checks passed
 
-python3 -m py_compile repair/repair.py
+python3 -m scripts.test_sarvam_ocr
+# Sarvam archive check passed
+
+python3 -m py_compile repair/repair.py scripts/*.py
 # passed (no output)
 
 ~/ocrfix/bin/python repair/repair.py raw repair/out --threads 2

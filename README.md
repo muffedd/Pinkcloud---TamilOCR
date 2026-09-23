@@ -151,7 +151,7 @@ Open the HTML design files in a browser. No build step is needed.
 
 ## Heavy repair and OCR provider evaluation
 
-The experimental CPU repair pipeline and OCR comparisons are in `repair/`, `text_filter.py`, and `ocr_outputs/`. This evaluation does **not** change the webapp backend: the app still uses its configured PaddleOCR path; Sarvam has been tested as a hosted alternative, not wired into the app.
+The experimental CPU repair pipeline and OCR comparisons are in `repair/`, `scripts/text_filter.py`, and `ocr_outputs/`. This evaluation does **not** change the webapp backend: the app still uses its configured PaddleOCR path; Sarvam has been tested as a hosted alternative, not wired into the app.
 
 `repair/repair.py` now routes per page using input ink contrast (threshold `0.25`, matching the repair pipeline's fadedness threshold) and paper brightness (90th percentile threshold `240`). Clean pages use the raw image; damaged pages use the repaired grayscale `_g.png`. The binary PNG is for display only and must not be sent to OCR.
 

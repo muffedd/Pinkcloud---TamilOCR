@@ -23,7 +23,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from text_filter import orphan_signs  # noqa: E402
+from scripts.text_filter import orphan_signs  # noqa: E402
 
 TAMIL = re.compile(r"[\u0b80-\u0bff]")
 OK_PUNCT = set(" .,;:-!?'\"()[]—–")

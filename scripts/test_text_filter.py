@@ -1,5 +1,5 @@
-"""Run: python3 test_text_filter.py"""
-from text_filter import clean, orphan_signs
+"""Run: python3 -m scripts.test_text_filter"""
+from scripts.text_filter import clean, orphan_signs
 
 lines = ["வணக்கம். வணக்கம். வணக்கம்.", "hello world", "அவன் வந்தான்.", "ாதவறு"]
 cleaned, dropped, repeats, notes = clean(lines, [.9, .9, .65, .3])
