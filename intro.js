@@ -2,6 +2,9 @@
    Plays the chosen intro once per browser session, over the real upload
    page, then slides the sheet up and springs the page in underneath.
 
+   No glow or coloured shadow behind the marks: just dots on the canvas
+   colour.
+
    Variants (all share one timeline, springs and colours from tokens.css;
    ported from design-drafts/pinkcloud-intro.html, fake product page removed,
    the real page animates in instead):
@@ -92,14 +95,6 @@
   C.lightRgb = rgb(C.light);
 
   function dotter(ctx) { return function (x, y, r, fill) { if (r <= .15) return; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fillStyle = fill; ctx.fill(); }; }
-  function glower(ctx) {
-    return function (x, y, rad, a, col) {
-      var g = ctx.createRadialGradient(x, y, 0, x, y, rad);
-      g.addColorStop(0, "rgba(" + col + "," + a + ")"); g.addColorStop(.45, "rgba(" + col + "," + (a * .45) + ")"); g.addColorStop(1, "rgba(" + col + ",0)");
-      ctx.fillStyle = g; ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2);
-    };
-  }
-
   /* dot grid sampler shared by the variants: draws a shape offscreen and
      keeps one dot per grid cell with enough coverage */
   function sample(drawFn, w, h, step) {
@@ -155,22 +150,13 @@
       textDots = td.map(function (d, i) { return { x: d.x, y: d.y, cov: d.cov, u: d.x / tw, v: d.y / th, h: hash(i + 1001) }; });
     }
 
-    var dot = dotter(ctx), glow = glower(ctx);
+    var dot = dotter(ctx);
 
     function frame(t) {
       ctx.clearRect(0, 0, W, H); ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
       var R = pitch * 0.5;
       var shift = E.boltShift(Math.max(0, t - 1.10));
       var bx = lerp(L.boltStartX, L.boltEndX, shift), by = L.cy - L.bh / 2, bcx = bx + L.bw / 2;
-
-      var gIn = E.fade(seg(t, 0, .9));
-      var flare = E.glowFlare(seg(t, .95, 1.35)) * (1 - E.fade(seg(t, 1.35, 2.4)));
-      var breathe = .5 + .5 * Math.sin(t * 2.2);
-      glow(bcx, L.cy, L.bh * (1.05 + .5 * flare), .30 * gIn + .35 * flare, C.orangeRgb);
-      glow(bcx, L.cy, L.bh * (.55 + .25 * flare), .22 * gIn + .30 * flare, C.lightRgb);
-      var tIn = E.fade(seg(t, 1.3, 2.4));
-      glow(L.textX + L.tw * .5, L.cy, L.tw * .62, (.16 + .05 * breathe) * tIn, C.lightRgb);
-      glow(L.textX + L.tw * .25, L.cy + L.th * .1, L.tw * .42, (.10 + .04 * breathe) * tIn, C.orangeRgb);
 
       var i, d;
       for (i = 0; i < boltDots.length; i++) {
@@ -208,7 +194,7 @@
 
   /* ================= variant: logo (logo@2x.svg) =================
      Same timeline as the bolt variant: the cloud mark materialises from its
-     centre with the orange flare, then springs up into place while the
+     centre, then springs up into place while the
      "Pinkcloud" wordmark builds in left to right beneath it. Shapes are the
      paths of logo@2x.svg (viewBox 0 0 80 80), inlined so the first frame
      never waits on a network fetch. */
@@ -257,21 +243,12 @@
       markDots = md.map(function (d, i) { var dx = d.x - mw / 2, dy = d.y - mh / 2; return { x: d.x, y: d.y, cov: d.cov, dy: dy, dist: Math.hypot(dx, dy) / mh, h: hash(i + 7) }; });
       wordDots = wd.map(function (d, i) { return { x: d.x, y: d.y, cov: d.cov, u: d.x / ww, v: d.y / wh, h: hash(i + 1001) }; });
     }
-    var dot = dotter(ctx), glow = glower(ctx);
+    var dot = dotter(ctx);
     function frame(t) {
       ctx.clearRect(0, 0, W, H); ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
       var R = pitch * 0.5;
       var shift = E.boltShift(Math.max(0, t - 1.10));
       var my = lerp(L.markStartY, L.markEndY, shift), mcx = L.markX + L.mw / 2, mcy = my + L.mh / 2;
-
-      var gIn = E.fade(seg(t, 0, .9));
-      var flare = E.glowFlare(seg(t, .95, 1.35)) * (1 - E.fade(seg(t, 1.35, 2.4)));
-      var breathe = .5 + .5 * Math.sin(t * 2.2);
-      glow(mcx, mcy, L.mh * (1.05 + .5 * flare), .30 * gIn + .35 * flare, C.orangeRgb);
-      glow(mcx, mcy, L.mh * (.55 + .25 * flare), .22 * gIn + .30 * flare, C.lightRgb);
-      var tIn = E.fade(seg(t, 1.3, 2.4));
-      glow(L.cx, L.wordY + L.wh / 2, L.ww * .55, (.16 + .05 * breathe) * tIn, C.lightRgb);
-      glow(L.wordX + L.ww * .25, L.wordY + L.wh * .6, L.ww * .38, (.10 + .04 * breathe) * tIn, C.orangeRgb);
 
       var i, d;
       for (i = 0; i < markDots.length; i++) {

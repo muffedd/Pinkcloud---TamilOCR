@@ -230,6 +230,11 @@
 
   /* ---------- Landing intro (intro.js / intro.css, design-drafts/pinkcloud-intro.html) ---------- */
   --pc-intro-sheet-radius: 28px;           /* bottom corners of the sheet as it slides up */
+  /* processing overlay (loader.js): gray, tight shadows - no orange halo */
+  --pc-loader-card-shadow-color: #1E1A181F;
+  --pc-loader-card-shadow-blur: 14;   /* px, canvas shadowBlur */
+  --pc-loader-card-shadow-y: 6;       /* px, canvas shadowOffsetY */
+  --pc-loader-pill-shadow: 0 4px 12px #1E1A181F;
   --pc-intro-sheet-shadow: 0 30px 60px #1E1A1814; /* only visible while the sheet leaves */
   --pc-intro-skip-inset: 16px;
 

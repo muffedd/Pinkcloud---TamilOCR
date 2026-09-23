@@ -37,6 +37,7 @@
     var n = parseInt(m[1], 16);
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
+  function raw(name, fb) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fb; }
   function mount() {
     if (root) return;
     C = {
@@ -47,7 +48,10 @@
       or2: tok('--pc-color-primary-gradient-end', '#FA683D'),
       soft: tok('--pc-color-primary-soft-border', '#FFC9B3'),
       card: tok('--pc-color-bg-surface', '#FFFFFF'),
-      line: tok('--pc-color-border-subtle', '#E6E2DE')
+      line: tok('--pc-color-border-subtle', '#E6E2DE'),
+      shadow: raw('--pc-loader-card-shadow-color', '#1E1A181F'),
+      shadowBlur: parseFloat(raw('--pc-loader-card-shadow-blur', '14')) || 14,
+      shadowY: parseFloat(raw('--pc-loader-card-shadow-y', '6')) || 6
     };
     root = document.createElement('div');
     root.className = 'pc-loader';
@@ -169,9 +173,7 @@
     var cell = S * 2 / (ROWS - 1), cr = Math.cos(rock), sr = Math.sin(rock), ct = Math.cos(tilt), st = Math.sin(tilt);
 
     ctx.fillStyle = rgba(C.bg, 1); ctx.fillRect(0, 0, W, H);
-    var gr = ctx.createRadialGradient(cx, cy, 0, cx, cy, S * 1.9);
-    gr.addColorStop(0, rgba(C.soft, .55)); gr.addColorStop(.55, rgba(C.soft, .18)); gr.addColorStop(1, rgba(C.bg, 0));
-    ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H);
+    var q = null;
 
     // page card
     if (form > 0) {
@@ -181,9 +183,9 @@
         return [cx + x1 * S * pp, cy - y1 * S * pp];
       };
       var m = .1, hw = ((COLS - 1) / 2) / (ROWS - 1) * 1.5 + m, hh = 1 + m;
-      var q = [proj(-hw, hh), proj(hw, hh), proj(hw, -hh), proj(-hw, -hh)];
+      q = [proj(-hw, hh), proj(hw, hh), proj(hw, -hh), proj(-hw, -hh)];
       ctx.save(); ctx.globalAlpha = sh;
-      ctx.shadowColor = rgba(C.dk, .16); ctx.shadowBlur = 40; ctx.shadowOffsetY = 18;
+      ctx.shadowColor = C.shadow; ctx.shadowBlur = C.shadowBlur; ctx.shadowOffsetY = C.shadowY;   // gray, tight (was orange, blur 40)
       ctx.fillStyle = rgba(C.card, 1); ctx.beginPath(); ctx.moveTo(q[0][0], q[0][1]);
       for (var qi = 1; qi < 4; qi++) ctx.lineTo(q[qi][0], q[qi][1]);
       ctx.closePath(); ctx.fill(); ctx.shadowColor = 'transparent';
@@ -213,7 +215,10 @@
       var bx = 0, by = 0, n = 0;
       for (var j = 0; j < list.length; j++) if (list[j].beam > .5) { bx += list[j].X; by += list[j].Y; n++; }
       if (n) {
-        ctx.save(); ctx.translate(bx / n, by / n); ctx.scale(1, .16);
+        ctx.save();
+        // keep the beam on the page: clipped to the card, no orange haze spilling onto the background
+        if (q) { ctx.beginPath(); ctx.moveTo(q[0][0], q[0][1]); for (var qc = 1; qc < 4; qc++) ctx.lineTo(q[qc][0], q[qc][1]); ctx.closePath(); ctx.clip(); }
+        ctx.translate(bx / n, by / n); ctx.scale(1, .16);
         var bg = ctx.createRadialGradient(0, 0, 0, 0, 0, S * 1.05);
         bg.addColorStop(0, rgba(C.or2, .32)); bg.addColorStop(.6, rgba(C.soft, .22)); bg.addColorStop(1, rgba(C.soft, 0));
         ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(0, 0, S * 1.05, 0, 6.2832); ctx.fill(); ctx.restore();

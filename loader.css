@@ -37,7 +37,7 @@
   padding: 13px 20px;
   font: 600 15px/1.2 var(--pc-font-sans, system-ui, sans-serif);
   white-space: nowrap;
-  box-shadow: 0 10px 30px rgba(179, 46, 8, .18);
+  box-shadow: var(--pc-loader-pill-shadow);
 }
 .pc-loader-pct {
   color: var(--pc-color-primary-soft-border, #FFC9B3);
