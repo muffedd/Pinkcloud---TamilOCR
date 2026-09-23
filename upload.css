@@ -241,6 +241,8 @@
   animation: up-in 200ms var(--up-ease);
   font: 400 13px/1.4 var(--up-font);
   color: var(--up-text);
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 #upload-root .up-notices .toast__icon {
   display: grid;
@@ -399,6 +401,10 @@
 .up-help p { margin: 0; font: 500 12px/1.4 var(--up-font); color: var(--up-text-2); }
 .up-offline { margin-top: 18px !important; }
 .up-offline::first-letter { color: var(--up-ok); }
+.up-offline[data-state="down"]::first-letter { color: var(--up-err); }
+.up-offline[data-state="checking"]::first-letter,
+.up-offline[data-state="unknown"]::first-letter,
+.up-offline[data-state="not_initialized"]::first-letter { color: var(--up-text-2); }
 
 /* ---------- Small screens ---------- */
 @media (max-width: 900px) {

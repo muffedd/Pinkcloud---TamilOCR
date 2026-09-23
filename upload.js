@@ -10,18 +10,31 @@
 
   /* =======================================================
      API SEAM — the only place that knows about the backend.
-     Flip MOCK to false when the FastAPI backend serves the
-     frontend: that single line is the swap. (fastapi/sqlite:
-     POST /jobs takes ONE file and returns {job_id};
-     GET /jobs/{job_id} → status pending|done|error with
-     result = {pages:[schema.json docs…]} or {error}.)
-     ======================================================= */
-  const MOCK = true;
+     Contract: schema/endpoints.md (fastapi/sqlite, app 0.2.0).
+       GET  /health          → {ok, ocr_engine: paddle|stub|not_initialized, ocr_error?}
+       POST /jobs  (form field "file", ONE file) → {job_id} | 400/422 {detail}
+       GET  /jobs/{job_id}   → {status: pending|done|error,
+                                result: {pages:[…]} | {error} | null} | 404
+     POST is synchronous today (job is already done|error when it
+     returns); we still poll while status is "pending".
 
-  const POST_JOBS = '/jobs';
-  const POLL_JOB = (id) => `/jobs/${encodeURIComponent(id)}`;
+     LIVE is the default. The mock stays for offline demos:
+       index.html?mock=1        → mock engine (schema/doc_demo.json)
+       MOCK_DEFAULT = true      → mock without the query param
+     API origin: same origin as the page by default. For a backend on
+     another origin (needs CORS on the backend) use ?api=http://127.0.0.1:8000
+     ======================================================= */
+  const MOCK_DEFAULT = false;
+  const QS = new URLSearchParams(location.search);
+  const MOCK = QS.has('mock') ? QS.get('mock') !== '0' : MOCK_DEFAULT;
+  const API_BASE = (QS.get('api') || '').replace(/\/+$/, '');
+
+  const HEALTH = API_BASE + '/health';
+  const POST_JOBS = API_BASE + '/jobs';
+  const POLL_JOB = (id) => `${API_BASE}/jobs/${encodeURIComponent(id)}`;
   const POLL_MS = 400;
   const POLL_MAX = 600; // depth cap ≈ 4 min per job
+  const LIVE_PARALLEL = 2; // OCR runs inside POST: keep the server load small
 
   const ACCEPT_EXT = ['.pdf', '.jpg', '.jpeg', '.png', '.tif', '.tiff'];
   const ACCEPT_MIME = ['application/pdf', 'image/jpeg', 'image/png', 'image/tiff'];
@@ -104,26 +117,73 @@
 
   /* -------------------------------------------------------
      Real backend (fastapi/sqlite). POST processes one file
-     synchronously, so a poll may already report done.
+     synchronously, so the first poll normally reports done.
      ------------------------------------------------------- */
-  function realStartPage(file) {
-    const fd = new FormData();
-    fd.append('file', file, file.name);
-    return fetch(POST_JOBS, { method: 'POST', body: fd }).then((res) => {
-      if (!res.ok) {
-        return res.json().catch(() => ({})).then((body) => {
-          throw new Error('POST /jobs → ' + res.status + (body && body.detail ? ': ' + body.detail : ''));
-        });
-      }
-      return res.json(); // { job_id }
+  class ApiError extends Error {
+    constructor(message, kind) { super(message); this.kind = kind; } // kind: 'down' | 'http'
+  }
+  const MIME_BY_EXT = { '.pdf': 'application/pdf', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+    '.png': 'image/png', '.tif': 'image/tiff', '.tiff': 'image/tiff' };
+  function detailText(body) {
+    if (!body || body.detail == null) return '';
+    if (typeof body.detail === 'string') return body.detail;
+    if (Array.isArray(body.detail)) return body.detail.map((d) => (d && d.msg) || '').filter(Boolean).join('; ');
+    return String(body.detail);
+  }
+
+  /* The backend checks content type AND extension. Browsers send an
+     empty type for some TIFFs; send the type the extension implies. */
+  function withMime(file) {
+    if (ACCEPT_MIME.includes(file.type)) return file;
+    const name = (file.name || '').toLowerCase();
+    const ext = ACCEPT_EXT.find((e) => name.endsWith(e));
+    return ext ? new File([file], file.name, { type: MIME_BY_EXT[ext] }) : file;
+  }
+
+  /* XHR (not fetch) so the row shows real upload progress. When the
+     bytes are sent the server starts OCR: that is "processing". */
+  function realStartPage(file, opts) {
+    return new Promise((resolve, reject) => {
+      const fd = new FormData();
+      fd.append('file', withMime(file), file.name);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', POST_JOBS);
+      xhr.responseType = 'text';
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && opts.onProgress) opts.onProgress('uploading', Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.upload.onload = () => { if (opts.onProgress) opts.onProgress('processing', 100); };
+      xhr.onerror = () => reject(new ApiError('Backend unreachable (POST /jobs)', 'down'));
+      xhr.ontimeout = () => reject(new ApiError('Backend timed out (POST /jobs)', 'down'));
+      xhr.onload = () => {
+        let body = null;
+        try { body = JSON.parse(xhr.responseText); } catch (e) { /* non-JSON */ }
+        if (xhr.status >= 200 && xhr.status < 300 && body && body.job_id) { resolve({ job_id: body.job_id }); return; }
+        const d = detailText(body);
+        if (xhr.status === 0) { reject(new ApiError('Backend unreachable (POST /jobs)', 'down')); return; }
+        reject(new ApiError((d ? d.charAt(0).toUpperCase() + d.slice(1) : 'Upload failed') + ' (' + xhr.status + ')', 'http'));
+      };
+      if (opts.onProgress) opts.onProgress('uploading', 4);
+      xhr.send(fd);
     });
   }
 
   function realPollPage(jobId) {
-    return fetch(POLL_JOB(jobId)).then((res) => {
-      if (!res.ok) throw new Error('GET /jobs/' + jobId + ' → ' + res.status);
-      return res.json(); // { job_id, filename, status, result }
-    });
+    return fetch(POLL_JOB(jobId), { cache: 'no-store' })
+      .catch(() => { throw new ApiError('Backend unreachable (GET /jobs)', 'down'); })
+      .then((res) => {
+        if (res.status === 404) throw new ApiError('Job not found on the server', 'http');
+        if (!res.ok) throw new ApiError('GET /jobs → ' + res.status, 'http');
+        return res.json(); // { job_id, filename, sha256, status, created_at, result }
+      });
+  }
+
+  /* /health → 'paddle' | 'stub' | 'not_initialized' | 'down' */
+  function realHealth() {
+    return fetch(HEALTH, { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+      .then((b) => ({ state: b && b.ok ? String(b.ocr_engine || 'unknown') : 'down', error: b && b.ocr_error }))
+      .catch(() => ({ state: 'down' }));
   }
 
   /* Adapter: both paths resolve to { status, progress, result?, error? } */
@@ -131,6 +191,7 @@
     queued: 'queued', waiting: 'queued',
     upload: 'uploading', uploading: 'uploading', in_flight: 'uploading',
     process: 'processing', processing: 'processing',
+    pending: 'processing', running: 'processing',
     ok: 'done', complete: 'done', completed: 'done', done: 'done',
     fail: 'error', failed: 'error', error: 'error'
   };
@@ -148,10 +209,10 @@
     const result = raw.result;
     const pages = result && Array.isArray(result.pages) ? result.pages : null;
     const doc = pages ? pages[0] : (result && (result.lines || result.text) ? result : null);
-    return { status: 'done', progress: 100, result: doc };
+    return { status: 'done', progress: 100, result: doc, pages: pages || (doc ? [doc] : []) };
   }
 
-  function startPage(file, opts) { return (MOCK ? mockStartPage(file, opts) : realStartPage(file)); }
+  function startPage(file, opts) { return (MOCK ? mockStartPage(file, opts) : realStartPage(file, opts)); }
   function pollPage(jobId) {
     return (MOCK ? mockPollPage(jobId) : realPollPage(jobId)).then(normalizePage);
   }
@@ -243,11 +304,12 @@
     help.appendChild(h('hr', 'up-rule'));
     help.appendChild(h('h3', null, 'How it works'));
     help.appendChild(ol2);
-    help.appendChild(h('p', 'up-offline', '● Runs fully offline'));
+    const offline = h('p', 'up-offline', '● Runs fully offline');
+    help.appendChild(offline);
 
     layout.appendChild(card);
     layout.appendChild(help);
-    return { dz, browse, input, list, start, notices };
+    return { dz, browse, input, list, start, notices, offline };
   }
 
   const el = buildSkeleton();
@@ -267,6 +329,7 @@
     if (data.status) p.status = data.status;
     if (typeof data.progress === 'number') p.progress = data.progress;
     if (data.result) p.result = data.result;
+    if (data.pages) p.pages = data.pages;
     if (data.error) p.error = data.error;
 
     p.els.row.dataset.status = p.status;
@@ -283,7 +346,15 @@
     else if (p.status === 'processing' || p.status === 'done') p.els.fill.style.width = '100%';
 
     p.els.why.textContent = p.status === 'error' ? (p.error || 'OCR failed') : '';
+    p.els.size.textContent = fmtSize(p.size) + (p.status === 'done' ? pageSummary(p.pages) : '');
     refreshStart();
+  }
+
+  /* "· 3 pages · 1 to review" from result.pages[] */
+  function pageSummary(pages) {
+    if (!pages || !pages.length) return '';
+    const review = pages.filter((pg) => pg && pg.needs_review).length;
+    return ' · ' + pages.length + (pages.length === 1 ? ' page' : ' pages') + (review ? ' · ' + review + ' to review' : '');
   }
 
   function addFiles(fileList) {
@@ -312,7 +383,8 @@
 
     const meta = h('div', 'up-meta');
     meta.appendChild(h('span', 'up-name', file.name));
-    meta.appendChild(h('span', 'up-size', fmtSize(file.size)));
+    const size = h('span', 'up-size', fmtSize(file.size));
+    meta.appendChild(size);
     row.appendChild(meta);
 
     const bar = h('div', 'up-bar');
@@ -337,7 +409,8 @@
     state.pages.set(key, {
       key, file, name: file.name, size: file.size,
       status: 'queued', progress: 0, jobId: null, result: null, error: null,
-      els: { row, fill, why, badge }
+      pages: null,
+      els: { row, fill, why, badge, size }
     });
     order.push(key);
     del.addEventListener('click', () => removePage(key));
@@ -374,7 +447,20 @@
     if (!keys.length || state.running) return;
     state.running = true;
     refreshStart();
+    if (MOCK) { startMockBatch(keys); return; }
+    probeHealth().then((h) => {
+      if (h.state === 'down') {
+        keys.forEach((key) => applyPage(key, { status: 'error', error: 'Backend unreachable: nothing was uploaded' }));
+        addNotice('Backend unreachable at ' + (API_BASE || location.origin) + ' - start the API, or open ?mock=1 for the demo');
+        state.running = false; refreshStart();
+        return;
+      }
+      runLive(keys);
+    });
+  }
 
+  /* Mock: unchanged demo timing (all files start, then poll). */
+  function startMockBatch(keys) {
     let pending = keys.length;
     keys.forEach((key, i) => {
       const p = state.pages.get(key);
@@ -385,12 +471,41 @@
     });
   }
 
+  /* Live: at most LIVE_PARALLEL uploads at once; each row goes
+     uploading (real bytes) -> processing (server OCR) -> done|error. */
+  function runLive(keys) {
+    const queue = keys.slice();
+    let inFlight = 0;
+    let wentDown = false;
+    const next = () => {
+      if (!queue.length) { if (inFlight === 0) pollLoop(keys, 0); return; }
+      const key = queue.shift();
+      const p = state.pages.get(key);
+      if (!p) { next(); return; } // removed meanwhile
+      inFlight++;
+      startPage(p.file, { onProgress: (status, progress) => applyPage(key, { status, progress }) })
+        .then(({ job_id }) => { p.jobId = job_id; applyPage(key, { status: 'processing', progress: 100 }); return pollPage(job_id); })
+        .then((pg) => { if (pg) applyPage(key, pg); })
+        .catch((err) => {
+          applyPage(key, { status: 'error', error: err.message });
+          if (err.kind === 'down' && !wentDown) { wentDown = true; setHealth({ state: 'down' }); addNotice(p.name + ': ' + err.message); }
+          else if (err.kind !== 'down') addNotice(p.name + ': ' + err.message);
+        })
+        .finally(() => { inFlight--; next(); });
+    };
+    for (let i = 0; i < LIVE_PARALLEL; i++) next();
+  }
+
   function pollLoop(keys, depth) {
     const active = keys.filter((k) => {
       const p = state.pages.get(k);
       return p && p.jobId && p.status !== 'done' && p.status !== 'error';
     });
-    if (!active.length || depth >= POLL_MAX) { state.running = false; refreshStart(); return; }
+    if (!active.length || depth >= POLL_MAX) {
+      // Never leave a spinner behind: anything still open has timed out.
+      active.forEach((k) => applyPage(k, { status: 'error', error: 'Timed out waiting for OCR' }));
+      state.running = false; refreshStart(); return;
+    }
     let left = active.length;
     active.forEach((key) => {
       pollPage(state.pages.get(key).jobId)
@@ -398,6 +513,31 @@
         .catch((err) => applyPage(key, { status: 'error', error: err.message }))
         .finally(() => { if (--left === 0) setTimeout(() => pollLoop(keys, depth + 1), POLL_MS); });
     });
+  }
+
+  /* --- connection state: the help panel's "offline" line tells the truth --- */
+  const HEALTH_TEXT = {
+    mock: '● Demo mode: mock data, runs fully offline',
+    paddle: '● Connected: OCR engine ready',
+    stub: '● Connected: stub OCR, text is placeholder',
+    not_initialized: '● Connected: OCR engine starting',
+    down: '● Backend unreachable',
+    unknown: '● Connected',
+    checking: '● Checking backend…'
+  };
+  function setHealth(h) {
+    const line = el.offline;
+    if (!line) return;
+    const state_ = HEALTH_TEXT[h.state] ? h.state : 'unknown';
+    line.dataset.state = state_;
+    line.textContent = HEALTH_TEXT[state_];
+    line.title = h.state === 'down'
+      ? 'No response from ' + (API_BASE || location.origin) + '/health. Start the API or open with ?mock=1.'
+      : (h.error ? 'OCR engine: ' + h.error : '');
+  }
+  function probeHealth() {
+    setHealth({ state: 'checking' });
+    return realHealth().then((h) => { setHealth(h); return h; });
   }
 
   /* --- dropzone wiring --- */
@@ -420,4 +560,5 @@
   el.start.addEventListener('click', startBatch);
 
   refreshStart();
+  if (MOCK) setHealth({ state: 'mock' }); else probeHealth();
 })();
