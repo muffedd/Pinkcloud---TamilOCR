@@ -24,23 +24,23 @@ carries a progress hint (`pages_done`, `pages_total`, `progress`).
 
 ```bash
 curl -s http://127.0.0.1:8000/health
-# → {"ok": true, "ocr_engine": "sarvam", "ocr_engine_selected": "sarvam", "sarvam_key_set": true}
+# → {"ok": true, "ocr_engine": "sarvam", "ocr_engine_selected": "sarvam", "gemini_key_set": true, "sarvam_key_set": true}
 ```
 
 | Field | Type | Notes |
 |---|---|---|
 | `ok` | bool | Always `true` if the server is up |
-| `ocr_engine` | string | Engine that produced the last page: `sarvam` (real OCR) or `stub` (fallback, marked output). Before any page: `sarvam` if a key is set, else `stub` |
-| `ocr_engine_selected` | string | Always `sarvam` (the only OCR engine) |
-| `sarvam_key_set` | bool | Whether `SARVAM_API_KEY` is set (the key itself is never returned) |
-| `sarvam_error` | string | Only present after a failed Sarvam call: one-line error, key scrubbed |
-| `ocr_error` | string | Only present when `ocr_engine` is `stub`: why (last Sarvam error, or missing key) |
+| `ocr_engine` | string | Engine that produced the last page: `gemini` (FAST route), `sarvam` (HEAVY route), or `stub` (both failed, marked output). Before any page: the selected engine if its key is set, else `stub` |
+| `ocr_engine_selected` | string | `gemini` or `sarvam` (from `OCR_ENGINE`, default `sarvam`) |
+| `gemini_key_set` / `sarvam_key_set` | bool | Whether each key is set (the keys themselves are never returned) |
+| `gemini_error` / `sarvam_error` | string | Only present after that engine failed: one-line error, key scrubbed |
 
-Sarvam is the only OCR engine. If the key is missing or a Sarvam call fails, the API
-still works and returns stub lines for that page - check `/health` before trusting OCR text.
+Pages route by quality: **FAST -> Gemini**, **HEAVY -> Sarvam**; if the routed engine
+fails the other is tried, and if both fail the page gets marked `[stub]` output.
+Check `/health` before trusting OCR text.
 
 ```json
-{"ok": true, "ocr_engine": "stub", "ocr_engine_selected": "sarvam", "sarvam_key_set": false, "ocr_error": "SARVAM_API_KEY is not set"}
+{"ok": true, "ocr_engine": "stub", "ocr_engine_selected": "sarvam", "gemini_key_set": false, "sarvam_key_set": false}
 ```
 
 ## POST /jobs

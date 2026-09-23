@@ -1,17 +1,25 @@
 """OCR fast pass for Pink Cloud.
 
-One engine behind the ocr_page() contract:
+Two engines behind the same ocr_page() contract:
 
-  sarvam   Sarvam Document AI "Digitise" (Sarvam Vision, ta-IN).
-           POST /doc-ai/v1/job/digitise -> poll status ->
-           download-url -> ZIP with metadata/page_NNN.json.
-           Needs SARVAM_API_KEY in the environment.
+  gemini  (FAST route)  Gemini vision model (default gemini-3.5-flash-lite).
+                        Needs GEMINI_API_KEY. Returns text only, so line
+                        bboxes are approximated from the page ink profile.
+  sarvam  (HEAVY route) Sarvam Document AI "Digitise" (Sarvam Vision, ta-IN).
+                        POST /doc-ai/v1/job/digitise -> poll status ->
+                        download-url -> ZIP with metadata/page_NNN.json.
+                        Needs SARVAM_API_KEY in the environment.
 
-If the key is missing or a Sarvam call fails, the page gets clearly
-marked "[stub]" lines (confidence 0 -> needs_review) instead of failing
-the job. There is no local/offline OCR engine.
+Routing: ocr_page(img, profile) sends FAST pages to Gemini and HEAVY pages
+to Sarvam; if that engine fails the other one is tried, and if both fail
+the page gets a marked [stub] line. Without a profile, OCR_ENGINE decides.
 
 Environment:
+  OCR_ENGINE        "sarvam" (default) or "gemini".
+  GEMINI_API_KEY    Gemini API key. Read at call time, never logged.
+  GEMINI_MODEL      default "gemini-3.5-flash-lite".
+  GEMINI_LANGUAGE   prompt language name, default "Tamil".
+  GEMINI_TIMEOUT_S  per-page HTTP budget, default 120.
   SARVAM_API_KEY    Sarvam API subscription key. Read at call time, never
                     logged, never stored.
   SARVAM_LANGUAGE   default "ta-IN".
@@ -40,73 +48,108 @@ import zipfile
 
 logger = logging.getLogger("pinkcloud.ocr")
 
-# Which engine produced the last page ("sarvam" | "stub"), and the last
-# Sarvam failure (key scrubbed).
+# Which engine produced the last page, and the last per-engine failure.
 _LAST_ENGINE: str | None = None
 _SARVAM_ERROR: str | None = None
+_GEMINI_ERROR: str | None = None
 
-# Env values from the removed PaddleOCR engine; still honoured as "ignored,
-# with a warning" so an old .env never silently changes behaviour.
-_LEGACY_ENV = ("OCR_ENGINE", "SARVAM_FALLBACK")
+
+def selected_engine() -> str:
+    """Engine chosen by OCR_ENGINE (default sarvam)."""
+    v = (os.environ.get("OCR_ENGINE") or "sarvam").strip().lower()
+    return v if v in ("sarvam", "gemini") else "sarvam"
 
 
 def warn_legacy_env() -> None:
-    """Log once at startup if a removed engine setting is still set."""
-    for name in _LEGACY_ENV:
-        v = (os.environ.get(name) or "").strip().lower()
-        if v and v not in ("sarvam", "none"):
-            logger.warning(
-                "%s=%s is ignored: PaddleOCR was removed, Sarvam is the only "
-                "OCR engine (failures fall back to marked [stub] lines)", name, v)
+    """Log once at startup if a removed/invalid engine setting is still set.
+
+    OCR_ENGINE is live again (sarvam|gemini); any other value, and
+    SARVAM_FALLBACK, are ignored so an old .env never silently changes
+    behaviour."""
+    engine = (os.environ.get("OCR_ENGINE") or "").strip().lower()
+    if engine and engine not in ("sarvam", "gemini"):
+        logger.warning(
+            "OCR_ENGINE=%s is ignored: valid values are sarvam|gemini "
+            "(failures fall back to the other engine, then marked [stub] lines)",
+            engine)
+    fallback = (os.environ.get("SARVAM_FALLBACK") or "").strip().lower()
+    if fallback:
+        logger.warning(
+            "SARVAM_FALLBACK=%s is ignored: PaddleOCR was removed; a Sarvam "
+            "failure falls back to Gemini, then marked [stub] lines", fallback)
 
 
 def engine_status() -> dict:
     """Report OCR engine state for /health and diagnostics.
 
     ocr_engine is the engine that produced the most recent page
-    ("sarvam" | "stub"), or, before any page, what the next page will use:
-    "sarvam" when a key is set, otherwise "stub".
+    ("gemini" | "sarvam" | "stub"), or, before any page, the engine that
+    is ready to run. ocr_engine_selected is what OCR_ENGINE asks for.
     """
+    selected = selected_engine()
     if _LAST_ENGINE is not None:
         engine = _LAST_ENGINE
-    else:
+    elif selected == "sarvam":
         engine = "sarvam" if _sarvam_key() else "stub"
+    else:
+        engine = "gemini" if _gemini_key() else "stub"
     status = {
         "ocr_engine": engine,
-        "ocr_engine_selected": "sarvam",
+        "ocr_engine_selected": selected,
+        "gemini_key_set": bool(_gemini_key()),
         "sarvam_key_set": bool(_sarvam_key()),
     }
+    if _GEMINI_ERROR:
+        status["gemini_error"] = _GEMINI_ERROR
     if _SARVAM_ERROR:
         status["sarvam_error"] = _SARVAM_ERROR
     if engine == "stub":
-        status["ocr_error"] = _SARVAM_ERROR or "SARVAM_API_KEY is not set"
+        status["ocr_error"] = _SARVAM_ERROR or _GEMINI_ERROR or "no OCR engine available"
     return status
 
 
-def ocr_page(img) -> tuple[list[dict], float]:
-    """Run the fast OCR pass on one page image (BGR or grayscale).
+# Routing: FAST -> Gemini, HEAVY -> Sarvam. The other engine is the
+# fallback; if both fail the page gets a marked [stub] line.
+_ROUTES = {"FAST": ("gemini", "sarvam"), "HEAVY": ("sarvam", "gemini")}
+
+
+def _route(profile: str | None) -> tuple[str, ...]:
+    return _ROUTES.get(profile or "", (selected_engine(),))
+
+
+def ocr_page(img, profile: str | None = None) -> tuple[list[dict], float]:
+    """Run OCR on one page image (BGR or grayscale).
+
+    Routing: FAST -> Gemini, HEAVY -> Sarvam; the other engine is the
+    fallback. Without a profile, OCR_ENGINE decides.
 
     Returns (lines, ms) where each line is:
         {"body": str, "bbox": [x, y, w, h], "confidence": float}
-    bboxes are on the SAME 1600px-capped image the router scored, so the
-    frontend can draw boxes directly. On any Sarvam failure (including a
-    missing key) the page gets marked "[stub]" lines.
+    bboxes are on the SAME page image the router scored, so the frontend
+    can draw boxes directly.
     """
-    global _LAST_ENGINE, _SARVAM_ERROR
+    global _LAST_ENGINE, _SARVAM_ERROR, _GEMINI_ERROR
     t0 = time.perf_counter()
-    try:
-        lines = _sarvam_ocr(img)
-    except Exception as exc:
-        _SARVAM_ERROR = _safe_error(exc)
-        _LAST_ENGINE = "stub"
-        if _sarvam_key():
-            logger.exception("Sarvam OCR failed -> STUB output for this page")
+
+    for engine in _route(profile):
+        try:
+            lines = _gemini_ocr(img) if engine == "gemini" else _sarvam_ocr(img)
+        except Exception as exc:
+            if engine == "gemini":
+                _GEMINI_ERROR = _safe_error(exc)
+            else:
+                _SARVAM_ERROR = _safe_error(exc)
+            logger.exception("%s OCR failed", engine.capitalize())
+            continue
+        if engine == "gemini":
+            _GEMINI_ERROR = None
         else:
-            logger.warning("SARVAM_API_KEY not set -> STUB output for this page")
-        return _stub_lines(img), (time.perf_counter() - t0) * 1000.0
-    _LAST_ENGINE = "sarvam"
-    _SARVAM_ERROR = None
-    return lines, (time.perf_counter() - t0) * 1000.0
+            _SARVAM_ERROR = None
+        _LAST_ENGINE = engine
+        return lines, (time.perf_counter() - t0) * 1000.0
+
+    _LAST_ENGINE = "stub"
+    return _stub_lines(img), (time.perf_counter() - t0) * 1000.0
 
 
 # --------------------------------------------------------------------------
@@ -128,10 +171,12 @@ def _sarvam_key() -> str:
 
 
 def _safe_error(exc: Exception) -> str:
-    """One-line error text with the API key scrubbed out, just in case."""
+    """One-line error text with every API key scrubbed out, just in case."""
     msg = f"{type(exc).__name__}: {exc}".strip().splitlines()[0][:300]
-    key = _sarvam_key()
-    return msg.replace(key, "***") if key else msg
+    for key in (_sarvam_key(), _gemini_key()):
+        if key:
+            msg = msg.replace(key, "***")
+    return msg
 
 
 def _env_float(name: str, default: float) -> float:
@@ -307,8 +352,132 @@ def _parse_sarvam_page(page: dict, img_w: int, img_h: int) -> list[dict]:
     return lines
 
 
+# --------------------------------------------------------------------------
+# Gemini (fast route)
+# Docs: https://ai.google.dev/gemini-api/docs/image-understanding
+# --------------------------------------------------------------------------
+
+_GEMINI_DEFAULT_MODEL = "gemini-3.5-flash-lite"
+_GEMINI_URL = ("https://generativelanguage.googleapis.com/v1beta/models/"
+               "{model}:generateContent")
+
+
+class GeminiError(RuntimeError):
+    pass
+
+
+def _gemini_key() -> str:
+    return (os.environ.get("GEMINI_API_KEY") or "").strip()
+
+
+def _line_bands(gray, min_h: int = 6, gap: int = 3) -> list[tuple[int, int]]:
+    """Horizontal projection-profile text-line bands as (y0, y1).
+
+    ponytail: crude on purpose. Gemini returns text without coordinates,
+    so this only exists to give each line an approximate bbox."""
+    import numpy as np
+
+    ink = (gray < 128).astype(np.uint8)
+    rows = ink.mean(axis=1)
+    threshold = max(0.01, float(rows.mean()) * 0.5)
+    bands: list[list[int]] = []
+    inside, start = False, 0
+    for y, value in enumerate(rows):
+        if value > threshold and not inside:
+            inside, start = True, y
+        elif value <= threshold and inside:
+            inside = False
+            if y - start >= min_h:
+                bands.append([start, y])
+    if inside and len(rows) - start >= min_h:
+        bands.append([start, len(rows)])
+    merged: list[list[int]] = []
+    for band in bands:
+        if merged and band[0] - merged[-1][1] <= gap:
+            merged[-1][1] = band[1]
+        else:
+            merged.append(band)
+    return [(b[0], b[1]) for b in merged]
+
+
+def _lines_with_boxes(img, texts: list[str]) -> list[dict]:
+    """Attach an approximate bbox + a text-quality confidence to each line.
+
+    Confidence comes from textcheck.score_line(), the same 0..1 proxy the
+    rest of the backend uses (Gemini returns no per-line score)."""
+    import cv2
+
+    from .textcheck import score_line
+
+    h, w = img.shape[:2]
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
+    bands = _line_bands(gray)
+    if len(bands) == len(texts):
+        boxes = [[0, y0, w, y1 - y0] for y0, y1 in bands]
+    elif bands:
+        top, bottom = bands[0][0], bands[-1][1]
+        step = (bottom - top) / len(texts)
+        boxes = [[0, int(top + i * step), w, max(1, int(step))]
+                 for i in range(len(texts))]
+    else:
+        step = h / len(texts)
+        boxes = [[0, int(i * step), w, max(1, int(step))]
+                 for i in range(len(texts))]
+    return [{"body": t, "bbox": b, "confidence": score_line(t)}
+            for t, b in zip(texts, boxes)]
+
+
+def _gemini_ocr(img, client=None) -> list[dict]:
+    """Transcribe one page with Gemini and return contract lines."""
+    key = _gemini_key()
+    if not key:
+        raise GeminiError("GEMINI_API_KEY is not set")
+
+    import base64
+    import cv2
+    import httpx
+
+    ok, buf = cv2.imencode(".png", img)
+    if not ok:
+        raise GeminiError("could not encode page image as PNG")
+    model = os.environ.get("GEMINI_MODEL") or _GEMINI_DEFAULT_MODEL
+    lang = os.environ.get("GEMINI_LANGUAGE") or "Tamil"
+    prompt = (f"Transcribe all {lang} text in this image verbatim. "
+              "Preserve line breaks. Output only the text, no commentary.")
+    body = {
+        "contents": [{"parts": [
+            {"text": prompt},
+            {"inline_data": {"mime_type": "image/png",
+                             "data": base64.b64encode(buf.tobytes()).decode()}},
+        ]}],
+        "generationConfig": {"temperature": 0, "maxOutputTokens": 8192},
+    }
+
+    own = client is None
+    if own:
+        client = httpx.Client(timeout=_env_float("GEMINI_TIMEOUT_S", 120.0))
+    try:
+        r = client.post(_GEMINI_URL.format(model=model),
+                        headers={"x-goog-api-key": key}, json=body)
+        if r.status_code >= 400:
+            raise GeminiError(
+                f"generateContent -> HTTP {r.status_code}: {r.text[:200]}")
+        data = r.json()
+    finally:
+        if own:
+            client.close()
+
+    candidate = (data.get("candidates") or [{}])[0]
+    parts = (candidate.get("content") or {}).get("parts") or []
+    text = "".join(p.get("text") or "" for p in parts)
+    texts = [line.strip() for line in text.splitlines() if line.strip()]
+    if not texts:
+        raise GeminiError(f"no text (finish={candidate.get('finishReason')})")
+    return _lines_with_boxes(img, texts)
+
+
 def failed_page_lines(img, exc: Exception) -> list[dict]:
-    """Marked placeholder line for a page whose OCR call raised.
+    """Marked placeholder line for a page whose OCR call raised (any engine).
 
     Same "[stub]" marking as _stub_lines, so the page is flagged
     needs_review (confidence 0), the text layer / txt / docx exports skip
@@ -323,14 +492,14 @@ def failed_page_lines(img, exc: Exception) -> list[dict]:
 
 
 def _stub_lines(img) -> list[dict]:
-    """Placeholder lines when Sarvam is unavailable (no key, or the call failed).
+    """Placeholder lines when every OCR engine failed.
 
     The "[stub]" marker is intentional: stub output must never be
     mistaken for real OCR text (also flagged via needs_review / health).
     """
     h, w = img.shape[:2]
     line_w = int(w * 0.6)
-    body = "[stub] OCR unavailable - Sarvam OCR failed or SARVAM_API_KEY not set"
+    body = "[stub] OCR unavailable - no engine produced text for this page"
     return [
         {
             "body": body,

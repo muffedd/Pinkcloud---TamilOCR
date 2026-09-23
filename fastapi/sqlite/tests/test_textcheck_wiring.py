@@ -41,7 +41,7 @@ def _png() -> bytes:
 
 def _fake_ocr(lines):
     """ocr_page stand-in: (body, layout_score) pairs -> engine lines."""
-    def ocr(img):
+    def ocr(img, profile=None):
         return [{"body": b, "bbox": [10, 10 + i * 40, 500, 30], "confidence": c}
                 for i, (b, c) in enumerate(lines)], 1.0
     return ocr

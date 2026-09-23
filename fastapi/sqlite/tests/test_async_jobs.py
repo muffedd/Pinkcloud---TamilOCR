@@ -35,7 +35,7 @@ def _png(label="LINE") -> bytes:
 
 
 def _gated_ocr(gate: threading.Event, calls: list):
-    def ocr(img):
+    def ocr(img, profile=None):
         calls.append(threading.current_thread().name)
         assert gate.wait(10), "test gate never opened"
         return [{"body": "நல்ல வரி", "bbox": [10, 10, 500, 30], "confidence": 0.4}], 1.0
@@ -91,7 +91,7 @@ def test_progress_counts_pages_of_a_multi_image_job(client, monkeypatch):
     gates = [threading.Event(), threading.Event()]
     n = {"i": 0}
 
-    def ocr(img):
+    def ocr(img, profile=None):
         i = n["i"]
         n["i"] += 1
         assert gates[i].wait(10)

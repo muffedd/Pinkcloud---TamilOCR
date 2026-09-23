@@ -4,14 +4,14 @@
 
 Palm-leaf manuscripts and old Tamil print break ordinary OCR. The ink is faded, the pages are stained or warped, and the letterforms are older than the ones modern models were trained on. Pink Cloud accepts that the machine will be wrong sometimes. It scores every word, shows a reviewer only the words it doubts, and makes each fix a single keystroke. The result is Unicode Tamil text and a searchable PDF you can trust, without proofreading every line by hand.
 
-> **Status:** the upload, review, library and export pages all run against the FastAPI backend on `main`, and the upload, editor and library pages also run fully offline in demo mode (`?mock=1`). The backend runs upload → quality routing → Tamil OCR (Sarvam Document AI; marked stub pages if Sarvam is unavailable), serves page images, saves reviewer corrections, and exports a searchable PDF, TXT and DOCX with a processing receipt. See [Current state](#current-state).
+> **Status:** the upload, review, library and export pages all run against the FastAPI backend on `main`, and the upload, editor and library pages also run fully offline in demo mode (`?mock=1`). The backend runs upload → quality routing → Tamil OCR (**Gemini** for FAST pages, **Sarvam** for HEAVY; marked stub pages if both are unavailable), serves page images, saves reviewer corrections, and exports a searchable PDF, TXT and DOCX with a processing receipt. See [Current state](#current-state).
 
 ## How it works
 
 The website has three steps. The stepper at the top of the upload screen shows them (the editor's sidebar splits the last one into Review and Export). Before you start, scan or photograph the palm leaf or printed page; PDF, JPG, PNG or TIFF all work, and multi-page PDFs and TIFFs are fine.
 
 1. **Upload scans** - drag and drop or browse PDF, JPG, PNG or TIFF files, or a ZIP of page images (JPG, PNG, TIFF, WEBP; up to 100). A ZIP stays one row and one job, with one page per image in file-name order (page2 before page10); PDFs and other files inside it are skipped. Each file becomes a job, and its row shows status live: queued → uploading → processing → done.
-2. **Tamil OCR** - every page is scored on blur, contrast, noise and skew, then badged **FAST** (clean) or **HEAVY** (damaged, flagged for review). Sarvam Document AI (`ta-IN`) reads each page; without a Sarvam key, or when a call fails, the page gets marked `[stub]` lines and is flagged for review. Each line gets a bounding box and a confidence score.
+2. **Tamil OCR** - every page is scored on blur, contrast, noise and skew, then badged **FAST** (clean) or **HEAVY** (damaged, flagged for review). FAST pages go to **Gemini** (`gemini-3.5-flash-lite`); HEAVY pages go to **Sarvam** Document AI (`ta-IN`). If the routed engine fails the other is tried; if both fail the page gets marked `[stub]` lines and is flagged for review. Each line gets a bounding box and a confidence score.
 3. **Review & export** - the editor opens with the doubtful words queued. Fix them, then press **Export**: pending fixes are saved and the export page opens with the downloads.
 
 Every job also shows up in the **Library** (the Documents link in the sidebar), where you can reopen it or search its text.
@@ -83,9 +83,9 @@ uvicorn app.main:app --reload
 - http://127.0.0.1:8000/health → `{"ok": true, "ocr_engine": "..."}`
 - http://127.0.0.1:8000/docs → Swagger UI
 
-OCR runs on Sarvam Document AI, the only OCR engine. Set `SARVAM_API_KEY` in the server's environment (never commit it).
+Pages route by quality: **FAST → Gemini** (`gemini-3.5-flash-lite`), **HEAVY → Sarvam** Document AI; if the routed engine fails the other is tried. Set `GEMINI_API_KEY` and `SARVAM_API_KEY` in the server's environment (never commit them); the git-ignored repo-root `.env` loads with `uvicorn app.main:app --env-file ../../.env`.
 
-With no Sarvam key, or when a Sarvam call fails, the API returns marked `[stub]` lines in the same contract shape, and `/health` reports `"ocr_engine": "stub"`. Check `/health` before trusting OCR text. All engine variables are in [`fastapi/sqlite/RUN.md`](fastapi/sqlite/RUN.md).
+No local OCR model is installed — both engines are hosted APIs. With neither key, or when both calls fail, the API returns marked `[stub]` lines in the same contract shape, and `/health` reports `"ocr_engine": "stub"`. Check `/health` before trusting OCR text. All engine variables are in [`fastapi/sqlite/RUN.md`](fastapi/sqlite/RUN.md).
 
 ### 3. Quick test
 
@@ -126,7 +126,8 @@ The backend lives in `fastapi/sqlite/app/`.
 | `app/storage.py` | Byte-for-byte masters: SHA-256 hashed before write, verified after |
 | `app/router.py` | Per-page quality metrics (blur, contrast, noise, skew_deg) → **FAST** / **HEAVY** badge |
 | `app/pdfutil.py` | PDF via pypdfium2, images via cv2; long side capped at 1600 px |
-| `app/ocr.py` | Sarvam Document AI (the only OCR engine); marked stub result when the key is missing or a call fails |
+| `app/ocr.py` | Routed OCR: Gemini (FAST) + Sarvam Document AI (HEAVY), each the other's fallback; marked stub when both fail |
+| `app/preprocess.py` | Safe-wins page cleanup before OCR (crop dark borders, deskew, background flatten, low-res upscale) with box mapping back to the page |
 | `app/export.py` | Applies saved corrections, builds the receipt and the PDF / TXT / DOCX exports |
 | `app/schema_out.py` | Builds the frozen output contract JSON (`schema/schema.json`) |
 
