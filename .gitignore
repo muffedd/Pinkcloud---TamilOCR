@@ -1,0 +1,7 @@
+# Python files only — ignore DB, uploads, caches
+pinkcloud.db
+uploads/
+__pycache__/
+*.pyc
+.venv/
+uvicorn.log

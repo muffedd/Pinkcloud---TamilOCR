@@ -1,0 +1,16 @@
+# Pink Cloud backend — core dependencies (all CPU-only, Windows-friendly)
+fastapi
+uvicorn
+python-multipart
+opencv-python-headless
+pypdfium2
+numpy
+
+# ---- Optional: real OCR ----------------------------------------------------
+# Install these only if you want actual Tamil OCR instead of the stub result.
+# They are large downloads; the backend runs fine without them.
+#
+#   pip install paddlepaddle paddleocr
+#
+# paddlepaddle   # CPU build
+# paddleocr      # PP-OCRv5_mobile_det + ta_PP-OCRv5_mobile_rec models
