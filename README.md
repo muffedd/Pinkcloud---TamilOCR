@@ -10,7 +10,7 @@ Palm-leaf manuscripts and old Tamil print break ordinary OCR. The ink is faded, 
 
 The website has three steps. The stepper at the top of the upload screen shows them (the editor's sidebar splits the last one into Review and Export). Before you start, scan or photograph the palm leaf or printed page; PDF, JPG, PNG or TIFF all work, and multi-page PDFs and TIFFs are fine.
 
-1. **Upload scans** - drag and drop or browse. Each file becomes a job, and its row shows status live: queued → uploading → processing → done.
+1. **Upload scans** - drag and drop or browse PDF, JPG, PNG or TIFF files, or a ZIP of page images (JPG, PNG, TIFF, WEBP; up to 100). A ZIP stays one row and one job, with one page per image in file-name order (page2 before page10); PDFs and other files inside it are skipped. Each file becomes a job, and its row shows status live: queued → uploading → processing → done.
 2. **Tamil OCR** - every page is scored on blur, contrast, noise and skew, then badged **FAST** (clean) or **HEAVY** (damaged, flagged for review). Sarvam Document AI (`ta-IN`) reads each page by default; without a Sarvam key, or when a call fails, a local PaddleOCR PP-OCRv5 pass with the Tamil recognition model runs instead. Each line gets a bounding box and a confidence score.
 3. **Review & export** - the editor opens with the doubtful words queued. Fix them, then press **Export**: pending fixes are saved and the export page opens with the downloads.
 
