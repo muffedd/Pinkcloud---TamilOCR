@@ -359,6 +359,11 @@ function applySavedCorrections(list) {
     if (Number(c.page) !== here) { S.otherCorr.push(c); return; } /* another page's fix: keep, don't apply */
     var w = S.byKey["p" + c.page + ":" + c.line + ":w" + c.word];
     if (!w) return;
+    /* Same rule as export.apply_corrections: `before` must be the RAW OCR
+       word. A stale entry (before != this word's OCR text) is skipped, never
+       applied - so the editor shows what export/search/count use, and the
+       next save drops it instead of rewriting it with a fresh before. */
+    if (c.before != null && String(c.before) !== w.orig) return;
     w.text = c.after;
     w.prov = "human";
     w.target = false;
