@@ -175,7 +175,7 @@ function pageImageUrl(jobId, page) {
    GEMINI_API_KEY is set on the server, so suggestWord() answers from a local
    stub. Flip to the real endpoint with ONE line, after the key is set and a
    real route test passes: */
-var AI_SUGGEST_LIVE = false;
+var AI_SUGGEST_LIVE = true;
 var SUGGEST = function (id) { return API_BASE + "/jobs/" + encodeURIComponent(id) + "/suggest"; };
 
 function realSuggest(jobId, req) {
