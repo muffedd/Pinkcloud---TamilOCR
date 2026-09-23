@@ -178,3 +178,76 @@ def get_job(job_id: str):
         "created_at": job["created_at"],
         "result": parse_job_result(job["result_json"]),
     }
+
+# --------------------------------------------------------------------------
+# Export + receipt (slice: pipe-export-receipt) — logic lives in export.py
+# --------------------------------------------------------------------------
+
+from fastapi.responses import PlainTextResponse, Response  # noqa: E402
+
+from . import export as _export  # noqa: E402
+
+
+def _done_job(job_id: str) -> tuple[dict, list[dict]]:
+    """404 unknown job, 409 unfinished/failed job, else (job, pages)."""
+    job = db.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    if job["status"] != "done":
+        raise HTTPException(status_code=409, detail=f"job is {job['status']}, not done")
+    result = parse_job_result(job["result_json"]) or {}
+    return job, result.get("pages") or []
+
+
+def _receipt(job: dict, pages: list[dict], reviewer: str | None) -> dict:
+    return _export.build_receipt(
+        job, pages, reviewer=reviewer,
+        ocr_engine=engine_status().get("ocr_engine"),
+    )
+
+
+def _download_name(job: dict, ext: str) -> str:
+    stem = Path(job["filename"]).stem or "pinkcloud"
+    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in stem)
+    return f"{safe}.{ext}"
+
+
+@app.get("/jobs/{job_id}/receipt")
+def get_receipt(job_id: str, reviewer: str | None = None):
+    """Processing receipt: page count, auto vs human-review counts,
+    corrections, reviewer, times, master SHA-256 (re-verified on disk)."""
+    job, pages = _done_job(job_id)
+    return _receipt(job, pages, reviewer)
+
+
+@app.get("/jobs/{job_id}/export.txt")
+def export_txt(job_id: str, reviewer: str | None = None):
+    """Plain UTF-8 text with a '# ' provenance header, page by page."""
+    job, pages = _done_job(job_id)
+    body = _export.build_txt(pages, _receipt(job, pages, reviewer))
+    return PlainTextResponse(
+        body, media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{_download_name(job, "txt")}"',
+            "X-Master-SHA256": job["sha256"],
+        },
+    )
+
+
+@app.get("/jobs/{job_id}/export.pdf")
+def export_pdf(job_id: str, reviewer: str | None = None, receipt_page: bool = True):
+    """Searchable PDF: scan image + invisible Tamil text layer per line,
+    a visible receipt page at the end, provenance in the PDF Info dict."""
+    job, pages = _done_job(job_id)
+    master = storage.master_path(job_id)
+    if master is None:
+        raise HTTPException(status_code=410, detail="master file missing")
+    receipt = _receipt(job, pages, reviewer)
+    data = _export.build_pdf(master, pages, receipt, receipt_page=receipt_page)
+    return Response(
+        data, media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{_download_name(job, "pdf")}"',
+            "X-Master-SHA256": job["sha256"],
+        },
+    )
