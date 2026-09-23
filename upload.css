@@ -89,10 +89,7 @@ body:has(#upload-root.up-active) { margin: 0; }
 .up-step.is-done .up-dot svg path { stroke-dasharray: 22; stroke-dashoffset: 22; animation: up-drawcheck 260ms var(--ease-out) 90ms forwards; }
 .up-step.is-done.d2 .up-dot svg path { animation-delay: 240ms; }
 .up-seg { position: absolute; top: 15px; height: 3px; border-radius: 2px; z-index: 1; }
-.up-seg.a { left: 80px; width: 199px; background: linear-gradient(90deg, var(--up-soft-border), #FB8D69); }
-.up-seg.b { left: 294px; width: 185px; background: linear-gradient(90deg, #FB8D69, var(--up-primary), #FB8D69, var(--up-primary));
-  background-size: 180% 100%; animation: up-segflow 7s linear infinite; }
-.up-seg.c { left: 508px; top: 16px; height: 1.5px; width: 400px; background: var(--up-line); }
+.up-seg.c { left: 80px; top: 16px; height: 1.5px; width: 828px; background: var(--up-line); }
 @keyframes up-dotpop { 0% { transform: scale(.65); } 60% { transform: scale(1.14); } 100% { transform: scale(1); } }
 @keyframes up-drawcheck { to { stroke-dashoffset: 0; } }
 @keyframes up-currentpulse { 0% { box-shadow: 0 0 0 3px rgba(249,70,18,.16); } 55% { box-shadow: 0 0 0 7px rgba(249,70,18,.04); } 100% { box-shadow: 0 0 0 3px rgba(249,70,18,.16); } }

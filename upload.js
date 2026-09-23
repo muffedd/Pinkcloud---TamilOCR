@@ -293,16 +293,14 @@
     const page = h('div', 'up-page');
     root.appendChild(page);
 
-    /* stepper: the app's real flow; this screen is step 3 */
+    /* stepper: the web flow as the user sees it; this screen is step 1 */
     const stepper = h('ol', 'up-stepper');
     stepper.setAttribute('aria-label', 'Progress');
-    ['a', 'b', 'c'].forEach((s) => stepper.appendChild(h('li', 'up-seg ' + s)));
+    stepper.appendChild(h('li', 'up-seg c'));
     [
-      { lbl: 'Scan pages', x: 64, cls: 'is-done', c: '#FB8D69' },
-      { lbl: 'Prepare files', x: 278.5, cls: 'is-done d2', c: '#F94612' },
-      { lbl: 'Upload scans', x: 494, cls: 'is-current', n: 3 },
-      { lbl: 'Tamil OCR', x: 708.5, cls: '', n: 4 },
-      { lbl: 'Review & export PDF', x: 924, cls: '', n: 5 }
+      { lbl: 'Upload scans', x: 64, cls: 'is-current', n: 1 },
+      { lbl: 'Tamil OCR', x: 494, cls: '', n: 2 },
+      { lbl: 'Review & export', x: 924, cls: '', n: 3 }
     ].forEach((s) => {
       const li = h('li', 'up-step ' + s.cls);
       li.style.left = s.x + 'px';

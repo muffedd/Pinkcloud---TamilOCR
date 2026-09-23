@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="./ui.css">
 <link rel="stylesheet" href="./upload.css">
 <link rel="stylesheet" href="./intro.css">
+<link rel="stylesheet" href="./sidebar.css">
 </head>
 <body>
 <!-- Landing intro (design-drafts/pinkcloud-intro.html), once per session,
@@ -25,15 +26,24 @@
      file list, Previous/Next). "Next step" opens editor.html?job=<job_id>. -->
 <div id="upload-root"></div>
 
-<!-- Route to the Library (job list + search). Uses the shell link slot in
-     ui.css (.shell-next); carries ?mock / ?api like the editor hand-off. -->
-<a class="btn btn--outline btn--sm shell-next" id="libraryLink" href="./library.html">Library</a>
+<!-- App sidebar (sidebar.css): workspace chip + Documents (Library) + Scans.
+     Replaces the old floating Library button. Links carry ?mock / ?api. -->
+<aside class="pc-side" aria-label="Pink Cloud">
+  <div class="pc-chip">
+    <span class="logo-tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.2 8.6 4.5 4.5 0 0 0 7 18z"/></svg></span>
+    <span class="pc-chip-name">Pink Cloud</span>
+  </div>
+  <nav class="pc-nav" aria-label="Main">
+    <a class="pc-nav-item" id="navDocuments" href="./library.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Documents</a>
+    <span class="pc-nav-item is-soon" aria-disabled="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 12h16M12 4v16"/></svg>Scans<span class="pc-soon">soon</span></span>
+  </nav>
+</aside>
 <script>
 (function () {
   var qs = new URLSearchParams(location.search), q = new URLSearchParams();
   if (qs.has("mock") && qs.get("mock") !== "0") q.set("mock", "1");
   if (qs.get("api")) q.set("api", qs.get("api"));
-  if (q.toString()) document.getElementById("libraryLink").search = "?" + q.toString();
+  if (q.toString()) document.getElementById("navDocuments").search = "?" + q.toString();
 })();
 </script>
 

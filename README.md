@@ -8,13 +8,11 @@ Palm-leaf manuscripts and old Tamil print break ordinary OCR. The ink is faded, 
 
 ## How it works
 
-The app follows five steps. The stepper at the top of the upload screen shows them.
+The website has three steps. The stepper at the top of the upload screen shows them. Before you start, scan or photograph the palm leaf or printed page; PDF, JPG, PNG or TIFF all work, and multi-page PDFs and TIFFs are fine.
 
-1. **Scan pages** - photograph or scan the palm leaf or printed page.
-2. **Prepare files** - gather the scans as PDF, JPG, PNG or TIFF. Multi-page PDFs and TIFFs are fine.
-3. **Upload** - drag and drop or browse. Each file becomes a job, and its row shows status live: queued → uploading → processing → done.
-4. **Tamil OCR** - every page is scored on blur, contrast, noise and skew, then badged **FAST** (clean) or **HEAVY** (damaged, sent to repair). A PaddleOCR PP-OCRv5 pass with the Tamil recognition model reads each line and gives it a bounding box and a confidence score.
-5. **Review & export PDF** - the editor opens with the doubtful words queued. Fix them, then export.
+1. **Upload scans** - drag and drop or browse. Each file becomes a job, and its row shows status live: queued → uploading → processing → done.
+2. **Tamil OCR** - every page is scored on blur, contrast, noise and skew, then badged **FAST** (clean) or **HEAVY** (damaged, sent to repair). A PaddleOCR PP-OCRv5 pass with the Tamil recognition model reads each line and gives it a bounding box and a confidence score.
+3. **Review & export** - the editor opens with the doubtful words queued. Fix them, then export.
 
 ## The review editor
 
@@ -127,6 +125,7 @@ The output contract is in [`schema/schema.json`](schema/schema.json), the endpoi
 | File | Role |
 | --- | --- |
 | `index.html`, `upload.js`, `upload.css` | Upload screen and stepper |
+| `sidebar.css` | Upload page sidebar: Pink Cloud chip, Documents (opens the Library, keeps `?mock` / `?api`), Scans (soon). Page content sits in one inset panel; the sidebar hides below 900px |
 | `intro.js`, `intro.css` | Landing intro on `index.html` (from `design-drafts/pinkcloud-intro.html`): plays once per browser session, click/Esc/Skip jumps to the slide-up, skipped for reduced motion. `?intro=0` off, `?intro=1` replay |
 | `library.html`, `library.js`, `library.css` | Library: job list (`GET /jobs`) and text search (`GET /search`, `?q=` kept in the URL); a hit opens `editor.html?job=<id>&page=<n>` |
 | `export.html`, `export.js`, `export.css` | Export page: receipt card, PDF/TXT downloads |
