@@ -24,10 +24,8 @@
       <button type="button" class="seg-opt" role="radio" aria-checked="true" data-val="auto" tabindex="0">Auto</button>
       <button type="button" class="seg-opt" role="radio" aria-checked="false" data-val="review" tabindex="-1">Review</button>
     </div>
-    <span class="offline-badge"><i class="pdot" aria-hidden="true"></i>Offline · Groq OFF</span>
-    <button type="button" class="btn btn--solid" id="exportBtn" disabled>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>Export
-    </button>
+    <span class="offline-badge"><i class="pdot" aria-hidden="true"></i>Offline</span>
+    <button type="button" class="btn btn--solid" id="exportBtn" disabled><span class="lb"><span>Export</span><span aria-hidden="true">Export</span></span></button>
   </header>
 
   <div class="panes">
@@ -39,8 +37,8 @@
         <span class="spacer"></span>
         <div class="seg seg--sm" id="heatToggle" role="radiogroup" aria-label="Heatmap" data-active="0">
           <span class="seg-thumb" aria-hidden="true"></span>
-          <button type="button" class="seg-opt" role="radio" aria-checked="true" data-val="off" tabindex="0">Heatmap off</button>
-          <button type="button" class="seg-opt" role="radio" aria-checked="false" data-val="on" tabindex="-1">On</button>
+          <button type="button" class="seg-opt" role="radio" aria-checked="true" data-val="off" tabindex="0">Plain</button>
+          <button type="button" class="seg-opt" role="radio" aria-checked="false" data-val="on" tabindex="-1">Heatmap</button>
         </div>
       </div>
       <div class="scan-scroll" id="scanScroll">
@@ -77,7 +75,7 @@
 
     <section class="pane pane-rail" aria-label="Review queue">
       <div class="pane-head">
-        <span class="pane-title">Review queue</span>
+        <span class="pane-title">Review</span>
         <span class="spacer"></span>
         <span class="warn-pill" id="leftPill">0 left</span>
       </div>
@@ -94,7 +92,7 @@
         <p>Every flagged word on this page is fixed.</p>
       </div>
       <div class="rail-foot">
-        <span class="hint"><span class="kbd">J</span>next error</span>
+        <span class="hint"><span class="kbd">J</span>next</span>
         <span class="hint"><span class="kbd">K</span>prev</span>
         <span class="hint"><span class="kbd">↵</span>fix</span>
       </div>

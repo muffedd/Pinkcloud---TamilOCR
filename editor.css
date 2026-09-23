@@ -39,7 +39,7 @@ body {
 }
 
 .pane + .pane {
-  border-left: 1px solid var(--pc-color-border-subtle);
+  border-left: var(--pc-hairline);
 }
 
 /* ---------- Pane headers (all 3 panes) ---------- */
@@ -49,8 +49,8 @@ body {
   gap: var(--pc-gap-10);
   height: var(--pc-pane-head-h);
   padding: 0 var(--pc-space-3) 0 14px;
-  background: var(--pc-color-bg-subtle);
-  border-bottom: 1px solid var(--pc-color-border-subtle);
+  background: var(--pc-color-bg-surface);
+  border-bottom: var(--pc-hairline);
 }
 
 .pane-head .spacer {
@@ -65,7 +65,7 @@ body {
   height: var(--pc-topbar-h);
   padding: 0 var(--pc-space-4);
   background: var(--pc-color-bg-surface);
-  border-bottom: 1px solid var(--pc-color-border-subtle);
+  border-bottom: var(--pc-hairline);
 }
 
 .wordmark {
@@ -189,7 +189,7 @@ body {
 }
 
 .box-doubt {
-  border: 1.5px solid var(--pc-color-scan-doubt-stroke);
+  border: 1px solid var(--pc-color-scan-doubt-stroke);
   background: var(--pc-color-scan-doubt-fill);
 }
 
@@ -206,12 +206,12 @@ body {
 .box-heat.heat-doubt { background: var(--pc-heat-doubt); }
 
 .box-hover {
-  border: 1.5px solid var(--pc-color-scan-hover-stroke);
+  border: 1px solid var(--pc-color-scan-hover-stroke);
   background: var(--pc-color-scan-hover-fill);
 }
 
 .box-active {
-  border: 2px solid var(--pc-color-scan-active-stroke);
+  border: 1.5px solid var(--pc-color-scan-active-stroke);
   background: var(--pc-color-scan-active-fill);
 }
 
@@ -265,7 +265,7 @@ body {
   display: grid;
   grid-template-columns: var(--pc-gutter-w) 1fr;
   gap: var(--pc-space-2);
-  margin-bottom: var(--pc-space-4);
+  margin-bottom: var(--pc-space-2);
 }
 
 .tline:last-child {
@@ -273,7 +273,7 @@ body {
 }
 
 .lid {
-  padding-top: 0.55em;
+  padding-top: 0.6em;
   font-family: var(--pc-font-mono);
   font-weight: 400;
   font-size: var(--pc-fs-code);
@@ -293,13 +293,13 @@ body {
   gap: var(--pc-gap-14);
   flex-wrap: wrap;
   padding: var(--pc-legend-pad);
-  background: var(--pc-color-bg-subtle);
-  border-top: 1px solid var(--pc-color-border-subtle);
+  background: var(--pc-color-bg-surface);
+  border-top: var(--pc-hairline);
   font-family: var(--pc-font-sans);
   font-weight: 500;
   font-size: var(--pc-fs-small);
   line-height: 1.45;
-  color: var(--pc-color-text-secondary);
+  color: var(--pc-color-text-disabled);
 }
 
 /* ---------- Review rail ---------- */
@@ -312,13 +312,15 @@ body {
 }
 
 .rail-sub {
+  display: flex;
+  flex-direction: column;
   padding: var(--pc-rail-sub-pad);
-  border-bottom: 1px solid var(--pc-color-border-subtle);
   background: var(--pc-color-bg-surface);
 }
 
 .rail-sub p {
-  margin-bottom: var(--pc-space-2);
+  margin-top: var(--pc-space-2);
+  margin-bottom: 0;
   font-family: var(--pc-font-sans);
   font-weight: 500;
   font-size: var(--pc-fs-sub);
@@ -375,8 +377,8 @@ body {
   align-items: center;
   gap: var(--pc-gap-10);
   padding: var(--pc-rail-foot-pad);
-  background: var(--pc-color-bg-subtle);
-  border-top: 1px solid var(--pc-color-border-subtle);
+  background: var(--pc-color-bg-surface);
+  border-top: var(--pc-hairline);
   font-family: var(--pc-font-sans);
   font-weight: 500;
   font-size: var(--pc-fs-small);
@@ -390,3 +392,5 @@ body {
   gap: var(--pc-space-1);
   white-space: nowrap;
 }
+
+.rail-sub .progress { order: -1; }

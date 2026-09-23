@@ -51,7 +51,7 @@ h1, h2, h3, h4, h5, h6, p {
   font-family: var(--pc-font-tamil);
   font-weight: 400;
   font-size: var(--pc-fs-tamil-editor);
-  line-height: 1.85;
+  line-height: 1.8;
   letter-spacing: 0;
 }
 
@@ -59,15 +59,15 @@ h1, h2, h3, h4, h5, h6, p {
   font-family: var(--pc-font-tamil);
   font-weight: 600;
   font-size: var(--pc-fs-tamil-h);
-  line-height: 1.3;
+  line-height: 1.5;
   letter-spacing: 0;
 }
 
 .tamil-row {
   font-family: var(--pc-font-tamil);
-  font-weight: 600;
+  font-weight: 500;
   font-size: var(--pc-fs-tamil-row);
-  line-height: 1.4;
+  line-height: 1.5;
   letter-spacing: 0;
 }
 
@@ -94,11 +94,11 @@ h1, h2, h3, h4, h5, h6, p {
 }
 
 .button {
-  font-family: var(--pc-font-sans);
-  font-weight: 700;
+  font-family: var(--pc-font-button);
+  font-weight: 500;
   font-size: var(--pc-fs-btn);
-  line-height: 20px;
-  letter-spacing: 0.01em;
+  line-height: 1;
+  letter-spacing: 0;
 }
 
 .small {
@@ -136,77 +136,113 @@ h1, h2, h3, h4, h5, h6, p {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------- Buttons ---------- */
+/* ---------- Buttons: one family (solid / soft / outline), one motion ----------
+   Hover: fill steps darker; if the label is wrapped as <span class="lb"><span>X</span><span aria-hidden="true">X</span></span>
+   it swaps (slides out, twin slides in). Press: smaller + darker, springs back. No shadows. */
 .btn {
+  --btn-bg: var(--pc-color-primary-solid);
+  --btn-bg-hover: var(--pc-color-primary-active);
+  --btn-bg-press: var(--pc-color-primary-press);
+  --btn-fg: var(--pc-color-on-primary);
+  --btn-pad-x: var(--pc-btn-pad-x);
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--pc-space-2);
   height: var(--pc-btn-h);
-  padding: var(--pc-btn-pad);
+  padding: 0 var(--btn-pad-x);
   border-radius: var(--pc-radius-btn);
   border: 0;
   cursor: pointer;
-  font-family: var(--pc-font-sans);
-  font-weight: 700;
+  font-family: var(--pc-font-button);
+  font-weight: 500;
   font-size: var(--pc-fs-btn);
-  line-height: 20px;
-  letter-spacing: 0.01em;
-  color: var(--pc-color-on-primary);
+  line-height: 1;
+  letter-spacing: 0;
+  color: var(--btn-fg);
   background: transparent;
   white-space: nowrap;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  transition:
+    transform var(--pc-motion-release) var(--pc-ease-spring),
+    background-color var(--pc-motion-color) var(--pc-ease-out),
+    color var(--pc-motion-color) var(--pc-ease-out);
 }
-
 .btn svg {
   width: var(--pc-btn-icon);
   height: var(--pc-btn-icon);
   flex: none;
 }
-
 .btn--solid {
-  background-color: var(--pc-color-primary-solid);
-  box-shadow: var(--pc-shadow-btn);
+  background-color: var(--btn-bg);
 }
-
-.btn--solid:hover {
-  background-color: var(--pc-color-primary-active);
+.btn--soft {
+  --btn-bg: var(--pc-color-soft);
+  --btn-bg-hover: var(--pc-color-soft-hover);
+  --btn-bg-press: var(--pc-color-soft-press);
+  --btn-fg: var(--pc-color-text-primary);
+  background-color: var(--btn-bg);
 }
-
-.btn--solid:active {
-  background-color: var(--pc-color-primary-active);
-  transform: translateY(1px);
-}
-
-.btn--solid:disabled {
-  opacity: 0.4;
-  pointer-events: none;
-}
-
-.btn--sm {
-  height: var(--pc-btn-sm-h);
-  padding: var(--pc-btn-sm-pad);
-  font-size: var(--pc-fs-btn-sm);
-  border-radius: var(--pc-radius-input);
-}
-
 .btn--outline {
-  background-color: var(--pc-color-bg-surface);
-  color: var(--pc-color-text-primary);
-  box-shadow: var(--pc-shadow-outline-btn);
+  --btn-bg: transparent;
+  --btn-bg-hover: var(--pc-color-bg-hover);
+  --btn-bg-press: var(--pc-color-soft);
+  --btn-fg: var(--pc-color-text-primary);
+  background-color: var(--btn-bg);
+  box-shadow: var(--pc-shadow-outline-btn); /* inset 1px line, not a drop shadow */
 }
-
 .btn--ghost {
-  background: transparent;
-  color: var(--pc-color-text-secondary);
+  --btn-bg: transparent;
+  --btn-bg-hover: var(--pc-color-bg-hover);
+  --btn-bg-press: var(--pc-color-soft);
+  --btn-fg: var(--pc-color-text-secondary);
+  background-color: var(--btn-bg);
 }
-
+.btn--sm {
+  --btn-pad-x: var(--pc-btn-sm-pad-x);
+  height: var(--pc-btn-sm-h);
+  font-size: var(--pc-fs-btn-sm);
+  border-radius: var(--pc-radius-btn-sm);
+}
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover { background-color: var(--btn-bg-hover); }
+}
+.btn:active {
+  transform: scale(var(--pc-scale-press));
+  background-color: var(--btn-bg-press);
+  transition:
+    transform var(--pc-motion-press) var(--pc-ease-out),
+    background-color var(--pc-motion-press) var(--pc-ease-out);
+}
+.btn:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+  transform: none;
+}
+.btn--solid:disabled {
+  background-color: var(--pc-color-primary-disabled);
+  color: var(--pc-color-on-primary);
+}
+.btn--soft:disabled { background-color: var(--pc-color-bg-hover); color: var(--pc-color-text-disabled); }
+.btn--outline:disabled { color: var(--pc-color-text-disabled); box-shadow: inset 0 0 0 1px var(--pc-color-border-subtle); }
+/* label swap (the hover motion) */
+.btn .lb { position: relative; display: inline-grid; }
+.btn .lb > span { grid-area: 1 / 1; transition: transform var(--pc-motion-hover) var(--pc-ease-spring); }
+.btn .lb > span + span { transform: translateX(calc(100% + var(--btn-pad-x) + 2px)); }
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover .lb > span:first-child { transform: translateX(calc(-100% - var(--btn-pad-x) - 2px)); }
+  .btn:hover .lb > span + span { transform: translateX(0); }
+}
 .btn:focus-visible,
 .pill:focus-visible,
 .seg-opt:focus-visible,
 .qrow:focus-visible,
 .w:focus-visible {
-  outline: 2px solid var(--pc-color-focus-ring);
-  outline-offset: 2px;
+  background-color: var(--pc-color-scan-active-fill);
+  box-shadow: inset 0 -2px 0 var(--pc-color-scan-active-stroke);
 }
 
 /* ---------- State pill ---------- */
@@ -218,22 +254,25 @@ h1, h2, h3, h4, h5, h6, p {
   padding: var(--pc-pill-pad);
   border-radius: var(--pc-radius-pill-state);
   border: 1px solid transparent;
-  box-shadow: var(--pc-shadow-pill);
   font-family: var(--pc-font-sans);
   font-weight: 500;
   font-size: var(--pc-fs-badge-full);
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
+  transition: transform var(--pc-motion-release) var(--pc-ease-spring), background-color var(--pc-motion-color) var(--pc-ease-out);
 }
 
+.pill:active {
+  transform: scale(var(--pc-scale-press-sm));
+  transition: transform var(--pc-motion-press) var(--pc-ease-out);
+}
 .pill--bar {
   height: var(--pc-pill-bar-h);
   padding: var(--pc-pill-bar-pad);
   gap: var(--pc-gap-6);
   border-radius: var(--pc-radius-sm);
-  font-size: var(--pc-fs-badge-bar);
-  box-shadow: none;
+  font-size: var(--pc-fs-small);
 }
 
 .pill--current {
@@ -292,9 +331,8 @@ h1, h2, h3, h4, h5, h6, p {
   height: var(--pc-seg-h);
   padding: var(--pc-seg-pad);
   border: 0;
-  border-radius: var(--pc-radius-full);
+  border-radius: 9px;
   background: var(--pc-color-toggle-track);
-  box-shadow: var(--pc-shadow-toggle-track);
 }
 
 .seg-thumb {
@@ -303,11 +341,10 @@ h1, h2, h3, h4, h5, h6, p {
   bottom: var(--pc-seg-pad);
   left: var(--pc-seg-pad);
   width: calc((100% - var(--pc-seg-pad) * 2) / 2);
-  border-radius: var(--pc-radius-full);
-  background: var(--pc-gradient-toggle-thumb);
-  border: 2px solid var(--pc-color-toggle-thumb-border);
+  border-radius: 7px;
+  background: var(--pc-color-bg-surface);
   box-shadow: var(--pc-shadow-toggle-thumb);
-  transition: transform var(--pc-motion-base) ease-out;
+  transition: transform var(--pc-motion-toggle) var(--pc-ease-spring);
   pointer-events: none;
 }
 
@@ -323,27 +360,36 @@ h1, h2, h3, h4, h5, h6, p {
   justify-content: center;
   padding: var(--pc-seg-opt-pad);
   border: 0;
-  border-radius: var(--pc-radius-full);
+  border-radius: 7px;
   background: transparent;
   cursor: pointer;
-  font-family: var(--pc-font-sans);
+  font-family: var(--pc-font-button);
   font-weight: 500;
   font-size: var(--pc-fs-seg);
   line-height: 1;
   color: var(--pc-color-text-secondary);
   white-space: nowrap;
+  transition: color var(--pc-motion-color) var(--pc-ease-out), transform var(--pc-motion-release) var(--pc-ease-spring);
 }
 
 .seg-opt[aria-checked="true"] {
   color: var(--pc-color-text-primary);
-  text-shadow: var(--pc-shadow-toggle-text);
 }
 
+.seg-opt:active {
+  transform: scale(var(--pc-scale-press-sm));
+  transition: transform var(--pc-motion-press) var(--pc-ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .seg-opt:hover { color: var(--pc-color-text-primary); }
+}
 .seg--sm {
   height: var(--pc-seg-sm-h);
   padding: var(--pc-seg-sm-pad);
 }
 
+.seg--sm { border-radius: 8px; }
+.seg--sm .seg-thumb, .seg--sm .seg-opt { border-radius: 6px; }
 .seg--sm .seg-thumb {
   top: var(--pc-seg-sm-pad);
   bottom: var(--pc-seg-sm-pad);
@@ -371,7 +417,7 @@ h1, h2, h3, h4, h5, h6, p {
   border-radius: var(--pc-radius-panel);
   background: var(--pc-color-inverse);
   color: var(--pc-color-on-primary);
-  box-shadow: var(--pc-shadow-pop);
+  box-shadow: var(--pc-shadow-sm);
   font-family: var(--pc-font-sans);
   font-weight: 500;
   font-size: var(--pc-fs-toast);
@@ -382,6 +428,7 @@ h1, h2, h3, h4, h5, h6, p {
 
 .toast.show {
   display: inline-flex;
+  animation: pc-toast-in var(--pc-motion-slow) var(--pc-ease-out);
 }
 
 .toast svg {
@@ -391,6 +438,10 @@ h1, h2, h3, h4, h5, h6, p {
   color: var(--pc-color-toast-check);
 }
 
+@keyframes pc-toast-in {
+  from { opacity: 0; transform: translate(-50%, 6px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
 /* ---------- kbd chip ---------- */
 .kbd {
   display: inline-flex;
@@ -404,9 +455,9 @@ h1, h2, h3, h4, h5, h6, p {
   box-shadow: var(--pc-shadow-kbd);
   font-family: var(--pc-font-mono);
   font-weight: 500;
-  font-size: var(--pc-fs-code-chip);
+  font-size: var(--pc-fs-code);
   line-height: 1;
-  color: var(--pc-color-text-primary);
+  color: var(--pc-color-text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
@@ -457,12 +508,11 @@ h1, h2, h3, h4, h5, h6, p {
 
 /* Word states (both lenses, on top of the underline) */
 .w.is-hover {
-  background-color: var(--pc-color-scan-hover-fill);
-  box-shadow: 0 0 0 1.5px var(--pc-color-scan-hover-stroke);
+  background-color: var(--pc-color-bg-hover);
 }
 .w.is-active {
   background-color: var(--pc-color-scan-active-fill);
-  box-shadow: 0 0 0 2px var(--pc-color-scan-active-stroke);
+  box-shadow: inset 0 -2px 0 var(--pc-color-scan-active-stroke);
 }
 .w:focus-visible {
   background-color: var(--pc-color-scan-active-fill);
@@ -478,14 +528,17 @@ h1, h2, h3, h4, h5, h6, p {
   width: 100%;
   padding: var(--pc-rail-row-pad);
   border: 0;
-  border-bottom: 1px solid var(--pc-color-row-divider);
   background: transparent;
+  transition: background-color var(--pc-motion-color) var(--pc-ease-out);
   cursor: pointer;
   text-align: left;
   font: inherit;
   color: inherit;
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .qrow:hover { background: var(--pc-color-bg-subtle); }
+}
 .qbar {
   width: var(--pc-rail-bar-w);
   height: var(--pc-rail-bar-h);
@@ -508,9 +561,9 @@ h1, h2, h3, h4, h5, h6, p {
 .qword {
   display: block;
   font-family: var(--pc-font-tamil);
-  font-weight: 600;
+  font-weight: 500;
   font-size: var(--pc-fs-tamil-row);
-  line-height: 1.4;
+  line-height: 1.5;
   letter-spacing: 0;
   color: var(--pc-color-text-primary);
   overflow: hidden;
@@ -529,7 +582,7 @@ h1, h2, h3, h4, h5, h6, p {
   font-weight: 400;
   font-size: var(--pc-fs-code);
   line-height: 1.45;
-  color: var(--pc-color-text-secondary);
+  color: var(--pc-color-text-disabled);
   font-variant-numeric: tabular-nums;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -541,25 +594,20 @@ h1, h2, h3, h4, h5, h6, p {
   font-weight: 400;
   font-size: var(--pc-fs-code-chip);
   line-height: 1.45;
-  padding: var(--pc-chip-pad);
-  border-radius: var(--pc-radius-chip);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .conf-chip.is-doubt {
   color: var(--pc-color-conf-doubt);
-  background: var(--pc-color-conf-doubt-bg);
 }
 
 .conf-chip.is-ok {
   color: var(--pc-color-conf-ok);
-  background: var(--pc-color-conf-ok-bg);
 }
 
 .conf-chip.is-done {
   color: var(--pc-color-text-disabled);
-  background: var(--pc-color-bg-hover);
 }
 
 /* ---------- Progress ---------- */
@@ -574,22 +622,19 @@ h1, h2, h3, h4, h5, h6, p {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--pc-gradient-primary);
+  background: var(--pc-color-primary);
+  transition: width var(--pc-motion-slow) var(--pc-ease-out);
 }
 
 /* ---------- Warning pill ---------- */
 .warn-pill {
   display: inline-flex;
   align-items: center;
-  height: var(--pc-warn-pill-h);
-  padding: var(--pc-warn-pill-pad);
-  border-radius: var(--pc-radius-full);
-  background: var(--pc-color-warning-bg);
-  color: var(--pc-color-warning);
   font-family: var(--pc-font-sans);
   font-weight: 500;
   font-size: var(--pc-fs-warn);
   line-height: 1;
+  color: var(--pc-color-text-secondary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -601,24 +646,24 @@ h1, h2, h3, h4, h5, h6, p {
   width: var(--pc-popup-w);
   padding: var(--pc-popup-pad);
   border-radius: var(--pc-radius-pop);
-  border: 1px solid var(--pc-color-border-subtle);
+  border: var(--pc-hairline);
   background: var(--pc-color-bg-surface);
-  box-shadow: var(--pc-shadow-pop);
+  box-shadow: var(--pc-shadow-sm);
+  transform-origin: top center;
+  animation: pc-pop-in var(--pc-motion-base) var(--pc-ease-out);
 }
 
+@keyframes pc-pop-in {
+  from { opacity: 0; transform: scale(.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+.pop.above { transform-origin: bottom center; }
 .pop[hidden] {
   display: none;
 }
 
 .pop-arrow {
-  position: absolute;
-  top: -7px;
-  width: var(--pc-pop-arrow);
-  height: var(--pc-pop-arrow);
-  background: var(--pc-color-bg-surface);
-  border-left: 1px solid var(--pc-color-border-subtle);
-  border-top: 1px solid var(--pc-color-border-subtle);
-  transform: rotate(45deg);
+  display: none; /* no arrow in v2: the active word is already marked */
 }
 
 .pop.above .pop-arrow {
@@ -649,11 +694,6 @@ h1, h2, h3, h4, h5, h6, p {
   display: inline-flex;
   align-items: center;
   gap: var(--pc-gap-6);
-  height: var(--pc-prov-chip-h);
-  padding: var(--pc-prov-chip-pad);
-  border-radius: var(--pc-radius-full);
-  border: 1px solid var(--pc-color-border);
-  background: var(--pc-color-bg-surface);
   font-family: var(--pc-font-mono);
   font-weight: 400;
   font-size: var(--pc-fs-code);
@@ -682,7 +722,7 @@ h1, h2, h3, h4, h5, h6, p {
   margin-bottom: var(--pc-space-2);
   border-radius: var(--pc-radius-input);
   border: 1px solid var(--pc-color-focus-ring);
-  box-shadow: var(--pc-shadow-input);
+  box-shadow: var(--pc-shadow-input); /* focus ring, not a shadow */
   background: var(--pc-color-bg-surface);
   color: var(--pc-color-text-primary);
   font-family: var(--pc-font-mono);
@@ -719,7 +759,12 @@ h1, h2, h3, h4, h5, h6, p {
 
 .pop-actions .kbd {
   margin-left: var(--pc-space-1);
+  min-width: 18px;
+  height: 18px;
+  font-size: 10.5px;
+  background: transparent;
 }
+.pop-actions .btn--solid .kbd { color: var(--pc-color-on-primary); box-shadow: inset 0 0 0 1px #FFFFFF59; }
 
 /* ---------- Legend swatches ---------- */
 .legend-item {
@@ -735,4 +780,15 @@ h1, h2, h3, h4, h5, h6, p {
   font-weight: 500;
   font-size: var(--pc-fs-small);
   line-height: 1.45;
+}
+
+/* ---------- Reduced motion: colors still change, nothing moves ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .btn, .btn .lb > span, .pill, .seg-opt, .seg-thumb, .qrow, .progress > i {
+    transition-property: background-color, color !important;
+  }
+  .btn:active, .pill:active, .seg-opt:active { transform: none; }
+  .btn .lb > span + span { display: none; }
+  .btn:hover .lb > span:first-child { transform: none; }
+  .pop, .toast.show { animation: none; }
 }

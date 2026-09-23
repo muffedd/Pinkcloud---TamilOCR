@@ -8,13 +8,18 @@
   --pc-gradient-primary: linear-gradient(180deg, #F94612, #FA683D);
   --pc-color-primary-solid: #D93A0B;
   --pc-color-primary-active: #B32E08;
+  --pc-color-primary-press: #9C2706;       /* pressed: darker than hover */
+  --pc-color-primary-disabled: #ECAB97;    /* disabled solid: pale tint + white text, no opacity */
+  --pc-color-soft: #E7E4E0;                /* soft button */
+  --pc-color-soft-hover: #DEDAD5;
+  --pc-color-soft-press: #D3CEC8;
   --pc-color-primary-soft: #FFF4EF;
   --pc-color-primary-soft-border: #FFC9B3;
   --pc-gradient-destructive: linear-gradient(180deg, #E36323, #DF5A18);
   --pc-color-destructive-solid: #C4380C;
   --pc-color-focus-ring: #F94612;
   --pc-color-on-primary: #FFFFFF;
-  --pc-color-button-outline: #0000001A;
+  --pc-color-button-outline: #D6D0CA;
 
   /* ---------- Neutrals ---------- */
   --pc-color-bg-canvas: #FDFCFB;
@@ -35,7 +40,7 @@
   --pc-color-conf-ok: #1F5FAE;
   --pc-color-conf-ok-bg: #E3EDFA;
   --pc-color-conf-doubt: #7A5200;
-  --pc-color-conf-doubt-bg: #FFE27A;
+  --pc-color-conf-doubt-bg: #FFF1B8;
   --pc-color-conf-doubt-line: #A86A00;
   --pc-conf-auto-min: 0.90;
   --pc-conf-ok-min: 0.75;
@@ -76,16 +81,16 @@
   --pc-heat-auto: #0B7A5514;
   --pc-heat-ok: #1F5FAE29;
   --pc-heat-doubt: #FFD23D66;
-  --pc-color-heat-edge: #A86A0066;
+  --pc-color-heat-edge: transparent;
 
   /* ---------- Toggle ---------- */
-  --pc-color-toggle-track: #ECECEC;
-  --pc-gradient-toggle-thumb: linear-gradient(180deg, #FFFFFF, #F3F3F3);
-  --pc-color-toggle-thumb-border: #FFFFFF;
-  --pc-shadow-toggle-text: 0 1px 0 #E1E1E1B3;
+  --pc-color-toggle-track: #F1EEEB;
+  --pc-gradient-toggle-thumb: #FFFFFF;
+  --pc-color-toggle-thumb-border: transparent;
+  --pc-shadow-toggle-text: none;
 
   /* ---------- Input ---------- */
-  --pc-shadow-input: 0 0 0 3px #F9461226;
+  --pc-shadow-input: 0 0 0 3px #F946121F;
 
   /* ---------- Spacing (8px scale) ---------- */
   --pc-space-1: 4px;
@@ -111,29 +116,42 @@
   --pc-radius-chip: 5px;
   --pc-radius-sm: 6px;
   --pc-radius-input: 8px;
-  --pc-radius-pill-state: 9px;
+  --pc-radius-pill-state: 7px;
   --pc-radius-panel: 10px;
-  --pc-radius-btn: 11px;
-  --pc-radius-pop: 12px;
+  --pc-radius-btn: 10px;
+  --pc-radius-pop: 10px;
   --pc-radius-full: 999px;
 
-  /* ---------- Shadows ---------- */
-  --pc-shadow-btn: inset 0 1px 0 #FFFFFF54, 0 3px 4px -1px #FC6010F2, 0 0 0 1px #B32E08;
-  --pc-shadow-panel: 0 1px 2px #1018280D;
-  --pc-shadow-pop: 0 12px 24px -6px #1E1A1829, 0 2px 6px #1E1A1814;
-  --pc-shadow-toggle-track: inset 0 2px 3px #0000000D;
-  --pc-shadow-toggle-thumb: 0 3px 7px -2px #B3B3B3;
-  --pc-shadow-logo: inset 0 1px 0 #FFFFFF54;
-  --pc-shadow-badge-current: 0 0 0 2px #1E1A18;
-  --pc-shadow-kbd: 0 0 0 1px #D2CCC6, 0 1px 0 #D2CCC6;
-  --pc-shadow-outline-btn: 0 0 0 1px #0000001A, 0 1px 2px #1018280D;
-  --pc-shadow-pill: 0 1px 2px #1018280D;
-  --pc-shadow-scan: 0 8px 24px #0000004D;
+  /* ---------- Elevation: hairline + one faint shadow (popup, toast, toggle thumb) ---------- */
+  --pc-hairline: 1px solid #E6E2DE;
+  --pc-shadow-sm: 0 1px 2px #1E1A180F;
+  /* legacy shadow names kept so nothing breaks; all flattened */
+  --pc-shadow-btn: none;
+  --pc-shadow-panel: none;
+  --pc-shadow-pop: 0 1px 2px #1E1A180F;
+  --pc-shadow-toggle-track: none;
+  --pc-shadow-toggle-thumb: 0 1px 2px #1E1A180F;
+  --pc-shadow-logo: none;
+  --pc-shadow-badge-current: inset 0 0 0 1px currentColor;
+  --pc-shadow-kbd: inset 0 0 0 1px #E6E2DE;
+  --pc-shadow-outline-btn: inset 0 0 0 1px #D6D0CA;
+  --pc-shadow-pill: none;
+  --pc-shadow-scan: none;
 
-  /* ---------- Motion (only scrolling + toggle thumb animate) ---------- */
+  /* ---------- Motion: one system for the whole UI (see design system/components/buttons-motion.html) ---------- */
+  --pc-motion-press: 90ms;
+  --pc-motion-release: 220ms;
+  --pc-motion-color: 150ms;
+  --pc-motion-hover: 240ms;
+  --pc-motion-toggle: 260ms;
+  --pc-ease-out: cubic-bezier(.23, 1, .32, 1);
+  --pc-ease-spring: cubic-bezier(.34, 1.36, .64, 1);
+  --pc-ease-in-out: cubic-bezier(.65, 0, .35, 1);
+  --pc-scale-press: .96;
+  --pc-scale-press-sm: .97;
   --pc-motion-fast: 100ms;
   --pc-motion-base: 160ms;
-  --pc-motion-slow: 240ms;
+  --pc-motion-slow: 200ms;
   --pc-toast-duration: 2400ms;
 
   /* ---------- Layout ---------- */
@@ -144,18 +162,18 @@
   --pc-pane-head-h: 44px;
   --pc-viewer-pad: 22px 30px;
   --pc-text-pad: 24px 28px;
-  --pc-legend-pad: 10px 14px;
+  --pc-legend-pad: 8px 14px;
   --pc-rail-sub-pad: 14px 14px 10px;
-  --pc-rail-row-pad: 8px 14px 8px 10px;
+  --pc-rail-row-pad: 9px 14px 9px 10px;
   --pc-rail-foot-pad: 10px 14px;
-  --pc-popup-w: 300px;
+  --pc-popup-w: 288px;
   --pc-popup-pad: 14px;
   --pc-toast-bottom: 60px;
   --pc-toast-pad: 10px 14px;
   --pc-gutter-w: 30px;
-  --pc-progress-h: 6px;
-  --pc-rail-bar-w: 4px;
-  --pc-rail-bar-h: 30px;
+  --pc-progress-h: 4px;
+  --pc-rail-bar-w: 3px;
+  --pc-rail-bar-h: 28px;
   --pc-chip-pad: 4px 6px;
   --pc-kbd-min: 22px;
   --pc-kbd-pad: 0 6px;
@@ -175,11 +193,14 @@
   --pc-btn-icon: 16px;
   --pc-btn-sm-h: 30px;
   --pc-btn-sm-pad: 0 12px;
+  --pc-btn-pad-x: 16px;
+  --pc-btn-sm-pad-x: 12px;
+  --pc-radius-btn-sm: 8px;
   --pc-pill-h: 34px;
   --pc-pill-pad: 0 12px;
   --pc-pill-bar-h: 26px;
   --pc-pill-bar-pad: 0 9px;
-  --pc-seg-h: 36px;
+  --pc-seg-h: 34px;
   --pc-seg-pad: 3px;
   --pc-seg-opt-pad: 0 14px;
   --pc-seg-sm-h: 28px;
@@ -195,17 +216,17 @@
   --pc-fs-wordmark: 20px;
   --pc-fs-pane-title: 13px;
   --pc-fs-sub: 12px;
-  --pc-fs-btn: 14px;
-  --pc-fs-btn-sm: 13px;
+  --pc-fs-btn: 15px;
+  --pc-fs-btn-sm: 13.5px;
   --pc-fs-small: 12px;
   --pc-fs-toast: 13px;
   --pc-fs-eyebrow: 11px;
   --pc-fs-h3: 20px;
   --pc-fs-code: 11px;
   --pc-fs-code-chip: 12px;
-  --pc-fs-tamil-editor: 20px;
-  --pc-fs-tamil-h: 24px;
-  --pc-fs-tamil-row: 16px;
+  --pc-fs-tamil-editor: 15px;
+  --pc-fs-tamil-h: 16px;
+  --pc-fs-tamil-row: 13px;
   --pc-fs-tanglish: 14px;
   --pc-fs-evidence: 12px;
   --pc-fs-badge-bar: 13px;
@@ -216,7 +237,9 @@
   --pc-fs-empty: 13px;
 
   /* ---------- Font stacks ---------- */
-  --pc-font-sans: "Satoshi", -apple-system, "Inter", system-ui, sans-serif;
+  --pc-font-sans: "Suisse Intl Trial", "Suisse Intl", "Satoshi", -apple-system, system-ui, sans-serif;
   --pc-font-tamil: "Noto Sans Tamil", "Latha", "Tamil Sangam MN", sans-serif;
   --pc-font-mono: Menlo, "JetBrains Mono", monospace;
+  --pc-font-code: Menlo, "JetBrains Mono", monospace;
+  --pc-font-button: "Suisse Intl Trial", "Suisse Intl", "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
