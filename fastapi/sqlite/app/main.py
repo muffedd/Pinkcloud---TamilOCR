@@ -119,7 +119,7 @@ def on_startup() -> None:
 def health():
     """Liveness check. Also reports the OCR engine state so stub output
     is never mistaken for real OCR text."""
-    return {"ok": True, **engine_status()}
+    return {"ok": True, **engine_status(), **_suggest.status()}
 
 
 # --------------------------------------------------------------------------
@@ -756,6 +756,56 @@ def post_dictionary_skip(body: DictionarySkip):
     """Dismiss a suggested pair; it disappears once skips catch accepts."""
     _flywheel.skip(body.before, body.after)
     return {"before": body.before, "after": body.after, "skipped": True}
+
+
+# --- AI fix: POST /jobs/{id}/suggest ---------------------------------------
+# Candidate readings for one Doubt word, from the provider picked in
+# app/suggest.py (off by default -> 503). Contract: schema/ai-fix-contract.md.
+
+from . import suggest as _suggest  # noqa: E402
+
+SUGGEST_NEIGHBORS = 2  # lines of context on each side of the target line
+
+
+class SuggestRequest(BaseModel):
+    page: int = Field(ge=1)
+    line: str = Field(min_length=1, max_length=32)
+    word: int = Field(ge=1)
+    before: Annotated[str, StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=256)]
+    # Editor sends the full line body; used only if the stored line is gone.
+    context: str | None = Field(default=None, max_length=4000)
+
+
+@app.post("/jobs/{job_id}/suggest")
+def post_suggest(job_id: str, body: SuggestRequest):
+    """Up to 3 AI readings for one word. 404 unknown job/page, 409 job not
+    done, 503 when AI fix is off or the model fails (fixed message, never
+    provider details). Accepting a candidate is a normal corrections PUT."""
+    if not _CORR_JOB_ID_RE.fullmatch(job_id):
+        raise HTTPException(status_code=404, detail="job not found")
+    _job, pages = _done_job(job_id)
+    page = next((p for p in pages if p.get("page") == body.page), None)
+    if page is None:
+        raise HTTPException(status_code=404, detail="page not found")
+    lines = [ln for ln in (page.get("lines") or []) if isinstance(ln, dict)]
+    idx = next((i for i, ln in enumerate(lines) if ln.get("id") == body.line), None)
+    if idx is None:
+        if not body.context:
+            raise HTTPException(status_code=404, detail="line not found")
+        target, before_ctx, after_ctx = body.context, [], []
+    else:
+        target = str(lines[idx].get("body") or body.context or "")
+        before_ctx = [str(ln.get("body") or "")
+                      for ln in lines[max(0, idx - SUGGEST_NEIGHBORS):idx]]
+        after_ctx = [str(ln.get("body") or "")
+                     for ln in lines[idx + 1:idx + 1 + SUGGEST_NEIGHBORS]]
+    try:
+        candidates = _suggest.suggest(body.before, target, body.word,
+                                      before_ctx, after_ctx)
+    except _suggest.SuggestUnavailable:
+        raise HTTPException(status_code=503, detail="AI suggestions unavailable")
+    return {"candidates": candidates}
 
 
 # --------------------------------------------------------------------------
