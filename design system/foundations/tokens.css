@@ -185,6 +185,7 @@
   --pc-box-pad: 3px;
   --pc-logo-tile: 22px;
   --pc-logo-radius: 7px;
+  --pc-logo-ink: #090605;   /* logo2.svg mark colour (cloud mark, no tile) */
   --pc-offline-dot: 7px;
   --pc-pill-dot: 7px;
   --pc-pill-icon: 18px;
