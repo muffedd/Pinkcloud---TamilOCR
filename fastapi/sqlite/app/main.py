@@ -178,3 +178,79 @@ def get_job(job_id: str):
         "created_at": job["created_at"],
         "result": parse_job_result(job["result_json"]),
     }
+
+# --- demo box: serve the UI from the API origin (no CORS needed) ---------
+# Whitelist only: never expose pinkcloud.db or uploads/ over HTTP.
+#
+# ORDERING REQUIREMENT: this block MUST stay the last thing in main.py.
+# The /{name} and /{subdir}/{name} catch-alls below have to come AFTER
+# every API route, including the export routes currently living on the
+# unmerged branch slice/pipe-export-receipt — when that branch merges,
+# its routes must be inserted ABOVE this block, or the catch-alls will
+# swallow them.
+import re
+
+from fastapi.responses import FileResponse
+
+UI_ROOT = Path(__file__).resolve().parents[3]
+
+# Root-level UI assets the pages load.
+UI_FILES = {
+    "index.html", "editor.html",
+    "api.js", "upload.js", "editor.js", "translit.js",
+    "tokens.css", "ui.css", "upload.css", "editor.css",
+}
+
+# Sub-path assets the UI actually references. Whitelisted per directory —
+# the schema/ and fonts/ directories themselves are never mounted, so
+# schema/schema.json, schema/endpoints.md and the font license file stay
+# unreachable even though they sit next to the served files.
+UI_SUB_FILES = {
+    "schema": {"doc_demo.json"},
+    "fonts": {
+        "satoshi-regular.woff2",
+        "satoshi-medium.woff2",
+        "satoshi-bold.woff2",
+        "noto-sans-tamil.ttf",
+    },
+}
+
+# Job ids are uuid4 hex (see create_job); anything else is not a job.
+_JOB_ID_RE = re.compile(r"[0-9a-f]{32}")
+
+
+@app.get("/", include_in_schema=False)
+def ui_index():
+    return FileResponse(UI_ROOT / "index.html")
+
+
+@app.get("/jobs/{job_id}/image")
+def job_master_image(job_id: str):
+    """Serve the stored master scan for a job (read-only).
+
+    The job_id must be a real uuid4-hex id of an existing job, so path
+    traversal is impossible; uploads/ itself is never mounted or listed.
+    """
+    if not _JOB_ID_RE.fullmatch(job_id):
+        raise HTTPException(status_code=404, detail="job not found")
+    if db.get_job(job_id) is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    master = storage.master_path(job_id)
+    if master is None:
+        raise HTTPException(status_code=404, detail="no master stored for job")
+    return FileResponse(master)
+
+
+@app.get("/{subdir}/{name}", include_in_schema=False)
+def ui_sub_file(subdir: str, name: str):
+    allowed = UI_SUB_FILES.get(subdir)
+    if allowed is None or name not in allowed:
+        raise HTTPException(status_code=404, detail="Not Found")
+    return FileResponse(UI_ROOT / subdir / name)
+
+
+@app.get("/{name}", include_in_schema=False)
+def ui_file(name: str):
+    if name not in UI_FILES:
+        raise HTTPException(status_code=404, detail="Not Found")
+    return FileResponse(UI_ROOT / name)
