@@ -39,8 +39,14 @@ def _png(label="P") -> bytes:
     return cv2.imencode(".png", img)[1].tobytes()
 
 
+_POSTS = iter(range(1, 1_000_000))
+
+
 def _post(client, n):
-    files = [("files", (f"p{i}.png", _png(str(i)), "image/png")) for i in range(1, n + 1)]
+    # Unique pixels per call: identical bytes would hit upload dedup and
+    # return the earlier job without running OCR.
+    k = next(_POSTS)
+    files = [("files", (f"p{i}.png", _png(f"{k}-{i}"), "image/png")) for i in range(1, n + 1)]
     r = client.post("/jobs", files=files)
     assert r.status_code == 200, r.text
     job = client.get(f"/jobs/{r.json()['job_id']}").json()
