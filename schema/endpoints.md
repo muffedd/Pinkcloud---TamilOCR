@@ -52,6 +52,20 @@ curl -s -X POST http://127.0.0.1:8000/jobs -F "file=@scan.jpg"
 # → {"job_id": "af3c8e14...", "status": "pending"}
 ```
 
+**Dedup:** uploading the exact same bytes again skips OCR entirely. When the
+content hash (the file's sha256; for a multi-image `files` job the combined
+per-image hash, order-sensitive) matches a `done` job with a valid stored
+result, the response is that existing job, instantly and free:
+
+```bash
+# → {"job_id": "af3c8e14...", "status": "done", "duplicate": true}
+```
+
+A match on a `pending` or `error` job never dedups: it starts a fresh job as
+before (failed OCR always retries). Clients treat a `status: "done"` reply
+like a job that just finished - poll `GET /jobs/{job_id}` once for the result
+and open the editor on the returned id.
+
 Validation runs in this order, before any job row is created:
 
 1. **Type AND extension** - both must be supported. A mismatch on either side → `400`.

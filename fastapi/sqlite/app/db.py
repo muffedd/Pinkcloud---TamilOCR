@@ -1,8 +1,8 @@
 """SQLite storage for Pink Cloud jobs.
 
 Two tables, stdlib sqlite3 only:
-  - jobs: one row per uploaded document, its hash, processing status,
-    and (when done) the full result JSON.
+  - jobs: one row per uploaded document, its hash (indexed: upload dedup),
+    processing status, and (when done) the full result JSON.
   - line_fts: FTS5 index over the FINAL line text of finished jobs (raw
     OCR with saved reviewer corrections applied), with job/page/line refs,
     powering GET /search. Rebuilt row-by-row from jobs.result_json +
@@ -67,6 +67,10 @@ def init_db() -> None:
             )
             """
         )
+        # Upload dedup looks jobs up by content hash on every POST /jobs.
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_jobs_sha256 ON jobs (sha256)"
+        )
         if not _fts5_supported(conn):
             return
         indexed = {r["job_id"] for r in conn.execute(
@@ -94,6 +98,23 @@ def get_job(job_id: str) -> dict | None:
     """Return the job row as a plain dict, or None if the id is unknown."""
     with _connect() as conn:
         row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def find_done_by_sha256(sha256: str) -> dict | None:
+    """Newest finished job stored for these exact bytes, or None.
+
+    Upload dedup: a 'done' job with a stored result can be answered
+    instantly instead of re-running the OCR pipeline. Pending and error
+    rows never match - a failed or in-flight upload always starts a
+    fresh job. Served by idx_jobs_sha256."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM jobs"
+            " WHERE sha256 = ? AND status = 'done' AND result_json IS NOT NULL"
+            " ORDER BY created_at DESC, id DESC LIMIT 1",
+            (sha256,),
+        ).fetchone()
         return dict(row) if row else None
 
 

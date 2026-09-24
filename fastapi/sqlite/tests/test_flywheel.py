@@ -133,9 +133,16 @@ def client(tmp_path_factory):
         yield c
 
 
+_JOB_SEQ = 0
+
+
 def _new_job(client, tmp_path):
+    """Each call uploads distinct bytes: identical bytes dedup to the
+    existing finished job, and every test here wants its OWN job."""
+    global _JOB_SEQ
+    _JOB_SEQ += 1
     img = np.full((400, 600, 3), 235, np.uint8)
-    cv2.putText(img, "TAMIL", (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 2,
+    cv2.putText(img, f"TAMIL-{_JOB_SEQ}", (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 2,
                 (20, 20, 20), 3)
     ok, buf = cv2.imencode(".png", img)
     data = buf.tobytes()

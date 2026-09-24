@@ -15,7 +15,10 @@
      API SEAM — the only place that knows about the backend.
      Contract: schema/endpoints.md (fastapi/sqlite, app 0.2.0).
        GET  /health          → {ok, ocr_engine: gemini|sarvam|stub, gemini_key_set, sarvam_key_set, ocr_error?}
-       POST /jobs  (form field "file", ONE file) → {job_id} | 400/422 {detail}
+       POST /jobs  (form field "file", ONE file) → {job_id, status} | 400/422 {detail}
+                   Dedup: the same bytes as a finished job answer instantly with
+                   {job_id, status:"done", duplicate:true} - no new OCR; the row
+                   completes on the EXISTING job (editor/PDF use that id).
        GET  /jobs/{job_id}   → {status: pending|done|error,
                                 result: {pages:[…]} | {error} | null} | 404
      POST is synchronous today (job is already done|error when it
@@ -270,7 +273,7 @@
       xhr.onload = () => {
         let body = null;
         try { body = JSON.parse(xhr.responseText); } catch (e) { /* non-JSON */ }
-        if (xhr.status >= 200 && xhr.status < 300 && body && body.job_id) { resolve({ job_id: body.job_id }); return; }
+        if (xhr.status >= 200 && xhr.status < 300 && body && body.job_id) { resolve({ job_id: body.job_id, status: body.status, duplicate: body.duplicate === true }); return; }
         const d = detailText(body);
         if (xhr.status === 0) { reject(new ApiError('Backend unreachable (POST /jobs)', 'down', { sent })); return; }
         // Render answers 502/503/504 (and 408/429) while the service wakes or
@@ -897,8 +900,19 @@
         }
       }
       const job = { key, p, active: 0 }; // active = online ms spent on this page
-      p.jobId = await liveStart(job, zipFiles, startOpts);
-      if (!p.jobId) return; // removed meanwhile
+      const started = await liveStart(job, zipFiles, startOpts);
+      if (!started || !started.job_id) return; // removed meanwhile
+      p.jobId = started.job_id;
+      if (started.status === 'done') {
+        // Dedup hit: the server returned an existing finished job for these
+        // bytes instead of re-running OCR. One GET fills the row; if that
+        // GET misbehaves, fall through to the normal poll loop.
+        let pg = null;
+        try { pg = await pollPage(p.jobId); } catch (e) { pg = null; }
+        if (!state.pages.has(key)) return;
+        if (pg && (pg.status === 'done' || pg.status === 'error')) { applyPage(key, pg); return; }
+        if (pg) applyPage(key, pg);
+      }
       applyPage(key, { status: 'processing', progress: 100 });
       await livePoll(job);
     } catch (err) {
@@ -941,9 +955,9 @@
       await untilOnline();
       const startedAt = Date.now();
       try {
-        const { job_id } = await startPage(p.file, startOpts);
+        const started = await startPage(p.file, startOpts);
         if (attempt > 1) reconnected(job);
-        return job_id;
+        return started;
       } catch (err) {
         if (err.kind !== 'down' || !state.pages.has(key)) throw err;
         job.active += Date.now() - startedAt;
@@ -965,7 +979,7 @@
           await liveWait(job, backoff(fails));
           try {
             const id = await findJob(hash, p.file.name, startedAt);
-            if (id) { reconnected(job); return id; }
+            if (id) { reconnected(job); return { job_id: id }; }
           } catch (e) { if (e.kind !== 'down') throw e; }
         }
         if (++resends > POST_RESENDS) throw new ApiError('The server did not answer after ' + attempt + ' uploads. Press Retry', 'http');
