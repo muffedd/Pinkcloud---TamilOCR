@@ -1208,7 +1208,8 @@ function renderBadges() {
     el.queue.scrollTop = 0;
   });
   el.pageBadges.appendChild(b);
-  el.scanSub.textContent = "page " + S.page.page + " of " + (S.pageCount || 1) + " · " + S.page.profile + " · " + state;
+  el.scanSub.textContent = "page " + S.page.page + " of " + (S.pageCount || 1) + " · " + S.page.profile + " · " + state +
+    (S.mode ? " · " + MODE_NAMES[S.mode] + " mode" : "");
   renderEngineTag(S.page);
   /* Export is always reachable once a page is loaded, whatever the page
      state (was: only clean/repaired/precomputed, which left Sarvam and stub
@@ -2568,6 +2569,7 @@ function init() {
 
 /* Wraps loadPage with the job context the live mode needs (page count for
    the header, scan-image URL, the state flags renderScan probes). */
+var MODE_NAMES = { auto: "Auto", light: "Light", heavy: "Heavy" };
 function loadJob(doc, meta) {
   S.jobId = meta.jobId || null;
   S.pageCount = meta.pageCount || 1;
@@ -2577,6 +2579,7 @@ function loadJob(doc, meta) {
     : null);
   S.mockId = meta.mockId || null;
   S.filename = meta.filename || "";
+  S.mode = MODE_NAMES[meta.mode] ? meta.mode : null;  /* job OCR mode (auto|light|heavy) */
   S.imageTried = false;
   S.imageLoaded = false;
   S.imageFailed = false;
@@ -2619,7 +2622,7 @@ function pollJob(depth) {
     }
     var idx = Math.min(PAGE_NO, pages.length) - 1;
     hideOverlay();
-    loadJob(pages[idx], { jobId: JOB_ID, pageCount: pages.length, pages: pages, filename: job.filename || "" });
+    loadJob(pages[idx], { jobId: JOB_ID, pageCount: pages.length, pages: pages, filename: job.filename || "", mode: job.mode });
   }).catch(showFatal);
 }
 

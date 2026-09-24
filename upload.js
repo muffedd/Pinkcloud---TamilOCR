@@ -15,8 +15,9 @@
      API SEAM — the only place that knows about the backend.
      Contract: schema/endpoints.md (fastapi/sqlite, app 0.2.0).
        GET  /health          → {ok, ocr_engine: gemini|sarvam|stub, gemini_key_set, sarvam_key_set, ocr_error?}
-       POST /jobs  (form field "file", ONE file) → {job_id, status} | 400/422 {detail}
-                   Dedup: the same bytes as a finished job answer instantly with
+       POST /jobs  (form field "file", ONE file; optional "mode" auto|light|heavy)
+                   → {job_id, status, mode} | 400/422 {detail}
+                   Dedup: the same bytes + mode as a finished job answer instantly with
                    {job_id, status:"done", duplicate:true} - no new OCR; the row
                    completes on the EXISTING job (editor/PDF use that id).
        GET  /jobs/{job_id}   → {status: pending|done|error,
@@ -83,6 +84,17 @@
      multi-image path (main.py _read_multi / MAX_FILES_PER_JOB). */
   const ZIP_IMG_EXT = ['.jpg', '.jpeg', '.png', '.tif', '.tiff', '.webp'];
   const ZIP_MAX_IMAGES = 100;
+
+  /* OCR mode sent with each upload (POST /jobs form field "mode"). Auto =
+     the backend router picks Gemini or Sarvam per page; Light = every page
+     Gemini first; Heavy = every page Sarvam first. A row keeps the mode it
+     was added with (Retry re-sends the same mode). */
+  const OCR_MODES = [
+    { id: 'auto', label: 'Auto', hint: 'Picks the engine for each page' },
+    { id: 'light', label: 'Light', hint: 'Gemini on every page: fastest, for clean scans' },
+    { id: 'heavy', label: 'Heavy', hint: 'Sarvam on every page: slower, for damaged prints' }
+  ];
+  const MODE_LABEL = { auto: 'Auto', light: 'Light', heavy: 'Heavy' };
 
   /* Copy of schema/doc_demo.json — last resort only (no fetch, no
      inline #doc). The live source is schema/doc_demo.json. */
@@ -257,6 +269,7 @@
       const fd = new FormData();
       if (opts.files) opts.files.forEach((f) => fd.append('files', f, f.name)); // ZIP: one job, page per image
       else fd.append('file', withMime(file), file.name);
+      if (opts.mode && opts.mode !== 'auto') fd.append('mode', opts.mode);
       const xhr = new XMLHttpRequest();
       xhr.open('POST', POST_JOBS);
       xhr.timeout = POLL_WINDOW_MS; // OCR runs inside the POST; past this, look the job up instead
@@ -328,12 +341,13 @@
   }
   /* Newest job with this hash created since the POST started. Server time
      comes from the reply's Date header, so client clock skew does not matter. */
-  async function findJob(hash, name, startedAt) {
+  async function findJob(hash, name, startedAt, mode) {
     const r = await getJson(POST_JOBS + '?limit=20');
     const serverNow = isNaN(r.date) ? Date.now() : r.date;
     const since = serverNow - (Date.now() - startedAt) - 15000;
     const jobs = (r.body && r.body.jobs) || [];
-    const hit = jobs.find((j) => (hash ? j.sha256 === hash : j.filename === name) && Date.parse(j.created_at) >= since);
+    const hit = jobs.find((j) => (hash ? j.sha256 === hash : j.filename === name) && Date.parse(j.created_at) >= since &&
+      (!mode || !j.mode || j.mode === mode)); // same OCR mode as this row (older servers send no mode)
     return hit ? hit.job_id : null;
   }
 
@@ -385,7 +399,7 @@
   if (!root) { console.warn('[upload] mount #upload-root not found — upload screen not rendered'); return; }
   root.classList.add('up-active');
 
-  const state = { pages: new Map(), inFlight: 0, queue: [] };
+  const state = { pages: new Map(), inFlight: 0, queue: [], mode: 'auto' };
   let order = []; // display order of page keys
   let uid = 0;
 
@@ -500,6 +514,30 @@
     dz.appendChild(input);
     card.appendChild(dz);
 
+    /* OCR mode: small segmented radio group under the drop zone (outside
+       it, so clicks never open the file picker). Auto is the default. */
+    const modeBar = h('div', 'up-mode');
+    const modeLbl = h('span', 'up-mode-lbl', 'OCR mode');
+    modeLbl.id = 'up-mode-lbl';
+    modeBar.appendChild(modeLbl);
+    const modeGroup = h('div', 'up-mode-seg');
+    modeGroup.id = 'up-mode';
+    modeGroup.setAttribute('role', 'radiogroup');
+    modeGroup.setAttribute('aria-labelledby', 'up-mode-lbl');
+    OCR_MODES.forEach((m) => {
+      const b = h('button', 'up-mode-opt', m.label);
+      b.type = 'button';
+      b.dataset.mode = m.id;
+      b.title = m.hint;
+      b.setAttribute('role', 'radio');
+      modeGroup.appendChild(b);
+    });
+    modeBar.appendChild(modeGroup);
+    const modeHint = h('span', 'up-mode-hint', '');
+    modeHint.setAttribute('aria-live', 'polite');
+    modeBar.appendChild(modeHint);
+    card.appendChild(modeBar);
+
     /* rejection notices */
     const notices = h('div', 'up-notices');
     notices.id = 'up-notices';
@@ -555,10 +593,35 @@
     card.appendChild(foot);
 
     page.appendChild(card);
-    return { dz, browse, sample, input, list, empty, notices, offline, rmall, count, prev, next, demo };
+    return { dz, browse, sample, input, list, empty, notices, offline, rmall, count, prev, next, demo, modeGroup, modeHint };
   }
 
   const el = buildSkeleton();
+
+  /* --- OCR mode selector --- */
+  function setMode(id, focus) {
+    const m = OCR_MODES.find((x) => x.id === id) || OCR_MODES[0];
+    state.mode = m.id;
+    el.modeGroup.querySelectorAll('.up-mode-opt').forEach((b) => {
+      const on = b.dataset.mode === m.id;
+      b.setAttribute('aria-checked', on ? 'true' : 'false');
+      b.tabIndex = on ? 0 : -1;
+      if (on && focus) b.focus();
+    });
+    el.modeHint.textContent = m.hint;
+  }
+  el.modeGroup.addEventListener('click', (e) => {
+    const b = e.target.closest('.up-mode-opt');
+    if (b) setMode(b.dataset.mode);
+  });
+  el.modeGroup.addEventListener('keydown', (e) => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+    if (!step) return;
+    e.preventDefault();
+    const i = OCR_MODES.findIndex((x) => x.id === state.mode);
+    setMode(OCR_MODES[(i + step + OCR_MODES.length) % OCR_MODES.length].id, true);
+  });
+  setMode('auto');
 
   /* --- row rendering --- */
   const PCT_TEXT = { queued: 'Waiting', processing: 'Reading…' };
@@ -588,7 +651,7 @@
       pct.textContent = p.retryNote || PCT_TEXT.queued;
     }
     why.textContent = p.status === 'error' ? (p.error || 'OCR failed') : '';
-    size.textContent = fmtSize(p.size) + (p.status === 'done' ? pageSummary(p.pages) : '');
+    size.textContent = fmtSize(p.size) + modeText(p) + (p.status === 'done' ? pageSummary(p.pages) : '');
 
     if (p.status !== was && (p.status === 'done' || p.status === 'error')) {
       ic.querySelector('.up-bdg')?.remove();
@@ -639,6 +702,11 @@
     }
   }
 
+  /* "· Heavy" - the OCR mode this row was sent with */
+  function modeText(p) {
+    return p.mode && MODE_LABEL[p.mode] ? ' · ' + MODE_LABEL[p.mode] : '';
+  }
+
   /* "· 3 pages · 1 to review" from result.pages[] */
   function pageSummary(pages) {
     if (!pages || !pages.length) return '';
@@ -677,7 +745,9 @@
     const body = h('div', 'up-body');
     const top = h('div', 'up-top');
     top.appendChild(h('span', 'up-name', file.name));
-    const size = h('span', 'up-size', fmtSize(file.size));
+    const mode = state.mode;
+    const size = h('span', 'up-size', fmtSize(file.size) + ' · ' + MODE_LABEL[mode]);
+    size.title = 'OCR mode: ' + MODE_LABEL[mode];
     top.appendChild(size);
     body.appendChild(top);
     const pct = h('span', 'up-pct', PCT_TEXT.queued);
@@ -696,7 +766,7 @@
     el.list.appendChild(row);
     requestAnimationFrame(() => requestAnimationFrame(() => row.classList.remove('is-enter')));
     const p = {
-      key, file, name: file.name, size: file.size,
+      key, file, name: file.name, size: file.size, mode,
       status: 'queued', progress: 0, jobId: null, result: null, error: null, pages: null, xhr: null,
       els: { row, fill, pct, why, size, ic, acts }
     };
@@ -884,6 +954,7 @@
       }
       const startOpts = {
         files: zipFiles,
+        mode: p.mode,
         fail: p.mockFail, delay: 0,
         onXhr: (xhr) => { p.xhr = xhr; },
         onProgress: (status, progress) => applyPage(key, { status, progress })
@@ -978,7 +1049,7 @@
           reconnecting(job, ++fails, err.message);
           await liveWait(job, backoff(fails));
           try {
-            const id = await findJob(hash, p.file.name, startedAt);
+            const id = await findJob(hash, p.file.name, startedAt, p.mode);
             if (id) { reconnected(job); return { job_id: id }; }
           } catch (e) { if (e.kind !== 'down') throw e; }
         }

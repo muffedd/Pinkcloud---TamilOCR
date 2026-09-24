@@ -169,6 +169,18 @@ body:has(#upload-root.up-active) { margin: 0; }
   background: linear-gradient(100deg, transparent, rgba(255,255,255,.42), transparent); transform: skewX(-18deg); pointer-events: none; }
 .up-browse:hover::after, .up-next:hover:not(:disabled)::after { left: 125%; transition: left var(--t-slow) var(--ease-out); }
 
+/* ---------- OCR mode (segmented radio under the drop zone) ---------- */
+.up-mode { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 14px; padding: 0 2px; }
+.up-mode-lbl { font-size: 13px; line-height: 18px; color: var(--up-ink2); }
+.up-mode-seg { display: inline-flex; padding: 2px; gap: 2px; border-radius: 8px; background: var(--up-err-bg); box-shadow: inset 0 0 0 1px var(--up-line); }
+#upload-root .up-mode-opt { height: 26px; padding: 0 12px; border-radius: 6px; font-size: 13px; line-height: 26px; color: var(--up-ink2);
+  transition: color 150ms ease, background-color 150ms ease, box-shadow 150ms ease; }
+#upload-root .up-mode-opt:hover { color: var(--up-ink); }
+#upload-root .up-mode-opt[aria-checked="true"] { background: var(--up-card); color: var(--up-solid); font-weight: 500;
+  box-shadow: 0 0 0 1px var(--up-soft-border), 0 1px 2px rgba(30,26,24,.06); }
+#upload-root .up-mode-opt:active { transform: scale(.97); }
+.up-mode-hint { font-size: 12.5px; line-height: 17px; color: var(--up-muted); }
+
 /* ---------- files ---------- */
 .up-notices { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
 .up-notices:empty { display: none; }

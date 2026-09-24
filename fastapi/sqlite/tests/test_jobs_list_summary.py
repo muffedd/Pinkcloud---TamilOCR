@@ -29,6 +29,7 @@ LIST_KEYS = {
     "job_id", "filename", "sha256", "status", "created_at",
     "page_count", "pages_needing_review", "error",
     "result_url", "receipt_url", "corrections_count",
+    "mode",  # additive: OCR mode chosen at upload (auto|light|heavy)
 }
 
 

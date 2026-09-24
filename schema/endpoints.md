@@ -49,16 +49,33 @@ Multipart upload, one file in the form field `file`.
 
 ```bash
 curl -s -X POST http://127.0.0.1:8000/jobs -F "file=@scan.jpg"
-# → {"job_id": "af3c8e14...", "status": "pending"}
+# → {"job_id": "af3c8e14...", "status": "pending", "mode": "auto"}
+curl -s -X POST http://127.0.0.1:8000/jobs -F "file=@scan.jpg" -F "mode=heavy"
+# → {"job_id": "...", "status": "pending", "mode": "heavy"}
 ```
+
+Optional form field `mode` (the upload page's OCR mode selector):
+
+| mode | Routing |
+|---|---|
+| `auto` (default; also when missing/blank) | router picks FAST/HEAVY per page (unchanged) |
+| `light` | every page `profile: "FAST"`: Gemini first, Sarvam fallback |
+| `heavy` | every page `profile: "HEAVY"`: Sarvam first, Gemini fallback |
+
+Case/whitespace-insensitive. Any other value → `422` before a job row exists. Forced
+modes skip the router's FAST/HEAVY decision; the page `quality` metrics are still
+measured. `ocr_engine` / `ocr_fallback` are relative to the forced route. The mode is
+stored on the job (`jobs.mode`, old rows read as `auto`) and returned as `mode` by
+`POST /jobs`, `GET /jobs/{job_id}` and each `GET /jobs` row. Upload dedup only
+matches a finished job with the same bytes AND the same mode.
 
 **Dedup:** uploading the exact same bytes again skips OCR entirely. When the
 content hash (the file's sha256; for a multi-image `files` job the combined
 per-image hash, order-sensitive) matches a `done` job with a valid stored
-result, the response is that existing job, instantly and free:
+result AND the same `mode`, the response is that existing job, instantly and free:
 
 ```bash
-# → {"job_id": "af3c8e14...", "status": "done", "duplicate": true}
+# → {"job_id": "af3c8e14...", "status": "done", "duplicate": true, "mode": "auto"}
 ```
 
 A match on a `pending` or `error` job never dedups: it starts a fresh job as
@@ -195,7 +212,7 @@ paginate; `total` is the full job count.
 {"total": 1, "limit": 50, "offset": 0, "jobs": [
   {"job_id": "af3c...", "filename": "scan.jpg", "sha256": "2f1a...", "status": "done",
    "created_at": "...", "page_count": 1, "pages_needing_review": 0,
-   "corrections_count": 2, "error": null,
+   "corrections_count": 2, "mode": "auto", "error": null,
    "result_url": "/jobs/af3c...", "receipt_url": "/jobs/af3c.../receipt"}
 ]}
 ```

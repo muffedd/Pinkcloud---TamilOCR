@@ -187,4 +187,5 @@ def test_response_shapes_unchanged_plus_additive_key(job):
         "page_count", "pages_needing_review", "error",
         "result_url", "receipt_url",
         "corrections_count",  # the additive slice-3 key
+        "mode",  # additive: OCR mode chosen at upload (auto|light|heavy)
     }

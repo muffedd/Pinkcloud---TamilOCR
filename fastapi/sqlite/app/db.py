@@ -2,7 +2,8 @@
 
 Two tables, stdlib sqlite3 only:
   - jobs: one row per uploaded document, its hash (indexed: upload dedup),
-    processing status, (when done) the full result JSON, and the summary
+    processing status, OCR mode (auto | light | heavy; part of the dedup
+    key), (when done) the full result JSON, and the summary
     counts GET /jobs lists (page_count, pages_needing_review,
     corrections_count) so the list never re-parses result JSON or reads
     corrections from disk.
@@ -66,7 +67,8 @@ def init_db() -> None:
                 sha256      TEXT NOT NULL,      -- hash of the master file
                 status      TEXT NOT NULL,      -- pending | done | error
                 result_json TEXT,               -- full output contract JSON
-                created_at  TEXT NOT NULL       -- ISO timestamp (UTC)
+                created_at  TEXT NOT NULL,      -- ISO timestamp (UTC)
+                mode        TEXT NOT NULL DEFAULT 'auto'  -- auto | light | heavy
             )
             """
         )
@@ -75,6 +77,7 @@ def init_db() -> None:
             "CREATE INDEX IF NOT EXISTS idx_jobs_sha256 ON jobs (sha256)"
         )
         _migrate_summary_columns(conn)
+        _ensure_mode_column(conn)
         # GET /jobs pages newest-first; this index serves ORDER BY + LIMIT
         # without sorting the whole table.
         conn.execute(
@@ -158,14 +161,30 @@ def _backfill_summaries(conn: sqlite3.Connection) -> None:
         )
 
 
-def create_job(job_id: str, filename: str, sha256: str) -> None:
+# OCR mode chosen at upload: auto = per-page router, light = every page on
+# the FAST (Gemini) route, heavy = every page on the HEAVY (Sarvam) route.
+DEFAULT_MODE = "auto"
+
+
+def _ensure_mode_column(conn: sqlite3.Connection) -> None:
+    """Add jobs.mode to databases created before the mode selector.
+    Additive and idempotent: old rows read as 'auto', which is exactly how
+    they were processed (per-page router)."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)")}
+    if "mode" not in cols:
+        conn.execute(
+            "ALTER TABLE jobs ADD COLUMN mode TEXT NOT NULL DEFAULT 'auto'")
+
+
+def create_job(job_id: str, filename: str, sha256: str,
+               mode: str = DEFAULT_MODE) -> None:
     """Insert a new job row, status 'pending' until processing finishes."""
     now = datetime.now(timezone.utc).isoformat()
     with _connect() as conn:
         conn.execute(
-            "INSERT INTO jobs (id, filename, sha256, status, result_json, created_at) "
-            "VALUES (?, ?, ?, 'pending', NULL, ?)",
-            (job_id, filename, sha256, now),
+            "INSERT INTO jobs (id, filename, sha256, status, result_json, created_at, mode) "
+            "VALUES (?, ?, ?, 'pending', NULL, ?, ?)",
+            (job_id, filename, sha256, now, mode),
         )
 
 
@@ -176,19 +195,24 @@ def get_job(job_id: str) -> dict | None:
         return dict(row) if row else None
 
 
-def find_done_by_sha256(sha256: str) -> dict | None:
-    """Newest finished job stored for these exact bytes, or None.
+def find_done_by_sha256(sha256: str,
+                        mode: str = DEFAULT_MODE) -> dict | None:
+    """Newest finished job stored for these exact bytes AND this OCR mode,
+    or None.
 
     Upload dedup: a 'done' job with a stored result can be answered
     instantly instead of re-running the OCR pipeline. Pending and error
     rows never match - a failed or in-flight upload always starts a
-    fresh job. Served by idx_jobs_sha256."""
+    fresh job. The mode is part of the key: re-uploading the same file
+    as Heavy after an Auto run is a request for a different engine route,
+    so it runs fresh. Served by idx_jobs_sha256."""
     with _connect() as conn:
         row = conn.execute(
             "SELECT * FROM jobs"
-            " WHERE sha256 = ? AND status = 'done' AND result_json IS NOT NULL"
+            " WHERE sha256 = ? AND mode = ? AND status = 'done'"
+            " AND result_json IS NOT NULL"
             " ORDER BY created_at DESC, id DESC LIMIT 1",
-            (sha256,),
+            (sha256, mode),
         ).fetchone()
         return dict(row) if row else None
 
@@ -201,7 +225,7 @@ def list_jobs(limit: int, offset: int) -> tuple[list[dict], int]:
         # just for failed jobs, whose small error document carries the
         # message the list shows.
         rows = conn.execute(
-            "SELECT id, filename, sha256, status, created_at,"
+            "SELECT id, filename, sha256, status, created_at, mode,"
             "       page_count, pages_needing_review, corrections_count,"
             "       CASE WHEN status = 'error' THEN result_json END"
             "           AS result_json"

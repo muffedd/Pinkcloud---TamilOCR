@@ -122,7 +122,7 @@ def test_progress_counts_pages_of_a_multi_image_job(client, monkeypatch):
 def test_background_failure_marks_job_error_with_scrubbed_message(client, monkeypatch):
     monkeypatch.setenv("SARVAM_API_KEY", "sk-test-secret-123")
 
-    def boom(job_id, master):
+    def boom(job_id, master, mode="auto"):
         raise RuntimeError("upstream said no for key sk-test-secret-123")
 
     monkeypatch.setattr(main, "_pipeline", boom)
@@ -137,7 +137,7 @@ def test_background_failure_marks_job_error_with_scrubbed_message(client, monkey
 
 
 def test_multi_image_failure_marks_job_error(client, monkeypatch):
-    def boom(job_id, master):
+    def boom(job_id, master, mode="auto"):
         raise RuntimeError("page loader broke")
 
     monkeypatch.setattr(main, "_pipeline", boom)

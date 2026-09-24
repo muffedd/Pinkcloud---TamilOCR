@@ -7,7 +7,9 @@ Pipeline per upload:
   3. create job row       -> db.py
   4. load pages           -> pdfutil.py  (PDF via pypdfium2, images via
      cv2, ALL pages of multi-page TIFFs)
-  5. score + route        -> router.py   (FAST / HEAVY badge per page)
+  5. score + route        -> router.py   (FAST / HEAVY badge per page;
+     job mode light/heavy forces FAST/HEAVY on every page and skips the
+     router's decision, auto keeps it)
   6. OCR fast pass        -> ocr.py      (FAST -> Gemini, HEAVY -> Sarvam,
      cross-fallback, marked stub output; engine failures are logged and
      shown in /health)
@@ -37,7 +39,7 @@ import uuid
 from pathlib import Path
 
 import cv2
-from fastapi import (FastAPI, File, HTTPException, Query, Response,
+from fastapi import (FastAPI, File, Form, HTTPException, Query, Response,
                      UploadFile)
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
@@ -61,6 +63,48 @@ ALLOWED_TYPES = {
     "image/tiff",
     "image/webp",
 }
+
+# OCR mode per job (POST /jobs form field `mode`, default auto):
+#   auto  -> the router picks FAST/HEAVY per page (unchanged behaviour)
+#   light -> every page on the FAST route (Gemini first, Sarvam fallback)
+#   heavy -> every page on the HEAVY route (Sarvam first, Gemini fallback)
+OCR_MODES = ("auto", "light", "heavy")
+_FORCED_PROFILE = {"light": "FAST", "heavy": "HEAVY"}
+
+
+def parse_mode(raw: str | None) -> str:
+    """Normalize the upload's mode field. Missing/blank -> auto; any value
+    outside OCR_MODES is rejected (422) before a job row exists, so a typo
+    can never silently pick a route the user did not ask for."""
+    if raw is None or not str(raw).strip():
+        return db.DEFAULT_MODE
+    mode = str(raw).strip().lower()
+    if mode not in OCR_MODES:
+        raise HTTPException(
+            status_code=422,
+            detail="invalid mode: use auto, light or heavy")
+    return mode
+
+
+def _job_mode(job: dict) -> str:
+    """A stored job's mode; rows from before the column read as auto."""
+    mode = job.get("mode")
+    return mode if mode in OCR_MODES else db.DEFAULT_MODE
+
+
+def page_profile(gray, mode: str = "auto"):
+    """(profile, scores) for one page under the job's mode.
+
+    auto: the router's FAST/HEAVY decision (choose_profile), as before.
+    light/heavy: the profile is forced and choose_profile is never called.
+    The 4 quality metrics are still measured in every mode - they are
+    pure CV numbers the page contract requires, not a routing decision."""
+    scores = compute_scores(gray)
+    forced = _FORCED_PROFILE.get(mode)
+    if forced is not None:
+        return forced, scores
+    return choose_profile(scores)
+
 
 # Multi-image jobs (repeated `files` field): images only, one page each.
 MAX_FILES_PER_JOB = 100
@@ -282,8 +326,11 @@ def _ocr_one_page(job_id: str, page_number: int, img, profile: str,
     )
 
 
-def _pipeline(job_id: str, master: Path | list[Path]) -> list[dict]:
+def _pipeline(job_id: str, master: Path | list[Path],
+              mode: str = "auto") -> list[dict]:
     """Process the master file(s) -> list of per-page contract JSON objects.
+    `mode` is the job's OCR mode (see OCR_MODES / page_profile): heavy puts
+    every page on the Sarvam lane, so it stays behind the Sarvam throttle.
 
     Route every page first (cheap quality scores), then OCR: Gemini-routed
     pages run on a thread pool, Sarvam-routed pages on a small lane behind
@@ -297,14 +344,14 @@ def _pipeline(job_id: str, master: Path | list[Path]) -> list[dict]:
     if not total:
         return []
 
-    # (5) Quality metrics + FAST/HEAVY badge for every page, up front.
+    # (5) Quality metrics + FAST/HEAVY badge for every page, up front
+    #     (router in auto mode, forced by the job's light/heavy mode).
     routed = []  # (page_number, img, profile, scores, route_ms, lane)
     for page_number, img in enumerate(pages_in, start=1):
         t0 = time.perf_counter()
         # There is no repair pass yet: HEAVY pages get the same safe-wins
         # preprocessing as FAST pages, then go to their routed OCR engine.
-        scores = compute_scores(to_gray(img))
-        profile, scores = choose_profile(scores)
+        profile, scores = page_profile(to_gray(img), mode)
         route = _route(profile)
         lane = "sarvam" if route and route[0] == "sarvam" else "gemini"
         routed.append((page_number, img, profile, scores,
@@ -361,14 +408,14 @@ def _pipeline(job_id: str, master: Path | list[Path]) -> list[dict]:
 
 
 def _run_multi_job(job_id: str, uploads: list[tuple[str, bytes]],
-                   expected_sha256: str) -> None:
+                   expected_sha256: str, mode: str = "auto") -> None:
     """Multi-image flow: one master per image, pages stacked in order."""
     try:
         saved = storage.save_masters(job_id, uploads)
         if saved["sha256"] != expected_sha256 or not storage.verify_master(
                 job_id, expected_sha256):
             raise RuntimeError("master files failed hash verification")
-        pages = _pipeline(job_id, saved["paths"])
+        pages = _pipeline(job_id, saved["paths"], mode)
         result = build_job_result(pages)
         db.set_result(job_id, "done", json.dumps(result, ensure_ascii=False))
     except Exception as exc:  # keep the server alive, record the failure
@@ -378,7 +425,8 @@ def _run_multi_job(job_id: str, uploads: list[tuple[str, bytes]],
         _clear_progress(job_id)
 
 
-def _run_job(job_id: str, filename: str, data: bytes) -> None:
+def _run_job(job_id: str, filename: str, data: bytes,
+             mode: str = "auto") -> None:
     """The whole upload-to-result flow, wrapped so errors land in the DB."""
     try:
         # (2) Hash BEFORE writing, store master byte-for-byte.
@@ -390,7 +438,7 @@ def _run_job(job_id: str, filename: str, data: bytes) -> None:
             raise RuntimeError("master file failed hash verification")
 
         # (4..7) Process every page.
-        pages = _pipeline(job_id, master)
+        pages = _pipeline(job_id, master, mode)
 
         # (8) Store the finished result.
         result = build_job_result(pages)
@@ -435,7 +483,7 @@ def _read_multi(files: list[UploadFile]) -> list[tuple[str, bytes]]:
     return uploads
 
 
-def _dedup_hit(digest: str) -> dict | None:
+def _dedup_hit(digest: str, mode: str = "auto") -> dict | None:
     """Instant answer for bytes already OCR'd (upload dedup).
 
     When a finished job with a valid stored result exists for this exact
@@ -445,8 +493,10 @@ def _dedup_hit(digest: str) -> dict | None:
     existing id. 'Valid' means the stored JSON parses to a non-empty page
     list with no stub (OCR-failed) page; a corrupt stored row, a stub
     result, an 'error' job or a still-pending one never matches, so
-    failures always retry and in-flight uploads always run fresh."""
-    job = db.find_done_by_sha256(digest)
+    failures always retry and in-flight uploads always run fresh.
+    Only a job run in the SAME OCR mode matches (same bytes as Heavy after
+    an Auto run is a fresh job)."""
+    job = db.find_done_by_sha256(digest, mode)
     if job is None:
         return None
     try:
@@ -462,12 +512,14 @@ def _dedup_hit(digest: str) -> dict | None:
     if any(isinstance(pg, dict) and pg.get("ocr_engine") == "stub"
            for pg in pages):
         return None
-    return {"job_id": job["id"], "status": "done", "duplicate": True}
+    return {"job_id": job["id"], "status": "done", "duplicate": True,
+            "mode": _job_mode(job)}
 
 
 @app.post("/jobs")
 def create_job(file: UploadFile | None = File(None),
-               files: list[UploadFile] | None = File(None)):
+               files: list[UploadFile] | None = File(None),
+               mode: str | None = Form(None)):
     """Accept an upload, start processing it, return the new job id.
 
     Returns {"job_id": ...} (HTTP 200) as soon as the upload is validated
@@ -476,6 +528,11 @@ def create_job(file: UploadFile | None = File(None),
 
     Send EITHER `file` (one PDF/image, unchanged behaviour) OR a repeated
     `files` field (images, in order -> one job, one page per image).
+
+    Optional form field `mode`: auto (default, per-page router) | light
+    (every page FAST -> Gemini) | heavy (every page HEAVY -> Sarvam). Any
+    other value -> 422 before a job row exists. Stored on the job row and
+    echoed as "mode" in every job response.
 
     Dedup: if the content hash (the file's sha256; for `files` the combined
     per-image hash) matches a finished job with a valid result, that job is
@@ -489,17 +546,18 @@ def create_job(file: UploadFile | None = File(None),
     if file is not None and files:
         raise HTTPException(
             status_code=400, detail="send either file or files, not both")
+    mode = parse_mode(mode)
     if files:
         uploads = _read_multi(files)
         digest = storage.combined_sha256(
             [storage.sha256_bytes(d) for _, d in uploads])
-        hit = _dedup_hit(digest)
+        hit = _dedup_hit(digest, mode)
         if hit is not None:
             return hit
         job_id = uuid.uuid4().hex
-        db.create_job(job_id, uploads[0][0], digest)
-        _start_job(job_id, _run_multi_job, uploads, digest)
-        return {"job_id": job_id, "status": "pending"}
+        db.create_job(job_id, uploads[0][0], digest, mode)
+        _start_job(job_id, _run_multi_job, uploads, digest, mode)
+        return {"job_id": job_id, "status": "pending", "mode": mode}
     if file is None:
         raise HTTPException(status_code=422, detail="no file uploaded")
 
@@ -532,17 +590,17 @@ def create_job(file: UploadFile | None = File(None),
         )
 
     digest = storage.sha256_bytes(data)
-    hit = _dedup_hit(digest)
+    hit = _dedup_hit(digest, mode)
     if hit is not None:
         return hit
 
     job_id = uuid.uuid4().hex  # also the folder name under uploads/
-    db.create_job(job_id, filename, digest)
+    db.create_job(job_id, filename, digest, mode)
 
     # OCR runs in the background; the client polls GET /jobs/{id}.
-    _start_job(job_id, _run_job, filename, data)
+    _start_job(job_id, _run_job, filename, data, mode)
 
-    return {"job_id": job_id, "status": "pending"}
+    return {"job_id": job_id, "status": "pending", "mode": mode}
 
 
 @app.get("/jobs/{job_id}")
@@ -567,6 +625,7 @@ def get_job(job_id: str):
         "sha256": job["sha256"],
         "status": job["status"],
         "created_at": job["created_at"],
+        "mode": _job_mode(job),
         "result": result,
     }
     if job["status"] == "pending":
@@ -609,6 +668,7 @@ def _job_summary(job: dict) -> dict:
         "sha256": job["sha256"],
         "status": job["status"],
         "created_at": job["created_at"],
+        "mode": _job_mode(job),
         "page_count": counts["page_count"] if done else None,
         "pages_needing_review": counts["pages_needing_review"] if done else None,
         "corrections_count": counts["corrections_count"] if done else None,
