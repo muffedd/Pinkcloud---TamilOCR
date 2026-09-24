@@ -34,7 +34,9 @@ import uuid
 from pathlib import Path
 
 import cv2
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import (FastAPI, File, HTTPException, Query, Response,
+                     UploadFile)
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 
 from . import db, storage
@@ -90,6 +92,13 @@ async def _cap_upload_body(request, call_next):
             return JSONResponse(status_code=413,
                                 content={"detail": _too_large_detail()})
     return await call_next(request)
+
+
+# Compress text responses (contract JSON, HTML/CSS/JS) over ~1 KB -
+# gzip cuts their transfer by roughly 70%. Added AFTER the upload-cap
+# middleware so it wraps it (add_middleware prepends): every response,
+# including the 413s, can be compressed.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 def _read_capped(f: UploadFile, budget: int) -> bytes:
@@ -522,6 +531,30 @@ def search(q: str = Query(..., min_length=1, max_length=200),
 # decimal digits - "0", "-1", "1/..", "abc" all miss the route's contract
 # and answer 404 as well.
 _JOB_ID_RE = re.compile(r"[0-9a-f]{32}")
+
+# Cache policy for the demo-box static routes below:
+# - fonts + demo.mp4 never change in place (a new build ships new bytes),
+#   so they get a long-lived immutable entry;
+# - JS/CSS are not content-hashed, so they only get a short max-age -
+#   a deploy goes stale by at most a few minutes;
+# - the HTML shell revalidates every load (no-cache -> cheap 304s) so it
+#   never pairs a stale page with fresh JS/CSS;
+# - job images are immutable per job_id (uuid4, written once) and private
+#   because a master scan is user data - browser cache only, no shared cache.
+_CACHE_IMMUTABLE = "public, max-age=31536000, immutable"
+_CACHE_JS_CSS = "public, max-age=300"
+_CACHE_HTML = "no-cache"
+_CACHE_JOB = "private, max-age=31536000, immutable"
+
+
+def _ui_cache_control(subdir: str, name: str) -> str | None:
+    if subdir == "fonts" or name == "demo.mp4":
+        return _CACHE_IMMUTABLE
+    if name.endswith((".js", ".css")):
+        return _CACHE_JS_CSS
+    if name.endswith(".html"):
+        return _CACHE_HTML
+    return None  # samples/, schema/ - default heuristic caching
 _PAGE_NO_RE = re.compile(r"[0-9]+")
 
 
@@ -598,7 +631,10 @@ def get_job_page_image(job_id: str, n: str):
     png = _rendered_page_png(job_id, page_number)
     if png is None:
         raise HTTPException(status_code=404, detail="page not found")
-    return FileResponse(png, media_type="image/png")
+    # One job_id renders one fixed page forever (cache file is content-derived),
+    # so the browser may keep it privately and never revalidate.
+    return FileResponse(png, media_type="image/png",
+                        headers={"Cache-Control": _CACHE_JOB})
 
 
 # --- corrections: reviewer fixes persisted per job -----------------------
@@ -975,13 +1011,14 @@ UI_SUB_FILES = {
         "satoshi-regular.woff2",
         "satoshi-medium.woff2",
         "satoshi-bold.woff2",
-        "noto-sans-tamil.ttf",
+        "noto-sans-tamil-ta.woff2",  # Tamil-subset woff2 (see ui.css)
     },
 }
 
 @app.get("/", include_in_schema=False)
 def ui_index():
-    return FileResponse(UI_ROOT / "index.html")
+    return FileResponse(UI_ROOT / "index.html",
+                        headers={"Cache-Control": _CACHE_HTML})
 
 
 @app.get("/jobs/{job_id}/image")
@@ -998,7 +1035,7 @@ def job_master_image(job_id: str):
     master = storage.master_path(job_id)
     if master is None:
         raise HTTPException(status_code=404, detail="no master stored for job")
-    return FileResponse(master)
+    return FileResponse(master, headers={"Cache-Control": _CACHE_JOB})
 
 
 @app.get("/{subdir}/{name}", include_in_schema=False)
@@ -1006,12 +1043,31 @@ def ui_sub_file(subdir: str, name: str):
     allowed = UI_SUB_FILES.get(subdir)
     if allowed is None or name not in allowed:
         raise HTTPException(status_code=404, detail="Not Found")
-    return FileResponse(UI_ROOT / subdir / name)
+    cache = _ui_cache_control(subdir, name)
+    return FileResponse(UI_ROOT / subdir / name,
+                        headers={"Cache-Control": cache} if cache else None)
+
+
+@app.head("/{subdir}/{name}", include_in_schema=False)
+def ui_sub_file_head(subdir: str, name: str):
+    """Headers-only presence probe for the whitelisted assets above.
+
+    upload.js uses it to show/hide the "Try a sample page" button without
+    downloading the 408KB sample PNG on every index load (the GET route
+    does not answer HEAD, so it needs its own handler)."""
+    allowed = UI_SUB_FILES.get(subdir)
+    if allowed is None or name not in allowed:
+        raise HTTPException(status_code=404, detail="Not Found")
+    if not (UI_ROOT / subdir / name).is_file():
+        raise HTTPException(status_code=404, detail="Not Found")
+    return Response(status_code=200)
 
 
 @app.get("/{name}", include_in_schema=False)
 def ui_file(name: str):
     if name not in UI_FILES:
         raise HTTPException(status_code=404, detail="Not Found")
-    return FileResponse(UI_ROOT / name)
+    cache = _ui_cache_control("", name)
+    return FileResponse(UI_ROOT / name,
+                        headers={"Cache-Control": cache} if cache else None)
 

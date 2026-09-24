@@ -1108,10 +1108,11 @@
       .finally(() => { el.sample.disabled = false; });
   });
   if (!MOCK) {
-    /* GET, not HEAD: the FastAPI ui_sub_file route only implements GET and
-       answers HEAD with 405, which would hide the button even though the
-       sample exists. The body is tiny and unused - presence is all we need. */
-    fetch(SAMPLE_URL, { cache: 'no-store' })
+    /* HEAD presence probe (the backend's asset catch-all answers HEAD):
+       headers only, so index load no longer pulls the 408KB sample PNG
+       just to decide whether this button shows. No no-store - a cached
+       200 is fine for a presence check. */
+    fetch(SAMPLE_URL, { method: 'HEAD' })
       .then((r) => { el.sample.hidden = !r.ok; })
       .catch(() => { el.sample.hidden = true; });
   }

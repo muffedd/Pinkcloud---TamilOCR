@@ -8,13 +8,6 @@
    Motion values were measured from the reference video; do not retune.
    ========================================================= */
 
-@font-face {
-  font-family: "Noto Sans Tamil";
-  src: url("./fonts/noto-sans-tamil.ttf") format("truetype");
-  font-weight: 100 900;
-  font-display: swap;
-}
-
 #upload-root {
   /* brand (tokens.css is authoritative; fallbacks = shipped values) */
   --up-primary: var(--pc-color-primary, #F94612);

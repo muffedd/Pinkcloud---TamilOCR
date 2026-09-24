@@ -23,12 +23,17 @@
   font-style: normal;
   font-display: swap;
 }
+/* Subset woff2 (fonts/noto-sans-tamil-ta.woff2): Tamil block + ZWJ/ZWNJ +
+   dotted circle only, wdth pinned to 100, wght 400-700 - 26KB vs the 340KB
+   full variable TTF, which stays in the repo for export.py's PDF embedding.
+   unicode-range keeps the browser from downloading it on Latin-only views. */
 @font-face {
   font-family: "Noto Sans Tamil";
-  src: url("./fonts/noto-sans-tamil.ttf") format("truetype");
-  font-weight: 100 900;
+  src: url("./fonts/noto-sans-tamil-ta.woff2") format("woff2");
+  font-weight: 400 700;
   font-style: normal;
   font-display: swap;
+  unicode-range: U+0B80-0BFF, U+200C, U+200D, U+25CC;
 }
 
 /* ---------- Base ---------- */
