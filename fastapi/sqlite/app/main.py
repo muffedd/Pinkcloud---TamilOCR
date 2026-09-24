@@ -32,6 +32,7 @@ Docs: see RUN.md
 import contextvars
 import json
 import logging
+import math
 import os as _os
 import re
 import threading
@@ -41,6 +42,7 @@ import uuid
 from pathlib import Path
 
 import cv2
+import numpy as np
 from fastapi import (FastAPI, File, Form, HTTPException, Query, Response,
                      UploadFile)
 from fastapi.middleware.gzip import GZipMiddleware
@@ -844,13 +846,28 @@ def get_job_page_image(job_id: str, n: str):
                         headers={"Cache-Control": _CACHE_JOB})
 
 
-# --- reprocess: re-run OCR for one page, optionally rotated ----------------
+# --- reprocess: re-run OCR for one page, optionally rotated / cropped -------
 # The editor's rotate button turns the scan view clockwise client-side and
 # offers "Re-analyze": the same rotation is applied to the stored page here
 # and OCR runs again, so lines/bboxes come back in the orientation the
 # reviewer was looking at (palm-leaf scans are extreme-aspect and often need
-# a quarter turn). The page's lines are replaced; its saved reviewer fixes
-# are dropped (they pointed at the old OCR text), other pages keep theirs.
+# a quarter turn). The crop tool adds an optional crop rect so big empty
+# borders can be cut away before OCR. The page's lines are replaced; its
+# saved reviewer fixes are dropped (they pointed at the old OCR text), other
+# pages keep theirs.
+#
+# Order and coordinate space: ROTATE FIRST, THEN CROP. `crop` is
+# "x0,y0,x1,y1" as fractions (0..1) of the ROTATED page - i.e. of exactly
+# what the reviewer sees in the editor viewport at that rotation - so the
+# editor never needs to know the server's pixel size. Fractions are turned
+# into whole pixels on the rotated image (floor for the start edge, ceil for
+# the end edge).
+#
+# Base image: the page's CURRENT render (uploads/<job>/page-<n>.png), not the
+# original master - edits compose (crop, then rotate, then crop again) and a
+# crop rect drawn on an already-rotated/cropped render lands where it was
+# drawn. `original=true` starts from the master render instead (undo every
+# earlier rotate/crop for that page).
 
 _REPROCESS_ROTATIONS = {
     0: None,
@@ -858,6 +875,42 @@ _REPROCESS_ROTATIONS = {
     180: cv2.ROTATE_180,
     270: cv2.ROTATE_90_COUNTERCLOCKWISE,
 }
+
+
+_CROP_MIN_PX = 16  # smallest crop side (px) worth sending to OCR
+
+
+def _parse_crop(crop: str | None):
+    """"x0,y0,x1,y1" fractions -> tuple, or None when absent/blank.
+    ValueError (-> 422) when malformed, out of 0..1 or empty."""
+    if crop is None or not crop.strip():
+        return None
+    parts = crop.split(",")
+    if len(parts) != 4:
+        raise ValueError("crop must be x0,y0,x1,y1")
+    try:
+        x0, y0, x1, y1 = (float(v) for v in parts)
+    except ValueError:
+        raise ValueError("crop values must be numbers") from None
+    if not all(math.isfinite(v) and 0.0 <= v <= 1.0 for v in (x0, y0, x1, y1)):
+        raise ValueError("crop values must be fractions between 0 and 1")
+    if not (x1 > x0 and y1 > y0):
+        raise ValueError("crop needs x1 > x0 and y1 > y0")
+    return x0, y0, x1, y1
+
+
+def _crop_pixels(shape, frac):
+    """Fractions of an (h, w) image -> whole-pixel (x0, y0, x1, y1), start
+    edges floored and end edges ceiled so the rect never shrinks; ValueError
+    when a side ends up under _CROP_MIN_PX."""
+    h, w = shape[:2]
+    x0 = max(0, min(w, math.floor(frac[0] * w)))
+    y0 = max(0, min(h, math.floor(frac[1] * h)))
+    x1 = max(0, min(w, math.ceil(frac[2] * w)))
+    y1 = max(0, min(h, math.ceil(frac[3] * h)))
+    if x1 - x0 < _CROP_MIN_PX or y1 - y0 < _CROP_MIN_PX:
+        raise ValueError(f"crop is too small (min {_CROP_MIN_PX}px a side)")
+    return x0, y0, x1, y1
 
 
 def _drop_page_corrections(job_id: str, page_number: int) -> None:
@@ -896,15 +949,21 @@ def _drop_page_corrections(job_id: str, page_number: int) -> None:
 
 
 @app.post("/jobs/{job_id}/pages/{n}/reprocess")
-def reprocess_job_page(job_id: str, n: str, rotate: int = Query(0)):
+def reprocess_job_page(job_id: str, n: str, rotate: int = Query(0),
+                       crop: str | None = Query(None),
+                       original: bool = Query(False)):
     """Re-run the pipeline for page `n` (1-based) of a finished job, with
-    the stored page rotated `rotate` degrees clockwise first (0/90/180/270).
+    the page rotated `rotate` degrees clockwise first (0/90/180/270), then
+    cropped to `crop` ("x0,y0,x1,y1" fractions of the ROTATED page; omit
+    for no crop). The base is the page's current render (earlier
+    rotate/crop edits compose); `original=true` starts from the master.
     The job's OCR mode applies exactly as at upload (light/heavy force the
-    route, auto re-scores the rotated page). The rendered page image cache
-    is replaced so the scan route serves the rotated page; the page's saved
+    route, auto re-scores the new page). The rendered page image cache is
+    replaced so the scan route serves the new page; the page's saved
     corrections are dropped.
 
-    404 unknown job/page, 409 job not done, 422 unsupported rotation."""
+    404 unknown job/page, 409 job not done, 422 unsupported rotation or bad
+    crop (malformed, outside 0..1, empty, or under 16px a side)."""
     if not _JOB_ID_RE.fullmatch(job_id):
         raise HTTPException(status_code=404, detail="job not found")
     if not _PAGE_NO_RE.fullmatch(n) or int(n) < 1:
@@ -913,6 +972,10 @@ def reprocess_job_page(job_id: str, n: str, rotate: int = Query(0)):
         raise HTTPException(
             status_code=422,
             detail="rotate must be 0, 90, 180 or 270 (degrees clockwise)")
+    try:
+        crop_frac = _parse_crop(crop)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
     job = db.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
@@ -935,10 +998,23 @@ def reprocess_job_page(job_id: str, n: str, rotate: int = Query(0)):
         if not 1 <= page_number <= len(pages_in):
             raise HTTPException(status_code=404, detail="page not found")
 
-        img = pages_in[page_number - 1]
+        target = storage.UPLOAD_ROOT / job_id / f"page-{page_number}.png"
+        img = None
+        if not original and target.is_file():
+            # Current render: what the editor shows (may already carry an
+            # earlier rotate/crop). Unreadable -> fall back to the master.
+            img = cv2.imread(str(target), cv2.IMREAD_COLOR)
+        if img is None:
+            img = pages_in[page_number - 1]
         code = _REPROCESS_ROTATIONS[rotate]
         if code is not None:
             img = cv2.rotate(img, code)
+        if crop_frac is not None:
+            try:
+                x0, y0, x1, y1 = _crop_pixels(img.shape, crop_frac)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from None
+            img = np.ascontiguousarray(img[y0:y1, x0:x1])
 
         t0 = time.perf_counter()
         profile, scores = page_profile(to_gray(img), _job_mode(job))
@@ -961,7 +1037,6 @@ def reprocess_job_page(job_id: str, n: str, rotate: int = Query(0)):
 
         # Replace the rendered page image so GET .../image serves what OCR
         # just read (write-then-rename, same as the render cache).
-        target = storage.UPLOAD_ROOT / job_id / f"page-{page_number}.png"
         tmp_path = target.with_name(
             f"{target.name}.{uuid.uuid4().hex}.tmp.png")
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -970,8 +1045,14 @@ def reprocess_job_page(job_id: str, n: str, rotate: int = Query(0)):
         else:
             tmp_path.unlink(missing_ok=True)
 
-    return {"job_id": job_id, "page": page_number, "rotate": rotate,
-            "status": "done"}
+    out = {"job_id": job_id, "page": page_number, "rotate": rotate,
+           "status": "done"}
+    if crop_frac is not None:
+        out["crop"] = [x0, y0, x1, y1]  # pixels on the rotated page
+        out["width"], out["height"] = int(img.shape[1]), int(img.shape[0])
+    if original:
+        out["original"] = True
+    return out
 
 
 # --- corrections: reviewer fixes persisted per job -----------------------

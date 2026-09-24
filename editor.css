@@ -1115,3 +1115,36 @@ span.sn-item { cursor: default; }
 .scan-tools .btn[hidden] {
   display: none;
 }
+
+/* Crop mode (editor.js: enterCrop). The scan becomes a drawing surface:
+   crosshair everywhere (word boxes included), the kept area is outlined and
+   everything outside it is dimmed. The rect lives in viewport coords (not in
+   #paper, which re-renders) and is positioned from the paper transform. */
+.scan-scroll.is-cropping,
+.scan-scroll.is-cropping.is-dragging,
+.scan-scroll.is-cropping .box {
+  cursor: crosshair;
+}
+
+.crop-rect {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;               /* over the paper, under the scan tools (z 2) */
+  pointer-events: none;
+  outline: 2px solid var(--pc-color-primary);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+  background-image:
+    linear-gradient(to right, transparent calc(33.333% - 0.5px), rgba(255, 255, 255, 0.55) calc(33.333% - 0.5px), rgba(255, 255, 255, 0.55) calc(33.333% + 0.5px), transparent calc(33.333% + 0.5px), transparent calc(66.666% - 0.5px), rgba(255, 255, 255, 0.55) calc(66.666% - 0.5px), rgba(255, 255, 255, 0.55) calc(66.666% + 0.5px), transparent calc(66.666% + 0.5px)),
+    linear-gradient(to bottom, transparent calc(33.333% - 0.5px), rgba(255, 255, 255, 0.55) calc(33.333% - 0.5px), rgba(255, 255, 255, 0.55) calc(33.333% + 0.5px), transparent calc(33.333% + 0.5px), transparent calc(66.666% - 0.5px), rgba(255, 255, 255, 0.55) calc(66.666% - 0.5px), rgba(255, 255, 255, 0.55) calc(66.666% + 0.5px), transparent calc(66.666% + 0.5px));
+}
+
+.crop-rect[hidden] {
+  display: none;
+}
+
+.scan-tools .btn.is-active {
+  color: var(--pc-color-primary);
+  background: var(--pc-color-primary-soft);
+  box-shadow: inset 0 0 0 1px var(--pc-color-primary-soft-border);
+}

@@ -1098,6 +1098,7 @@ function applyView() {
   el.paper.style.transform =
     "translate(" + view.tx.toFixed(1) + "px," + view.ty.toFixed(1) + "px)" +
     " scale(" + view.z.toFixed(4) + ") rotate(" + view.rot + "deg)";
+  if (cropUi.rect) positionCropRect();  /* the crop rect rides the same transform */
   if (el.zoomFit) {
     el.zoomFit.textContent = Math.round(view.z / fitZoom() * 100) + "%";
   }
@@ -1189,12 +1190,23 @@ function isExtremeAspect() {
   return a >= 2.5 || a <= 0.4;
 }
 
+/* Live job with a page and the reprocess route: Re-analyze and Crop both
+   need the server (mock mode has nothing to re-run OCR on). */
+function canReprocess() {
+  return !!(S.jobId && !window.PC_API.USE_MOCK && S.page &&
+    window.PC_API.reprocessPage);
+}
+
 function updateReprocessBtn() {
   if (!el.reprocess) return;
-  var show = !!(S.jobId && !window.PC_API.USE_MOCK && S.page &&
-    window.PC_API.reprocessPage) && (view.rot !== 0 || isExtremeAspect());
+  var live = canReprocess();
+  var show = live && !cropUi.on && (view.rot !== 0 || isExtremeAspect());
   el.reprocess.hidden = !show;
   if (!show) disarmReprocess();
+  if (el.cropBtn) {
+    el.cropBtn.hidden = !live;
+    if (!live && cropUi.on) exitCrop();
+  }
 }
 
 /* Re-analyze = POST /jobs/{id}/pages/{n}/reprocess?rotate=<view rotation>:
@@ -1219,7 +1231,7 @@ function onReprocessClick() {
   }
   clearTimeout(reprocessArmTimer);
   reprocessArmTimer = null;
-  var jobId = S.jobId, page = Number(S.page.page), rot = view.rot;
+  var rot = view.rot;
   reprocessBusy = true;
   el.reprocess.disabled = true;
   el.reprocess.textContent = "Re-analyzing…";
@@ -1228,28 +1240,194 @@ function onReprocessClick() {
     el.reprocess.disabled = false;
     el.reprocess.textContent = "Re-analyze";
   }
-  flushSave()  /* keep the other pages' fixes before the map is replaced */
-    .then(function () { return window.PC_API.reprocessPage(jobId, page, rot); })
+  runReprocess(rot, null).then(function () {
+    done();  /* loadJob re-renders but keeps the button element */
+    toast(rot ? "Page re-analyzed with a " + rot + "° rotation" : "Page re-analyzed");
+  }, function (err) {
+    done();
+    toast("Re-analyze failed · " + ((err && err.message) || "server error"));
+  });
+}
+
+/* Shared by Re-analyze and Crop: POST the reprocess (rotate `rot`, then
+   crop to `crop` = view fractions or null), then reload the page from the
+   job with a cache-busted image URL. The new render has the rotation/crop
+   baked in, so the view starts again from rot 0 and refits to the new
+   dimensions (viewOnRender sees the paper size change). */
+function runReprocess(rot, crop) {
+  var jobId = S.jobId, page = Number(S.page.page);
+  return flushSave()  /* keep the other pages' fixes before the map is replaced */
+    .then(function () { return window.PC_API.reprocessPage(jobId, page, rot, crop); })
     .then(function () { return window.PC_API.getJob(jobId); })
     .then(function (job) {
       var pages = job.result && job.result.pages;
       if (!pages || !pages.length) throw new Error("job returned no pages");
-      resetViewState();  /* the new scan already has the rotation baked in */
+      resetViewState();  /* the new scan already has the rotation/crop baked in */
       /* The image route answers with an immutable cache header: bust it so
-         the freshly rotated render is fetched, not the old pixels. */
+         the freshly rotated/cropped render is fetched, not the old pixels. */
       var imageUrl = window.PC_API.pageImageUrl(jobId, page) + "?v=" + Date.now();
       var idx = Math.min(page, pages.length) - 1;
       loadJob(pages[idx], {
         jobId: jobId, pageCount: pages.length, pages: pages,
         filename: job.filename || "", mode: job.mode, imageUrl: imageUrl
       });
-      done();  /* loadJob re-renders but keeps the button element */
-      toast(rot ? "Page re-analyzed with a " + rot + "° rotation" : "Page re-analyzed");
-    })
-    .catch(function (err) {
-      done();
-      toast("Re-analyze failed · " + ((err && err.message) || "server error"));
     });
+}
+
+/* ---------------- scan view: crop ----------------
+   Crop button -> crop mode: a drag over the scan draws a rectangle (the 5px
+   DRAG_THRESHOLD still applies; pinch/wheel zoom keep working, one-finger
+   drag draws instead of panning, word-box clicks are ignored). The rect is
+   stored in UNROTATED paper fractions (0..1 of the page as laid out, before
+   the view transform), so it survives zoom/pan/rotate and is re-drawn from
+   the same transform math as the word boxes (paperToScreen mirrors
+   ensureBoxVisible; screenToPaper is its inverse). "Crop & re-analyze"
+   arms first (page fixes are reset), then converts the rect into fractions
+   of the CURRENT VIEW (rotate first, then crop - the reprocess route's
+   coordinate space) and reuses the Re-analyze path. Esc or Cancel leaves
+   crop mode. Gesture handlers only write numbers + one style: vg is the
+   cached geometry, no layout reads per move. */
+
+var CROP_MIN_PX = 16;       /* same floor as the server (_CROP_MIN_PX) */
+var cropUi = { on: false, rect: null, busy: false, armTimer: null };
+
+/* Viewport point -> unrotated paper fractions (inverse of the paper
+   transform: screen = C + t + z*R*(p - Cp)). */
+function screenToPaper(sx, sy) {
+  var rad = view.rot * Math.PI / 180;
+  var cos = Math.cos(rad), sin = Math.sin(rad);
+  var dx = (sx - vg.cx - view.tx) / view.z, dy = (sy - vg.cy - view.ty) / view.z;
+  var px = dx * cos + dy * sin, py = -dx * sin + dy * cos;   /* R^-1 */
+  return { u: (px + vg.pw / 2) / vg.pw, v: (py + vg.ph / 2) / vg.ph };
+}
+
+/* Unrotated paper fractions -> viewport point (forward transform). */
+function paperToScreen(u, v) {
+  var rad = view.rot * Math.PI / 180;
+  var cos = Math.cos(rad), sin = Math.sin(rad);
+  var px = u * vg.pw - vg.pw / 2, py = v * vg.ph - vg.ph / 2;
+  return {
+    x: vg.cx + view.tx + view.z * (px * cos - py * sin),
+    y: vg.cy + view.ty + view.z * (px * sin + py * cos)
+  };
+}
+
+function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
+
+/* Unrotated page fraction (u, v) -> fraction of the page rotated `rot`
+   degrees clockwise (what the server crops after cv2.rotate). */
+function rotFrac(u, v, rot) {
+  if (rot === 90) return { x: 1 - v, y: u };
+  if (rot === 180) return { x: 1 - u, y: 1 - v };
+  if (rot === 270) return { x: v, y: 1 - u };
+  return { x: u, y: v };
+}
+
+/* The stored rect as [x0, y0, x1, y1] fractions of the current view. */
+function cropViewFracs() {
+  var r = cropUi.rect;
+  if (!r) return null;
+  var a = rotFrac(r.u0, r.v0, view.rot), b = rotFrac(r.u1, r.v1, view.rot);
+  return [Math.min(a.x, b.x), Math.min(a.y, b.y), Math.max(a.x, b.x), Math.max(a.y, b.y)];
+}
+
+/* Size of the rect in (rotated) page pixels, for the min-size guard. */
+function cropPixelSize() {
+  var f = cropViewFracs();
+  if (!f) return { w: 0, h: 0 };
+  var W = S.coordW || IMG_W, H = S.pageH || PAGE_H;
+  if (view.rot % 180) { var t = W; W = H; H = t; }
+  return { w: (f[2] - f[0]) * W, h: (f[3] - f[1]) * H };
+}
+
+function cropRectOk() {
+  var sz = cropPixelSize();
+  return sz.w >= CROP_MIN_PX && sz.h >= CROP_MIN_PX;
+}
+
+function positionCropRect() {
+  var box = el.cropRect;
+  if (!box) return;
+  var r = cropUi.rect;
+  if (!r || !vg) { box.hidden = true; return; }
+  var a = paperToScreen(r.u0, r.v0), b = paperToScreen(r.u1, r.v1);
+  var x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+  box.style.transform = "translate(" + x.toFixed(1) + "px," + y.toFixed(1) + "px)";
+  box.style.width = Math.abs(b.x - a.x).toFixed(1) + "px";
+  box.style.height = Math.abs(b.y - a.y).toFixed(1) + "px";
+  box.hidden = false;
+}
+
+function updateCropApply() {
+  if (!el.cropApply) return;
+  el.cropApply.disabled = cropUi.busy || !cropUi.rect || !cropRectOk();
+}
+
+function setCropRect(r) {
+  cropUi.rect = r;
+  disarmCrop();
+  if (r) positionCropRect(); else if (el.cropRect) el.cropRect.hidden = true;
+  updateCropApply();
+}
+
+function enterCrop() {
+  if (cropUi.on || !canReprocess()) return;
+  cropUi.on = true;
+  el.scanScroll.classList.add("is-cropping");
+  el.cropBtn.setAttribute("aria-pressed", "true");
+  el.cropBtn.classList.add("is-active");
+  el.cropApply.hidden = false;
+  el.cropCancel.hidden = false;
+  setCropRect(null);
+  updateReprocessBtn();
+  toast("Drag over the scan to choose the area to keep");
+}
+
+function exitCrop() {
+  if (!cropUi.on || cropUi.busy) return;
+  cropUi.on = false;
+  el.scanScroll.classList.remove("is-cropping");
+  el.cropBtn.setAttribute("aria-pressed", "false");
+  el.cropBtn.classList.remove("is-active");
+  el.cropApply.hidden = true;
+  el.cropCancel.hidden = true;
+  setCropRect(null);
+  updateReprocessBtn();
+}
+
+function disarmCrop() {
+  if (cropUi.armTimer) { clearTimeout(cropUi.armTimer); cropUi.armTimer = null; }
+  if (el.cropApply && !cropUi.busy) el.cropApply.textContent = "Crop & re-analyze";
+}
+
+function onCropApplyClick() {
+  if (cropUi.busy || !cropUi.rect || !cropRectOk()) return;
+  if (!cropUi.armTimer) {
+    el.cropApply.textContent = "Sure? Page fixes are reset";
+    cropUi.armTimer = setTimeout(disarmCrop, REPROCESS_ARM_MS);
+    return;
+  }
+  clearTimeout(cropUi.armTimer);
+  cropUi.armTimer = null;
+  var rot = view.rot, fr = cropViewFracs();
+  cropUi.busy = true;
+  el.cropApply.disabled = true;
+  el.cropCancel.disabled = true;
+  el.cropApply.textContent = "Cropping…";
+  function done() {
+    cropUi.busy = false;
+    el.cropCancel.disabled = false;
+    el.cropApply.textContent = "Crop & re-analyze";
+    updateCropApply();
+  }
+  runReprocess(rot, fr).then(function () {
+    done();
+    exitCrop();
+    toast(rot ? "Page cropped and re-analyzed (" + rot + "° rotation)" : "Page cropped and re-analyzed");
+  }, function (err) {
+    done();
+    toast("Crop failed · " + ((err && err.message) || "server error"));
+  });
 }
 
 /* Viewport gestures. Pointer events unify mouse drag and two-finger pinch;
@@ -1264,6 +1442,11 @@ function wireScanView() {
   var downX = 0, downY = 0, lastX = 0, lastY = 0;
   var pinch = null;
   var suppressClick = false;
+  var cropDraw = null;      /* {u, v}: crop-mode press start, paper fractions */
+
+  function inTools(t) {
+    return !!(t && t.closest && t.closest(".scan-tools"));
+  }
 
   function pointerList() {
     var out = [];
@@ -1283,6 +1466,10 @@ function wireScanView() {
      buttons. Only a real drag (past DRAG_THRESHOLD) or a pinch captures. */
   vp.addEventListener("pointerdown", function (e) {
     if (e.pointerType === "mouse" && e.button !== 0) return;
+    /* A touch drag never produces a trailing click, so a stale swallow flag
+       would eat the NEXT tap (e.g. "Crop & re-analyze" right after drawing).
+       Any trailing click fires before a new press, so reset it here. */
+    if (pcount === 0) suppressClick = false;
     pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
     pcount++;
     if (pcount === 1) {
@@ -1290,9 +1477,12 @@ function wireScanView() {
       moved = false;
       downX = lastX = e.clientX;
       downY = lastY = e.clientY;
+      cropDraw = (cropUi.on && !cropUi.busy && vg && !inTools(e.target))
+        ? screenToPaper(e.clientX - vg.rectL, e.clientY - vg.rectT) : null;
       vp.classList.add("is-dragging");
     } else if (pcount === 2) {
       dragging = false;
+      cropDraw = null;          /* a second finger means pinch, not draw */
       try { vp.setPointerCapture(e.pointerId); } catch (err) {}
       var pts = pointerList();
       pinch = {
@@ -1326,7 +1516,13 @@ function wireScanView() {
         moved = Math.hypot(e.clientX - downX, e.clientY - downY) > DRAG_THRESHOLD;
         if (moved) { try { vp.setPointerCapture(e.pointerId); } catch (err) {} }
       }
-      if (moved) {
+      if (moved && cropDraw) {
+        var q = screenToPaper(e.clientX - vg.rectL, e.clientY - vg.rectT);
+        setCropRect({
+          u0: clamp01(Math.min(cropDraw.u, q.u)), v0: clamp01(Math.min(cropDraw.v, q.v)),
+          u1: clamp01(Math.max(cropDraw.u, q.u)), v1: clamp01(Math.max(cropDraw.v, q.v))
+        });
+      } else if (moved && !cropUi.on) {
         view.tx += e.clientX - lastX;
         view.ty += e.clientY - lastY;
         clampView();
@@ -1345,11 +1541,13 @@ function wireScanView() {
     if (pcount === 1) {
       var pts = pointerList();
       dragging = true;
+      cropDraw = null;          /* pinch -> one finger left: never resume drawing */
       lastX = pts[0].x;
       lastY = pts[0].y;
     } else if (pcount === 0) {
       if (dragging && moved) suppressClick = true;
       dragging = false;
+      cropDraw = null;
       vp.classList.remove("is-dragging");
     }
   }
@@ -1366,6 +1564,13 @@ function wireScanView() {
     }
     if (suppressClick) {
       suppressClick = false;
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    /* Crop mode: the scan is a drawing surface - clicks must not select
+       word boxes. The toolbar (crop apply/cancel live there) still works. */
+    if (cropUi.on && !inTools(e.target)) {
       e.preventDefault();
       e.stopPropagation();
     }
@@ -3053,6 +3258,21 @@ function init() {
   el.zoomFit.addEventListener("click", resetView);
   el.rotate.addEventListener("click", rotateView);
   el.reprocess.addEventListener("click", onReprocessClick);
+  el.cropBtn = $("cropBtn");
+  el.cropApply = $("cropApplyBtn");
+  el.cropCancel = $("cropCancelBtn");
+  el.cropRect = $("cropRect");
+  el.cropBtn.addEventListener("click", function () { if (cropUi.on) exitCrop(); else enterCrop(); });
+  el.cropApply.addEventListener("click", onCropApplyClick);
+  el.cropCancel.addEventListener("click", exitCrop);
+  /* Esc leaves crop mode before the editor hotkeys see it (capture). */
+  document.addEventListener("keydown", function (e) {
+    if (cropUi.on && e.key === "Escape" && !S.exportOpen) {
+      e.preventDefault();
+      e.stopPropagation();
+      exitCrop();
+    }
+  }, true);
   wireScanView();
   resetViewState();
 
@@ -3091,6 +3311,8 @@ function init() {
    the header, scan-image URL, the state flags renderScan probes). */
 var MODE_NAMES = { auto: "Auto", light: "Light", heavy: "Heavy" };
 function loadJob(doc, meta) {
+  /* A crop rect belongs to the page it was drawn on. */
+  if (cropUi.on && !cropUi.busy) exitCrop();
   S.jobId = meta.jobId || null;
   S.pageCount = meta.pageCount || 1;
   S.allPages = meta.pages || [doc];  /* every page of the job (AI fix all) */
