@@ -166,19 +166,27 @@ function pageImageUrl(jobId, page) {
   return SCAN_IMAGE(jobId, page);
 }
 
-/* POST /jobs/{job_id}/pages/{n}/reprocess?rotate=<deg> - re-run OCR for one
-   page with the scan rotated `rotate` degrees clockwise first (0/90/180/270;
-   the editor's rotate button turns the view clockwise, so the same number
-   reproduces what the reviewer sees). The page's lines are replaced and its
-   saved corrections are dropped server-side. 404 unknown job/page, 409 job
-   not done, 422 bad rotate. Same error split as saveCorrections. */
-var REPROCESS = function (id, page, rotate) {
-  return API_BASE + "/jobs/" + encodeURIComponent(id) + "/pages/" + page +
+/* POST /jobs/{job_id}/pages/{n}/reprocess?rotate=<deg>[&crop=x0,y0,x1,y1] -
+   re-run OCR for one page with the scan rotated `rotate` degrees clockwise
+   first (0/90/180/270; the editor's rotate button turns the view clockwise,
+   so the same number reproduces what the reviewer sees), then cropped.
+   `crop` (optional) is [x0, y0, x1, y1] as FRACTIONS 0..1 of the ROTATED
+   page, i.e. of the current view: rotate first, then crop. The server works
+   from the page's current render, so edits compose. The page's lines are
+   replaced and its saved corrections are dropped server-side. 404 unknown
+   job/page, 409 job not done, 422 bad rotate/crop. Same error split as
+   saveCorrections. */
+var REPROCESS = function (id, page, rotate, crop) {
+  var url = API_BASE + "/jobs/" + encodeURIComponent(id) + "/pages/" + page +
     "/reprocess?rotate=" + rotate;
+  if (crop && crop.length === 4) {
+    url += "&crop=" + crop.map(function (v) { return (+v).toFixed(5); }).join(",");
+  }
+  return url;
 };
 
-function reprocessPage(jobId, page, rotate) {
-  return fetch(REPROCESS(jobId, page, rotate), { method: "POST" })
+function reprocessPage(jobId, page, rotate, crop) {
+  return fetch(REPROCESS(jobId, page, rotate, crop), { method: "POST" })
     .catch(function () { throw ApiError("Backend unreachable (POST reprocess)", "down"); })
     .then(function (res) {
       if (!res.ok) throw httpError("POST reprocess -> " + res.status, res.status);
