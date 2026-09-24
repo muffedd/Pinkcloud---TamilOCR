@@ -236,7 +236,7 @@ body:has(#upload-root.up-active) { margin: 0; }
 
 /* ---------- footer ---------- */
 .up-foot { margin-top: 17px; border-top: 1px solid var(--up-line); padding-top: 12px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
-#upload-root .up-prev, #upload-root .up-next { height: 49px; border-radius: 6px; font-family: var(--up-font-btn); font-size: 15px; font-weight: 600; }
+#upload-root .up-prev, #upload-root .up-next { height: 49px; border-radius: 6px; font-family: var(--up-font-btn); font-size: 15px; font-weight: 400; }
 #upload-root .up-prev { width: 145px; margin-left: 1px; background: #fff; border: 1px solid var(--up-line2); color: var(--up-ink); box-shadow: 0 1px 2px rgba(0,0,0,.06);
   transition: background-color 150ms ease, box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease; }
 #upload-root .up-prev:hover:not(:disabled) { border-color: var(--pc-color-border-strong, #ADA69F); background: #FCFBFA; transform: translateY(-1px); box-shadow: 0 5px 10px -4px rgba(30,26,24,.22); }
