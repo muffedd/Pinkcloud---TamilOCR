@@ -658,11 +658,16 @@ def _gemini_ocr(img, client=None) -> list[dict]:
             client.close()
 
     candidate = (data.get("candidates") or [{}])[0]
+    finish = candidate.get("finishReason")
+    if finish != "STOP":
+        # MAX_TOKENS / SAFETY / RECITATION / missing: the text (if any) is
+        # truncated or withheld. Raise so ocr_page falls back to Sarvam.
+        raise GeminiError(f"generation did not finish (finish={finish})")
     parts = (candidate.get("content") or {}).get("parts") or []
     text = "".join(p.get("text") or "" for p in parts)
     texts = [line.strip() for line in text.splitlines() if line.strip()]
     if not texts:
-        raise GeminiError(f"no text (finish={candidate.get('finishReason')})")
+        raise GeminiError("no text (finish=STOP)")
     return _lines_with_boxes(img, texts)
 
 

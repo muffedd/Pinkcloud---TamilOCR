@@ -65,8 +65,10 @@ returns the first success. With no profile, `OCR_ENGINE` picks a single engine
 - **Confidence** comes from `textcheck.score_line()` (Tamil share, orphan vowel
   signs, odd characters, repetition) — the same 0..1 proxy used elsewhere,
   because Gemini returns no per-line score.
-- Failure modes handled by the fallback: no key, HTTP 429/503, and
-  `finishReason=RECITATION` (no text — seen on classical Tamil).
+- Failure modes handled by the fallback: no key, HTTP 429/503, and any
+  `finishReason` other than `STOP` (`MAX_TOKENS`, `SAFETY`, `RECITATION` -
+  the last seen on classical Tamil), even when some text came back, since
+  that text is truncated or withheld.
 
 ### Sarvam (HEAVY route) — `ocr.py::_sarvam_ocr`
 - `POST /doc-ai/v1/job/digitise` → poll `/status` → `/download-url` → ZIP with
