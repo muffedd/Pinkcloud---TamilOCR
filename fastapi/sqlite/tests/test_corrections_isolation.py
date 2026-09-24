@@ -43,10 +43,18 @@ def client(tmp_path_factory):
         yield c
 
 
+_SEQ = 0
+
+
 def _new_done_job(client, name):
-    """Upload a blank page, then pin an identical known result on it so both
-    jobs carry the same OCR word at (page 1, L1, word 3)."""
+    """Upload a page, then pin an identical known result on it so both
+    jobs carry the same OCR word at (page 1, L1, word 3). The marker makes
+    every upload's bytes unique: identical bytes dedup to the existing
+    finished job, but these tests need two DISTINCT jobs."""
+    global _SEQ
+    _SEQ += 1
     img = np.full((600, 1200, 3), 240, np.uint8)
+    cv2.putText(img, f"ISO-{_SEQ}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (20, 20, 20), 2)
     ok, buf = cv2.imencode(".png", img)
     r = client.post("/jobs", files={"file": (name, buf.tobytes(), "image/png")})
     assert r.status_code == 200

@@ -316,17 +316,28 @@ def _sized_page(width, height):
     return _text_page(width=width, height=height)
 
 
-@pytest.fixture(scope="module")
-def multi_images(tmp_path_factory):
-    """Three images of different formats AND sizes (png, jpg, webp)."""
-    tmp = tmp_path_factory.mktemp("multi")
+_MULTI_SEQ = 0
+
+
+@pytest.fixture
+def multi_images(tmp_path):
+    """Three images of different formats AND sizes (png, jpg, webp).
+
+    Function scope with a unique marker per call: identical upload bytes
+    dedup to the existing finished job, and each multi-image test needs
+    its OWN fresh job (one test deliberately corrupts its masters)."""
+    global _MULTI_SEQ
+    _MULTI_SEQ += 1
     specs = [("a.png", 900, 1200, "image/png"),
              ("b.jpg", 1000, 700, "image/jpeg"),
              ("c.webp", 800, 800, "image/webp")]
     out = []
     for name, w, h, ctype in specs:
-        p = tmp / name
-        assert cv2.imwrite(str(p), _sized_page(w, h))
+        p = tmp_path / name
+        img = _sized_page(w, h)
+        cv2.putText(img, f"M{_MULTI_SEQ}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
+                    1.0, (20, 20, 20), 2)
+        assert cv2.imwrite(str(p), img)
         out.append((p, ctype, (h, w)))
     return out
 

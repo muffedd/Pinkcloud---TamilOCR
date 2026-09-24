@@ -40,8 +40,17 @@ def _pdf_bytes(n: int) -> bytes:
     return buf.getvalue()
 
 
+_PNG_SEQ = 0
+
+
 def _png_bytes() -> bytes:
-    ok, buf = cv2.imencode(".png", np.full((300, 600, 3), 240, np.uint8))
+    """Unique bytes per call: identical uploads dedup to the existing
+    finished job, and these tests each want a FRESH job."""
+    global _PNG_SEQ
+    _PNG_SEQ += 1
+    img = np.full((300, 600, 3), 240, np.uint8)
+    cv2.putText(img, f"U{_PNG_SEQ}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (20, 20, 20), 2)
+    ok, buf = cv2.imencode(".png", img)
     return buf.tobytes()
 
 

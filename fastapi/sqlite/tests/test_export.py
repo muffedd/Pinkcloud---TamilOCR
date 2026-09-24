@@ -189,6 +189,8 @@ def test_saved_corrections_applied_to_exports(client):
     import json
     import pypdfium2 as pdfium
     img = np.full((600, 1200, 3), 240, np.uint8)
+    # distinct bytes per test: identical uploads dedup to the existing job
+    cv2.putText(img, "EXPORT-C", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (20, 20, 20), 2)
     ok, buf = cv2.imencode(".png", img)
     jid = client.post("/jobs", files={"file": ("c.png", buf.tobytes(), "image/png")}).json()["job_id"]
     raw, fixed = "வாழறிவன்", TAMIL_WORD
@@ -253,6 +255,7 @@ def test_export_docx_endpoint(client, job_id):
 def test_export_docx_corrections_applied(client):
     import json
     img = np.full((600, 1200, 3), 240, np.uint8)
+    cv2.putText(img, "EXPORT-D", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (20, 20, 20), 2)
     ok, buf = cv2.imencode(".png", img)
     jid = client.post("/jobs", files={"file": ("d.png", buf.tobytes(), "image/png")}).json()["job_id"]
     raw, fixed = "வாழறிவன்", TAMIL_WORD
@@ -270,6 +273,7 @@ def test_export_docx_corrections_applied(client):
 
 def test_export_docx_unfinished_job_409(client):
     img = np.full((400, 600, 3), 235, np.uint8)
+    cv2.putText(img, "EXPORT-Q", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (20, 20, 20), 2)
     ok, buf = cv2.imencode(".png", img)
     jid = client.post("/jobs", files={"file": ("q.png", buf.tobytes(), "image/png")}).json()["job_id"]
     db.set_result(jid, "processing", None)

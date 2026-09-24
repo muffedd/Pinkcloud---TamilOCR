@@ -342,6 +342,27 @@ def _read_multi(files: list[UploadFile]) -> list[tuple[str, bytes]]:
     return uploads
 
 
+def _dedup_hit(digest: str) -> dict | None:
+    """Instant answer for bytes already OCR'd (upload dedup).
+
+    When a finished job with a valid stored result exists for this exact
+    content hash, POST /jobs returns that job instead of spending another
+    OCR run: {"job_id": <existing>, "status": "done", "duplicate": true}.
+    The client treats it like any finished job and opens the editor on the
+    existing id. 'Valid' means the stored JSON parses; a corrupt stored
+    row, an 'error' job or a still-pending one never matches, so failures
+    always retry and in-flight uploads always run fresh."""
+    job = db.find_done_by_sha256(digest)
+    if job is None:
+        return None
+    try:
+        if parse_job_result(job["result_json"]) is None:
+            return None
+    except ValueError:
+        return None
+    return {"job_id": job["id"], "status": "done", "duplicate": True}
+
+
 @app.post("/jobs")
 def create_job(file: UploadFile | None = File(None),
                files: list[UploadFile] | None = File(None)):
@@ -354,6 +375,11 @@ def create_job(file: UploadFile | None = File(None),
     Send EITHER `file` (one PDF/image, unchanged behaviour) OR a repeated
     `files` field (images, in order -> one job, one page per image).
 
+    Dedup: if the content hash (the file's sha256; for `files` the combined
+    per-image hash) matches a finished job with a valid result, that job is
+    returned at once ({"job_id", "status": "done", "duplicate": true}) and
+    no OCR runs. Pending/error matches start a fresh job as before.
+
     Validation happens in order, BEFORE any job row is created:
       1. content type AND extension both supported -> else 400
       2. bytes must actually decode (PDF opens / image decodes) -> else 422
@@ -365,6 +391,9 @@ def create_job(file: UploadFile | None = File(None),
         uploads = _read_multi(files)
         digest = storage.combined_sha256(
             [storage.sha256_bytes(d) for _, d in uploads])
+        hit = _dedup_hit(digest)
+        if hit is not None:
+            return hit
         job_id = uuid.uuid4().hex
         db.create_job(job_id, uploads[0][0], digest)
         _start_job(job_id, _run_multi_job, uploads, digest)
@@ -400,8 +429,13 @@ def create_job(file: UploadFile | None = File(None),
             detail=f"PDF has {page_count} pages: at most {MAX_PDF_PAGES} pages per job",
         )
 
+    digest = storage.sha256_bytes(data)
+    hit = _dedup_hit(digest)
+    if hit is not None:
+        return hit
+
     job_id = uuid.uuid4().hex  # also the folder name under uploads/
-    db.create_job(job_id, filename, storage.sha256_bytes(data))
+    db.create_job(job_id, filename, digest)
 
     # OCR runs in the background; the client polls GET /jobs/{id}.
     _start_job(job_id, _run_job, filename, data)
