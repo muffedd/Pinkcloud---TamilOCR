@@ -178,3 +178,28 @@ def test_multi_image_reordered_set_is_a_fresh_job(client, monkeypatch):
     assert reordered.get("duplicate") is not True
     assert len(calls) == 4
     assert _job_count() == 2
+
+
+def test_stub_result_does_not_dedup(client, monkeypatch):
+    """Both engines failed -> page is [stub] but the job is 'done'. A
+    re-upload after the key/engine is fixed must run OCR again."""
+    def failing(img, profile=None):
+        raise RuntimeError("no OCR key")
+    monkeypatch.setattr(main, "ocr_page", failing)
+    data = _png()
+    first = _post_file(client, data)
+    job = client.get(f"/jobs/{first['job_id']}").json()
+    assert job["status"] == "done"
+    assert job["result"]["pages"][0]["ocr_engine"] == "stub"
+
+    calls = []
+    monkeypatch.setattr(main, "ocr_page", _counting_ocr(calls))
+    retry = _post_file(client, data)
+    assert retry["job_id"] != first["job_id"]
+    assert retry.get("duplicate") is not True
+    assert len(calls) == 1
+    assert _job_count() == 2
+
+    # once a real result exists, dedup lands on it (not the stub job)
+    again = _post_file(client, data)
+    assert again["job_id"] == retry["job_id"] and again["duplicate"] is True
