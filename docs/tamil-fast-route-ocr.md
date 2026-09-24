@@ -1,5 +1,7 @@
 # Lightweight open-source Tamil OCR for the FAST route
 
+> **Note (repo cleanup):** the raw scans now live at `samples/editor/sample1.png` and `sample2.png`. The repair outputs (`repair/out/`, `repair/verify/`), ground-truth text (`gt_*.txt`) and most `ocr_outputs/` artifacts referenced below were removed from the tree and are git-ignored; they are in git history (e.g. commit `3c53e7f`). Only `ocr_outputs/sarvam/raw/sample*/json/` and `.../metadata/page_001.json` remain, as test fixtures.
+
 **Question:** the app currently sends both FAST and HEAVY pages to Sarvam's hosted
 Document AI. Find a lightweight, open-source, Tamil-supporting, low-latency model to
 replace the **FAST** route (clean pages), leaving Sarvam for HEAVY (damaged) pages.
@@ -72,7 +74,7 @@ python3 scripts/cer.py gt_cict_narrinai_p3.txt <candidate>_sample1.txt
 python3 scripts/text_filter.py <candidate>_sample1.txt --json <candidate>_sample1.json
 ```
 
-Required per candidate: `raw/sample1.png` (clean, GT available) and `raw/sample2.png`
+Required per candidate: `samples/editor/sample1.png` (clean, GT available) and `samples/editor/sample2.png`
 (damaged). Record Tamil ratio, garbage rate, repeat-loop lines, mean confidence, CER
 (sample1 only), and wall-clock seconds per page on the target hardware. Only promote a
 candidate to the FAST route if it beats the current Sarvam latency **and** does not

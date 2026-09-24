@@ -1,5 +1,7 @@
 # Hosted API OCR for the FAST route (free / large free tier)
 
+> **Note (repo cleanup):** the raw scans now live at `samples/editor/sample1.png` and `sample2.png`. The repair outputs (`repair/out/`, `repair/verify/`), ground-truth text (`gt_*.txt`) and most `ocr_outputs/` artifacts referenced below were removed from the tree and are git-ignored; they are in git history (e.g. commit `3c53e7f`). Only `ocr_outputs/sarvam/raw/sample*/json/` and `.../metadata/page_001.json` remain, as test fixtures.
+
 **Question:** replace the local-model plan with **hosted APIs**. Same criteria as
 before — Tamil, low latency, good fit for the FAST route — plus a hard constraint:
 the API key must be **free or have a large free tier**. Sarvam stays the HEAVY route.
@@ -84,8 +86,8 @@ Vision/Azure for the FAST route and accept a smaller free quota.
 
 ## Benchmark plan
 
-Run each candidate on `raw/sample1.png` (clean, ground truth available) and
-`raw/sample2.png` (damaged), then score with the repo tooling and compare to the
+Run each candidate on `samples/editor/sample1.png` (clean, ground truth available) and
+`samples/editor/sample2.png` (damaged), then score with the repo tooling and compare to the
 recorded Sarvam/Paddle numbers in `OCR_API_COMPARISON.md`:
 
 ```sh

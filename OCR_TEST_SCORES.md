@@ -1,5 +1,7 @@
 # OCR test scores
 
+> **Note (repo cleanup):** the raw scans now live at `samples/editor/sample1.png` and `sample2.png`. The repair outputs (`repair/out/`, `repair/verify/`), ground-truth text (`gt_*.txt`) and most `ocr_outputs/` artifacts referenced below were removed from the tree and are git-ignored; they are in git history (e.g. commit `3c53e7f`). Only `ocr_outputs/sarvam/raw/sample*/json/` and `.../metadata/page_001.json` remain, as test fixtures.
+
 ## OCR comparison
 
 `tamil_ratio` and `garbage_rate` are fractions. `mean_conf` is the mean layout-box score (not recognition certainty). `repeat_loop_lines` counts lines with a 5× repeated segment/word. CER is NFC-normalized character edit distance against `gt_cict_narrinai_p3.txt`; sample2 is a different page, so CER is unavailable.

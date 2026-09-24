@@ -106,6 +106,7 @@ The backend serves the UI itself, so open http://127.0.0.1:8000/ and everything 
 
 ```bash
 cd fastapi/sqlite
+pip install -r requirements-dev.txt   # runtime deps + pytest
 python -m pytest tests/ -v      # offline; Sarvam is mocked
 ```
 
@@ -139,8 +140,8 @@ The output contract is in [`schema/schema.json`](schema/schema.json), the endpoi
 | --- | --- |
 | `index.html`, `upload.js`, `upload.css` | Upload screen and stepper |
 | `sidebar.css` | Upload page sidebar: Pink Cloud chip, Documents (opens the Library, keeps `?mock` / `?api`), Scans (soon). Page content sits in one inset panel; the sidebar hides below 900px |
-| `intro.js`, `intro.css` | Landing intro on `index.html` (from `design-drafts/pinkcloud-intro.html`): plays once per browser session, click/Esc/Skip jumps to the slide-up, skipped for reduced motion. Plain dots on the canvas colour, no orange glow behind the marks. Variants: `logo` (default, the `logo@2x.svg` cloud mark + "Pinkcloud" wordmark in dot-matrix), `pinkcloud` (bolt + "Pink Cloud"), `omni` (bolt + "Omni"). `?intro=0` off, `?intro=1` replay, `?intro=<variant>` plays and remembers that variant in the browser; any `?intro=` shows a variant picker on the sheet. Preview: `design-drafts/intro-variants.html` |
-| `loader.js`, `loader.css` | OCR processing overlay on `index.html`: shader D from `design-drafts/pink-cloud-loading-shader-D.html` (3D glyph swarm, canvas 2D, no dependencies). While a batch uploads and is read, the page being processed (the image itself, the first image of a ZIP, or a built-in sample page for PDF/TIFF) wraps into a globe, unrolls into a 3D page, and an orange scan moves down it with the batch progress (upload bytes 0-35%, reading 35-97% eased over time because the backend reports no OCR progress, done 100%). Finishes with "Page read" and fades out; Hide/Esc dismisses it for that batch, the file rows keep showing progress. Reduced motion: still page, scan steps with progress. The page card casts a small gray shadow (`--pc-loader-card-shadow-*` tokens), no orange wash behind it, and the scan glow is clipped to the card. `?loader=0` turns it off |
+| `intro.js`, `intro.css` | Landing intro on `index.html`: plays once per browser session, click/Esc/Skip jumps to the slide-up, skipped for reduced motion. Plain dots on the canvas colour, no orange glow behind the marks. Variants: `logo` (default, the `logo@2x.svg` cloud mark + "Pinkcloud" wordmark in dot-matrix), `pinkcloud` (bolt + "Pink Cloud"), `omni` (bolt + "Omni"). `?intro=0` off, `?intro=1` replay, `?intro=<variant>` plays and remembers that variant in the browser; any `?intro=` shows a variant picker on the sheet |
+| `loader.js`, `loader.css` | OCR processing overlay on `index.html`: shader D (3D glyph swarm, canvas 2D, no dependencies). While a batch uploads and is read, the page being processed (the image itself, the first image of a ZIP, or a built-in sample page for PDF/TIFF) wraps into a globe, unrolls into a 3D page, and an orange scan moves down it with the batch progress (upload bytes 0-35%, reading 35-97% eased over time because the backend reports no OCR progress, done 100%). Finishes with "Page read" and fades out; Hide/Esc dismisses it for that batch, the file rows keep showing progress. Reduced motion: still page, scan steps with progress. The page card casts a small gray shadow (`--pc-loader-card-shadow-*` tokens), no orange wash behind it, and the scan glow is clipped to the card. `?loader=0` turns it off |
 | `library.html`, `library.js`, `library.css` | Library: job list (`GET /jobs`) and text search (`GET /search`, `?q=` kept in the URL); a hit opens `editor.html?job=<id>&page=<n>` |
 | `export.html`, `export.js`, `export.css` | Export page: PDF/TXT downloads, plus DOCX (backend) and Markdown / CSV / XML (built in the browser); loading, missing and not-ready states |
 | `nav-back.js` | Back button on Library and Export: returns to the previous Pink Cloud page, else to Upload (Library) or the job's editor (Export) |
@@ -148,19 +149,12 @@ The output contract is in [`schema/schema.json`](schema/schema.json), the endpoi
 | `samples/editor/` | Offline editor fixtures from real Sarvam output (`make_fixtures.py`); fake suggestions |
 | `api.js` | Data access: live backend or `?mock=1` demo |
 | `translit.js` | Offline Tanglish → Tamil transliteration for fixes |
-| `tokens.css`, `ui.css` | Design tokens and shared components. Motion: `--pc-ease-bounce` / `--pc-ease-overshoot` (from `design-drafts/icon-motion-*`); solid and outline buttons lift 1px on hover and spring back after a press. Icon motion (from `design-drafts/icon-motion-a.html` spring + `icon-motion-b.html` draw-on): Library and Export status dots pop in and Processing dots pulse (A), spinners turn in springy quarter steps (A), Export not-found/failed icons pop in (A), Export download icons and a finished upload row's action icons draw on (B). Nothing in a sidebar or the intro moves. Reduced motion keeps color changes only |
+| `tokens.css`, `ui.css` | Design tokens and shared components. Motion: `--pc-ease-bounce` / `--pc-ease-overshoot`; solid and outline buttons lift 1px on hover and spring back after a press. Icon motion (A = spring, B = draw-on): Library and Export status dots pop in and Processing dots pulse (A), spinners turn in springy quarter steps (A), Export not-found/failed icons pop in (A), Export download icons and a finished upload row's action icons draw on (B). Nothing in a sidebar or the intro moves. Reduced motion keeps color changes only |
 | `tokens.css` sizing scale | Generic steps for new work: spacing `--pc-space-0/1/2/3/4/5/6/8/10/12/16` (0-64px), font size `--pc-fs-xs`..`--pc-fs-4xl` (11-24px), line height `--pc-lh-*`, weight `--pc-fw-*`, tracking `--pc-track-*`, icons `--pc-icon-xs`..`xl` (12-24px), control heights `--pc-control-sm/md/lg` (30/36/44), radius `--pc-radius-xs`..`xl` (3-16px), containers `--pc-container-sm`..`xl` (640-1200px), stacking `--pc-z-*`, breakpoints `--pc-bp-*` (reference only). Role tokens (`--pc-fs-btn`, `--pc-btn-h`, ...) are unchanged |
 
 ## Design system
 
-| Folder | Contents |
-| --- | --- |
-| `design system/foundations/` | Color systems, typography specimen, design brief, and shared styles |
-| `design system/components/` | Component sheet, library, and standalone button/toggle examples |
-| `design system/layout/` | Three-page layout plan and annotated editor mock |
-| `design-drafts/` | Drafts, not wired into the app except where noted. Loaders: `loader-variant-a.html` (smoke), `-b`, `-c` (shader), `pink-cloud-loading-shader-D.html` (3D glyph swarm, wired in as `loader.js`). Intros: `pinkcloud-intro.html` (source of the landing intro), `omni-intro-variant-b.html` (lightning strike), `omni-intro-variant-c.html` (particles), `intro-variants.html` (preview of the shipped intro variants). Icon motion: `icon-motion-a.html` (spring scale), `-b` (draw-on), `-c` (interaction), source of the motion tokens |
-
-Open the HTML design files in a browser. No build step is needed.
+`tokens.css` and `ui.css` are the design system: tokens and shared components used by every page. The old standalone design pages and drafts (`design system/`, `design-drafts/`) drifted from the shipped CSS and were removed; they are still in git history (e.g. commit `3c53e7f`).
 
 ## Where it goes next
 
@@ -170,18 +164,18 @@ Open the HTML design files in a browser. No build step is needed.
 
 ## Heavy repair and OCR provider evaluation
 
-The experimental CPU repair pipeline and OCR comparisons are in `repair/`, `scripts/text_filter.py`, and `ocr_outputs/`. This evaluation came before the app switched engines: the backend now uses Sarvam Document AI only (see [`fastapi/sqlite/RUN.md`](fastapi/sqlite/RUN.md)), but the repair pipeline is still not part of the app. `tools/sarvam_ocr.py` is a standalone CLI that runs one file through Sarvam and saves the output.
+The experimental CPU repair pipeline is `repair/repair.py`, with `scripts/text_filter.py` and `scripts/cer.py` for scoring. This evaluation came before the app switched engines: the backend now routes FAST pages to Gemini and HEAVY pages to Sarvam Document AI (see [`fastapi/sqlite/RUN.md`](fastapi/sqlite/RUN.md)), and the repair pipeline is still not part of the app. The generated artifacts (repair outputs, OCR outputs, ground-truth text) were removed from the tree and are git-ignored; they are in git history (e.g. commit `3c53e7f`). Only the Sarvam fixtures the tests read remain under `ocr_outputs/sarvam/raw/`, and the two sample scans are `samples/editor/sample1.png` and `sample2.png`. `tools/sarvam_ocr.py` is a standalone CLI that runs one file through Sarvam and saves the output.
 
 `repair/repair.py` now routes per page using input ink contrast (threshold `0.25`, matching the repair pipeline's fadedness threshold) and paper brightness (90th percentile threshold `240`). Clean pages use the raw image; damaged pages use the repaired grayscale `_g.png`. The binary PNG is for display only and must not be sent to OCR.
 
 | Page | Gate decision | Ink contrast | Background p90 | Selected OCR image |
 | --- | --- | ---: | ---: | --- |
-| sample1 | CLEAN | 0.773 | 255.0 | `raw/sample1.png` |
-| sample2 | DAMAGED | 0.518 | 138.0 | `repair/out/sample2_g.png` |
+| sample1 | CLEAN | 0.773 | 255.0 | `samples/editor/sample1.png` (raw) |
+| sample2 | DAMAGED | 0.518 | 138.0 | `sample2_g.png` (repair output, not tracked) |
 
 ### OCR evaluation highlights
 
-CER is measured against `gt_cict_narrinai_p3.txt`, which matches sample1 only. Tamil ratio and garbage rate are fractions; confidence is the mean layout-box score, not recognition certainty. Segmentation differs between OCR providers.
+CER is measured against `gt_cict_narrinai_p3.txt` (in git history), which matches sample1 only. Tamil ratio and garbage rate are fractions; confidence is the mean layout-box score, not recognition certainty. Segmentation differs between OCR providers.
 
 | Page / input | OCR path | Tamil ratio | Garbage rate | Repeat-loop lines | Mean confidence | CER | API latency |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |

@@ -1,7 +1,9 @@
 # Two layers on top of Sarvam — proposal
 
+> **Note (repo cleanup):** the raw scans now live at `samples/editor/sample1.png` and `sample2.png`. The repair outputs (`repair/out/`, `repair/verify/`), ground-truth text (`gt_*.txt`) and most `ocr_outputs/` artifacts referenced below were removed from the tree and are git-ignored; they are in git history (e.g. commit `3c53e7f`). Only `ocr_outputs/sarvam/raw/sample*/json/` and `.../metadata/page_001.json` remain, as test fixtures.
+
 Sarvam's output is already strong on clean pages (CER 1.54% on
-`raw/sample1.png`), so the only way to add accuracy is to correct what it
+`samples/editor/sample1.png`), so the only way to add accuracy is to correct what it
 gets wrong **without touching the text it gets right**. Two complementary
 post-OCR layers do that: one *generates* candidates (recall), one *anchors*
 text to known corpora (precision). Both are local and cheap, and both feed
@@ -132,7 +134,7 @@ Every layer must earn its place on a **frozen** eval set:
 
 ## Prerequisite (do this first)
 
-**Get ground truth for damaged pages** (e.g. `raw/sample2.png`). Sarvam is at 1.54%
+**Get ground truth for damaged pages** (e.g. `samples/editor/sample2.png`). Sarvam is at 1.54%
 CER on the clean page, so post-correction can gain at most ~1.5 points there. The
 layers matter on damaged/manuscript pages, and right now those have **no GT**, so the
 work is untestable where it counts. One more hand-corrected damaged page is worth more

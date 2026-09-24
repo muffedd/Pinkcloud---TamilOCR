@@ -14,5 +14,4 @@ pillow==12.3.0
 python-docx==1.2.0   # export.docx (Word export)
 httpx==0.28.1   # Sarvam OCR client (app/ocr.py) + starlette TestClient in tests
 libsql==0.1.11   # corrections flywheel (app/flywheel.py); only used when LIBSQL_URL+LIBSQL_AUTH_TOKEN are set, else local sqlite fallback
-pytest==9.1.1    # backend test runner
 

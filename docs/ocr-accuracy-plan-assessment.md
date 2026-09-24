@@ -1,5 +1,7 @@
 # Is the OCR accuracy plan lightweight, and will it actually help?
 
+> **Note (repo cleanup):** the raw scans now live at `samples/editor/sample1.png` and `sample2.png`. The repair outputs (`repair/out/`, `repair/verify/`), ground-truth text (`gt_*.txt`) and most `ocr_outputs/` artifacts referenced below were removed from the tree and are git-ignored; they are in git history (e.g. commit `3c53e7f`). Only `ocr_outputs/sarvam/raw/sample*/json/` and `.../metadata/page_001.json` remain, as test fixtures.
+
 Short answers: **No, not as written — the full plan is heavy.** The tradeoff is
 complexity, dependencies, and a real risk of *over-correcting* text, against an
 accuracy gain that is **plausible but only proven for one part of the pipeline**.
@@ -14,9 +16,9 @@ results**. Date 2026-09-24.
 
 | Measurement | Result |
 |---|---|
-| Sarvam, `raw/sample1.png` (clean, GT available) | **CER 1.54%** (22 edits / 1,429 GT chars) |
-| Paddle, `raw/sample1.png` | CER 33.87% |
-| Paddle, `raw/sample1.png` + filter | CER 27.22% |
+| Sarvam, `samples/editor/sample1.png` (clean, GT available) | **CER 1.54%** (22 edits / 1,429 GT chars) |
+| Paddle, `samples/editor/sample1.png` | CER 33.87% |
+| Paddle, `samples/editor/sample1.png` + filter | CER 27.22% |
 | Paddle, repaired grayscale `sample1` | CER 40.10% |
 | Paddle, repaired grayscale + filter | CER 31.91% |
 | Sarvam on a repaired page with GT | **not measured** |
@@ -93,7 +95,7 @@ deliberately avoided (CPU-only, no torch).
 **Probably not:** the doc-type classifier by itself (no accuracy effect unless it gates
 a decision), and the semantic layer for unattested uploads (flags, not fixes).
 
-**Ceiling check:** on `raw/sample1.png` Sarvam is at 1.54% CER, so even a perfect
+**Ceiling check:** on `samples/editor/sample1.png` Sarvam is at 1.54% CER, so even a perfect
 verifier can only gain ~1.5 points there. The plan's value must be judged on the
 **damaged/manuscript** pages, where CER is currently unknown.
 

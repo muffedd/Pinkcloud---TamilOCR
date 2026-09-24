@@ -7,7 +7,6 @@ no re-encoding, no "helpful" image fixing at this stage.
 
 import hashlib
 import re
-import shutil
 from pathlib import Path
 
 # Everything lives under uploads/<job_id>/ next to the project.
@@ -116,10 +115,3 @@ def master_path(job_id: str) -> Path | None:
     multi-image job this is the first image (page 1)."""
     masters = master_paths(job_id)
     return masters[0] if masters else None
-
-
-def delete_job_files(job_id: str) -> None:
-    """Remove a job's whole folder (handy during hacking/demo)."""
-    job_dir = UPLOAD_ROOT / job_id
-    if job_dir.is_dir():
-        shutil.rmtree(job_dir, ignore_errors=True)

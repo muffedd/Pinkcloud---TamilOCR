@@ -1,4 +1,4 @@
-"""Pink Cloud — Tamil OCR web app backend (pipe-skeleton-router).
+"""Pink Cloud — Tamil OCR web app backend.
 
 Pipeline per upload:
   1. validate type AND extension -> main.py   (both required; 400 before
@@ -41,7 +41,7 @@ from . import db, storage
 from .ocr import (_safe_error, engine_status, failed_page_lines, ocr_page,
                   page_engine, reset_page_engine,
                   warn_legacy_env)
-from .pdfutil import load_pages, probe_decode, to_gray
+from .pdfutil import PDFIUM_LOCK, load_pages, probe_decode, to_gray
 from .preprocess import Mapper, prepare
 from .router import choose_profile, compute_scores
 from .schema_out import (build_job_result, build_page_result, enrich_page,
@@ -193,9 +193,9 @@ def _pipeline(job_id: str, master: Path | list[Path]) -> list[dict]:
         t_page = time.perf_counter()
         gray = to_gray(img)
 
-        # (5) Quality metrics + FAST/HEAVY badge. HEAVY pages would
-        #     normally go to a repair pass first — the skeleton just
-        #     OCR's them directly for now.
+        # (5) Quality metrics + FAST/HEAVY badge. There is no repair pass
+        #     yet: HEAVY pages get the same safe-wins preprocessing as FAST
+        #     pages, then go to their routed OCR engine.
         scores = compute_scores(gray)
         profile, scores = choose_profile(scores)
 
@@ -527,14 +527,9 @@ _PAGE_NO_RE = re.compile(r"[0-9]+")
 
 # One page render at a time: pypdfium2 is not thread-safe (concurrent renders
 # crash the whole server) and each full render of a PDF costs ~150 MB, so a
-# burst of page requests could also OOM-kill the process. Shared with
-# pdfutil/export when they define it.
-from . import pdfutil as _pdfutil  # noqa: E402
-import threading as _threading  # noqa: E402
-
-_PAGE_RENDER_LOCK = getattr(_pdfutil, "PDFIUM_LOCK", None)
-if _PAGE_RENDER_LOCK is None:
-    _PAGE_RENDER_LOCK = _pdfutil.PDFIUM_LOCK = _threading.RLock()
+# burst of page requests could also OOM-kill the process. This is
+# pdfutil's lock, shared with the pipeline and export.
+_PAGE_RENDER_LOCK = PDFIUM_LOCK
 
 
 def _rendered_page_png(job_id: str, page_number: int) -> Path | None:
@@ -615,7 +610,6 @@ def get_job_page_image(job_id: str, n: str):
 # 404 ONLY for an unknown job: the editor reads any 404 from this route as
 # "endpoint not deployed" and silently falls back to localStorage.
 import os
-import re as _re
 import tempfile
 from datetime import datetime, timezone
 from typing import Annotated
@@ -626,7 +620,7 @@ from . import flywheel as _flywheel
 
 CORRECTIONS_FILE = "corrections.json"
 MAX_CORRECTIONS = 10_000  # soft cap per job; bounds the JSON blob
-_CORR_JOB_ID_RE = _re.compile(r"[0-9a-f]{32}")  # same rule as /jobs/{id}/image
+_CORR_JOB_ID_RE = _JOB_ID_RE  # same rule as /jobs/{id}/image
 
 
 class Correction(BaseModel):
@@ -648,13 +642,13 @@ class CorrectionsDoc(BaseModel):
 
 
 # One lock per job serializes PUTs for that job (single-process server).
-_corr_locks: dict[str, _threading.Lock] = {}
-_corr_locks_guard = _threading.Lock()
+_corr_locks: dict[str, threading.Lock] = {}
+_corr_locks_guard = threading.Lock()
 
 
-def _corrections_lock(job_id: str) -> _threading.Lock:
+def _corrections_lock(job_id: str) -> threading.Lock:
     with _corr_locks_guard:
-        return _corr_locks.setdefault(job_id, _threading.Lock())
+        return _corr_locks.setdefault(job_id, threading.Lock())
 
 
 def _require_job(job_id: str) -> None:
@@ -835,7 +829,7 @@ def post_suggest(job_id: str, body: SuggestRequest):
 
 
 # --------------------------------------------------------------------------
-# Export + receipt (slice: pipe-export-receipt) — logic lives in export.py
+# Export + receipt — logic lives in export.py
 # --------------------------------------------------------------------------
 
 from fastapi.responses import PlainTextResponse, Response  # noqa: E402
@@ -958,14 +952,8 @@ def export_docx(job_id: str, reviewer: str | None = None):
 #
 # ORDERING REQUIREMENT: this block MUST stay the last thing in main.py.
 # The /{name} and /{subdir}/{name} catch-alls below have to come AFTER
-# every API route, including the export routes currently living on the
-# unmerged branch slice/pipe-export-receipt — when that branch merges,
-# its routes must be inserted ABOVE this block, or the catch-alls will
-# swallow them.
-import re
-
-from fastapi.responses import FileResponse
-
+# every API route (new routes go ABOVE this block), or the catch-alls
+# will swallow them.
 UI_ROOT = Path(__file__).resolve().parents[3]
 
 # Root-level UI assets the pages load.
@@ -990,10 +978,6 @@ UI_SUB_FILES = {
         "noto-sans-tamil.ttf",
     },
 }
-
-# Job ids are uuid4 hex (see create_job); anything else is not a job.
-_JOB_ID_RE = re.compile(r"[0-9a-f]{32}")
-
 
 @app.get("/", include_in_schema=False)
 def ui_index():

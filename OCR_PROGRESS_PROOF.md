@@ -1,11 +1,13 @@
 # OCR repair progress and evidence
 
+> **Note (repo cleanup):** the raw scans now live at `samples/editor/sample1.png` and `sample2.png`. The repair outputs (`repair/out/`, `repair/verify/`), ground-truth text (`gt_*.txt`) and most `ocr_outputs/` artifacts referenced below were removed from the tree and are git-ignored; they are in git history (e.g. commit `3c53e7f`). Only `ocr_outputs/sarvam/raw/sample*/json/` and `.../metadata/page_001.json` remain, as test fixtures.
+
 ## Source and generated image samples
 
 | Page | Raw input | Repair output (grayscale; OCR-safe) | Binary output (display only) |
 |---|---|---|---|
-| sample1 | `raw/sample1.png` | `repair/out/sample1_g.png` | `repair/out/sample1.png` |
-| sample2 | `raw/sample2.png` | `repair/out/sample2_g.png` | `repair/out/sample2.png` |
+| sample1 | `samples/editor/sample1.png` | `repair/out/sample1_g.png` | `repair/out/sample1.png` |
+| sample2 | `samples/editor/sample2.png` | `repair/out/sample2_g.png` | `repair/out/sample2.png` |
 
 **Safety:** The binary files are for display only and were not submitted to OCR. Raw pages were submitted as raw images; repaired pages used grayscale `_g.png` images.
 
@@ -42,7 +44,7 @@ Sarvam's documented Document AI Digitise API (Sarvam Vision 1.5) supports Tamil 
 
 | Test | Input | Result |
 |---|---|---|
-| sample1 | `raw/sample1.png` | CER **1.54%** (22 edits / 1,429 normalized GT chars); tamil_ratio 0.978, garbage_rate 0.000, repeat_loop_lines 0, mean_conf 0.742 |
+| sample1 | `samples/editor/sample1.png` | CER **1.54%** (22 edits / 1,429 normalized GT chars); tamil_ratio 0.978, garbage_rate 0.000, repeat_loop_lines 0, mean_conf 0.742 |
 | sample2 | `repair/out/sample2_g.png` | CER N/A (no matching GT); tamil_ratio 0.986, garbage_rate 0.000, repeat_loop_lines 0, mean_conf 0.798 |
 
 For sample1, PaddleOCR-VL-1.6 raw measured CER 33.87% (Sarvam: 1.54%) on the same raw image. Sample2 Paddle grayscale had tamil_ratio 0.974 / garbage_rate 0.007; Sarvam grayscale had 0.986 / 0.000. Confidence is averaged per nonempty output line using its layout-block score; segmentation differs between services. **Sarvam is currently a tested alternative, not wired into the application backend.**
@@ -71,7 +73,7 @@ The gate uses the existing `CONTRAST_FADED=0.25` threshold and a near-white pape
 
 | Page | Ink contrast | Background p90 | Route | Chosen OCR input |
 |---|---:|---:|---|---|
-| sample1 | 0.773 | 255.0 | CLEAN | `raw/sample1.png` |
+| sample1 | 0.773 | 255.0 | CLEAN | `samples/editor/sample1.png` |
 | sample2 | 0.518 | 138.0 | DAMAGED | `repair/out/sample2_g.png` |
 
 The gate logs each decision and metric when running `repair/repair.py`. Sample1's clean route agrees with the raw-path CER winner.
@@ -94,7 +96,7 @@ python3 -m py_compile repair/repair.py scripts/*.py
 # passed (no output)
 
 ~/ocrfix/bin/python repair/repair.py raw repair/out --threads 2
-# sample1: CLEAN ... OCR=raw/sample1.png
+# sample1: CLEAN ... OCR=samples/editor/sample1.png
 # sample2: DAMAGED ... OCR=repair/out/sample2_g.png
 ```
 

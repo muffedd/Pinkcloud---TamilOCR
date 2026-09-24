@@ -1,5 +1,7 @@
 # PaddleOCR vs Sarvam API comparison
 
+> **Note (repo cleanup):** the raw scans now live at `samples/editor/sample1.png` and `sample2.png`. The repair outputs (`repair/out/`, `repair/verify/`), ground-truth text (`gt_*.txt`) and most `ocr_outputs/` artifacts referenced below were removed from the tree and are git-ignored; they are in git history (e.g. commit `3c53e7f`). Only `ocr_outputs/sarvam/raw/sample*/json/` and `.../metadata/page_001.json` remain, as test fixtures.
+
 Both tested APIs: hosted **PaddleOCR-VL-1.6** and **Sarvam Document AI Digitise (Sarvam Vision 1.5, `ta-IN`)**. “Before” is the existing Paddle OCR output on the original raw sample. CER uses `gt_cict_narrinai_p3.txt` (sample1 only; sample2 is a different page).
 
 Metrics: Tamil ratio and garbage rate are fractions; repeat-loop count is repeated-segment/word lines; confidence is the mean layout-box score per nonempty OCR line, not recognition certainty. Output line segmentation differs between services, so confidence/line counts are approximate cross-engine comparisons.
@@ -8,9 +10,9 @@ Metrics: Tamil ratio and garbage rate are fractions; repeat-loop count is repeat
 
 | Page / original image | Before: Paddle on raw | Paddle API test | Sarvam API test | Latency (Paddle / Sarvam) |
 |---|---|---|---|---|
-| sample1 — [raw image](raw/sample1.png) | CER **33.87%**; Tamil 0.845; garbage 0.060; loops 0; conf 0.717 | PaddleOCR-VL-1.6 on raw (same existing baseline): CER **33.87%**; Tamil 0.845; garbage 0.060; loops 0; conf 0.717 | Sarvam on raw: CER **1.54%** (22 edits / 1,429 GT chars); Tamil 0.978; garbage 0.000; loops 0; conf 0.742 | Paddle: not recorded; Sarvam: **12.54 s** |
-| sample2 raw — [original image](raw/sample2.png) | Existing Paddle “before” on raw: CER N/A; Tamil 0.920; garbage 0.055; loops 1; conf 0.808 | Same existing raw PaddleOCR-VL-1.6 result (not resubmitted); latency not recorded | Sarvam on the same raw image: CER N/A; Tamil 0.920; garbage 0.000; loops 0; conf 0.759 | Paddle: not recorded; Sarvam: **9.51 s** |
-| sample2 repaired grayscale — [original image](raw/sample2.png) | Raw baseline above; no matching GT | PaddleOCR-VL-1.6 on `_g.png`: CER N/A; Tamil 0.974; garbage 0.007; loops 0; conf 0.744 | Sarvam on `_g.png`: CER N/A; Tamil 0.986; garbage 0.000; loops 0; conf 0.798 | Paddle: **267.34 s POST; ~305.47 s to saved result**. Sarvam: **17.03 s** |
+| sample1 — [raw image](samples/editor/sample1.png) | CER **33.87%**; Tamil 0.845; garbage 0.060; loops 0; conf 0.717 | PaddleOCR-VL-1.6 on raw (same existing baseline): CER **33.87%**; Tamil 0.845; garbage 0.060; loops 0; conf 0.717 | Sarvam on raw: CER **1.54%** (22 edits / 1,429 GT chars); Tamil 0.978; garbage 0.000; loops 0; conf 0.742 | Paddle: not recorded; Sarvam: **12.54 s** |
+| sample2 raw — [original image](samples/editor/sample2.png) | Existing Paddle “before” on raw: CER N/A; Tamil 0.920; garbage 0.055; loops 1; conf 0.808 | Same existing raw PaddleOCR-VL-1.6 result (not resubmitted); latency not recorded | Sarvam on the same raw image: CER N/A; Tamil 0.920; garbage 0.000; loops 0; conf 0.759 | Paddle: not recorded; Sarvam: **9.51 s** |
+| sample2 repaired grayscale — [original image](samples/editor/sample2.png) | Raw baseline above; no matching GT | PaddleOCR-VL-1.6 on `_g.png`: CER N/A; Tamil 0.974; garbage 0.007; loops 0; conf 0.744 | Sarvam on `_g.png`: CER N/A; Tamil 0.986; garbage 0.000; loops 0; conf 0.798 | Paddle: **267.34 s POST; ~305.47 s to saved result**. Sarvam: **17.03 s** |
 
 Sample1's OCR image is raw because the page gate classified it CLEAN. Sample2's OCR image is `repair/out/sample2_g.png` because the gate classified it DAMAGED. No binary image was submitted.
 

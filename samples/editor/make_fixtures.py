@@ -2,7 +2,7 @@
 """Build editor mock fixtures from committed Sarvam sample output.
 
 Input : ocr_outputs/sarvam/raw/<sample>/<sample>.png/metadata/page_001.json
-        (Sarvam Document AI blocks, bbox in page pixels) + raw/<sample>.png
+        (Sarvam Document AI blocks, bbox in page pixels) + samples/editor/<sample>.png (the scan)
 Output: samples/editor/<sample>.json - one page in the schema/schema.json page
         shape, plus the proposed optional page-level `suggestions[]`
         (schema/suggestions-contract.md). Suggestions here are MOCK data.

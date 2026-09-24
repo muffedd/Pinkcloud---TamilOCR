@@ -1,0 +1,3 @@
+# Pink Cloud backend - dev/test dependencies (runtime deps come from requirements.txt)
+-r requirements.txt
+pytest==9.1.1    # backend test runner

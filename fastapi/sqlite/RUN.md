@@ -179,7 +179,8 @@ python tools/tune_thresholds.py <folder-with-CICT-samples>
 
 Prints the 4 metrics per sample and suggested `THRESHOLDS`; paste the result
 into `app/router.py`. Current defaults: blur>=80, contrast>=0.20, noise<=15,
-skew_deg<=7. Tests: `python -m pytest tests/ -v` (offline; Sarvam is mocked).
+skew_deg<=7. Tests: `pip install -r requirements-dev.txt` (adds pytest), then
+`python -m pytest tests/ -v` (offline; Sarvam is mocked).
 
 ## 7. Notes
 

@@ -2629,10 +2629,10 @@ function bootData() {
     if (fixture && /^[a-z0-9_-]+$/i.test(fixture)) {
       /* Mock fixture from real Sarvam sample output (samples/editor/, built
          by samples/editor/make_fixtures.py) drawn on its real scan
-         (raw/<name>.png) - exercises the queue crops offline. */
+         (samples/editor/<name>.png) - exercises the queue crops offline. */
       fetch("./samples/editor/" + fixture + ".json", { cache: "no-store" })
         .then(function (res) { if (!res.ok) throw new Error("fixture " + fixture + " (" + res.status + ")"); return res.json(); })
-        .then(function (doc) { loadJob(doc, { imageUrl: "./raw/" + fixture + ".png", mockId: "demo-" + fixture }); })
+        .then(function (doc) { loadJob(doc, { imageUrl: "./samples/editor/" + fixture + ".png", mockId: "demo-" + fixture }); })
         .catch(function (err) { toast("Could not load fixture · " + err.message); });
       return;
     }

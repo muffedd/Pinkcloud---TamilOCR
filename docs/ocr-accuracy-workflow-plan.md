@@ -1,5 +1,7 @@
 # OCR accuracy workflow — research plan
 
+> **Note (repo cleanup):** the raw scans now live at `samples/editor/sample1.png` and `sample2.png`. The repair outputs (`repair/out/`, `repair/verify/`), ground-truth text (`gt_*.txt`) and most `ocr_outputs/` artifacts referenced below were removed from the tree and are git-ignored; they are in git history (e.g. commit `3c53e7f`). Only `ocr_outputs/sarvam/raw/sample*/json/` and `.../metadata/page_001.json` remain, as test fixtures.
+
 **Goal:** raise Tamil OCR accuracy end to end. The FAST/HEAVY routing is scrapped;
 Sarvam handles both. The new pipeline adds a document-type classifier, a damage
 analyser, an image-candidate planner, a Tamil verifier with a semantic layer, and a
@@ -68,7 +70,7 @@ Build one:
 - modern: `chainyo/rvl-cdip`, `maveriq/tobacco3482` (document-type corpora)
 - manuscript/aged: `varunbhoyar/indic-historical-manuscripts`, `ved1245/synthetic-manuscript-dataset`
 - palm leaf: scarce on HF — source from the CICT Tamil manuscript collection and
-  augment with the repo's own `raw/sample2.png` (yellowed print) and palm-leaf images
+  augment with the repo's own `samples/editor/sample2.png` (yellowed print) and palm-leaf images
 - plus our own uploads, labelled once by a human
 
 Keep a held-out split and report a confusion matrix; the classes are unbalanced in the
