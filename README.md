@@ -38,6 +38,8 @@ The editor sits in a sidebar shell (Workflow: Upload, Tamil OCR, Review, Export,
 
 ## Current state
 
+**Project status (September 24, 2026): finished till UI testing.** The core features are done and on `main`.
+
 | Area | State |
 | --- | --- |
 | Upload screen (`index.html`) | Complete. Live mode posts to the backend; `?mock=1` runs offline. |
@@ -45,7 +47,8 @@ The editor sits in a sidebar shell (Workflow: Upload, Tamil OCR, Review, Export,
 | Library (`library.html`) | Complete. Live mode reads `GET /jobs` and `GET /search`; `?mock=1` runs offline. The Fixed column shows "-" until the backend sends a corrections count. |
 | Export page (`export.html`) | Complete. Live only: needs a finished job. |
 | Backend on `main` | Upload (single file or several images as one job), SHA-256 master storage, FAST/HEAVY routing, OCR, contract JSON; job list and full-text search; page images; corrections save-back; receipt and PDF / TXT / DOCX export; the UI served from the API origin so live mode needs no CORS. |
-| Not built yet | The suggestion source behind `suggestions[]` (the editor uses mock suggestions). A repair pass and heavier OCR for HEAVY pages inside the app. |
+| Suggestions and learning | Built. AI fix (Gemini, suggest-only, reviewer accepts) and the correction flywheel dictionary (`GET /dictionary`) feed `suggestions[]`. HEAVY pages get preprocessing (crop, deskew, flatten, upscale) and Sarvam OCR. |
+| UI testing | Finished till UI testing. |
 
 The live path works end to end. The offline demo still covers upload, review and the library without a backend.
 
@@ -158,9 +161,7 @@ The output contract is in [`schema/schema.json`](schema/schema.json), the endpoi
 
 ## Where it goes next
 
-- Send HEAVY pages through image repair and a heavier OCR pass.
-- Build a real suggestion source and emit `suggestions[]` from the backend (add it to `schema/schema.json` in the same change).
-- Use saved corrections to improve later passes.
+- Fix what UI testing turns up.
 
 ## Heavy repair and OCR provider evaluation
 
