@@ -36,6 +36,8 @@ import json
 import logging
 import os
 
+from .textcheck import has_tamil_letter
+
 logger = logging.getLogger("pinkcloud.suggest")
 
 MAX_CANDIDATES = 3
@@ -216,7 +218,10 @@ def _extract_json(text: str) -> dict:
 
 def clean_candidates(raw, before: str) -> list[dict]:
     """Contract shape: [{text, score 0..1, source: "llm"}], at most
-    MAX_CANDIDATES, no blanks, no duplicates, nothing equal to `before`."""
+    MAX_CANDIDATES, no blanks, no duplicates, nothing equal to `before`,
+    no candidate without a Tamil letter (the model can answer a Tamil word
+    with a Latin transliteration or digits). Sorted by score, best first;
+    ties keep the model's order."""
     out: list[dict] = []
     seen = {before.strip()}
     items = raw.get("candidates") if isinstance(raw, dict) else None
@@ -228,6 +233,8 @@ def clean_candidates(raw, before: str) -> list[dict]:
         text = str(item.get("text") or "").strip()
         if not text or len(text) > MAX_TEXT or text in seen or len(text.split()) > 3:
             continue
+        if not has_tamil_letter(text):
+            continue
         try:
             score = float(item.get("score", 0.5))
         except (TypeError, ValueError):
@@ -237,9 +244,10 @@ def clean_candidates(raw, before: str) -> list[dict]:
         seen.add(text)
         out.append({"text": text, "score": round(min(1.0, max(0.0, score)), 3),
                     "source": "llm"})
-        if len(out) >= MAX_CANDIDATES:
-            break
-    return out
+    # Stable sort: equal scores keep the model's best-first order. Cut to
+    # MAX_CANDIDATES only after sorting so a high score listed late wins.
+    out.sort(key=lambda c: c["score"], reverse=True)
+    return out[:MAX_CANDIDATES]
 
 
 def suggest(before: str, line_text: str, word: int,
