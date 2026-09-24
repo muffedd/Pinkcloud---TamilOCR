@@ -15,7 +15,10 @@ __pycache__/
 uvicorn.log
 
 # Generated OCR / repair artifacts (a few Sarvam fixtures under ocr_outputs/ stay tracked for tests)
-repair/out/
-repair/verify/
-ocr_outputs/
-raw/
+/repair/out/
+/repair/verify/
+/raw/
+/ocr_outputs/*
+!/ocr_outputs/sarvam/
+/ocr_outputs/sarvam/*
+!/ocr_outputs/sarvam/raw/
