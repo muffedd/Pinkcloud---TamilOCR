@@ -706,7 +706,7 @@ function select(key, origin) {
   var w = S.byKey[key];
   if (!w) return;
   if (origin === "word" || origin === "queue") {
-    if (w.boxEl) scrollToThird(el.scanScroll, w.boxEl);
+    if (w.boxEl) ensureBoxVisible(w);
   }
   if (origin === "box" || origin === "queue") {
     scrollToThird(el.textScroll, w.el);
@@ -1019,6 +1019,358 @@ function renderScan() {
   el.paper.appendChild(layer);
   scanLayer = layer;
   el.heatLegend.hidden = !S.heat;
+  viewOnRender();
+}
+
+/* ---------------- scan view: zoom / pan / rotate ----------------
+   #scanScroll is a fixed viewport; #paper (scan image + word boxes +
+   heatmap + placeholder text) moves inside it with ONE CSS transform -
+   translate(tx,ty) scale(z) rotate(rot), origin at the paper centre - so
+   every overlay shares the transform math and stays aligned at any zoom or
+   rotation. Wheel/pinch zooms around the cursor, drag pans, double-click or
+   the % button resets to fit, and the rotate button turns the view a quarter
+   turn client-side (a re-analyze offers to re-run OCR with it baked in).
+   Gesture handlers only write cached numbers and one transform string: no
+   layout reads or DOM queries per mousemove (the geometry cache refreshes
+   on render/resize only). */
+
+var ZOOM_MAX_FIT = 12;      /* max zoom, as a multiple of the fit zoom */
+var DRAG_THRESHOLD = 5;     /* px before a press becomes a pan, not a click */
+
+var view = { z: 1, tx: 0, ty: 0, rot: 0 };
+var vg = null;              /* cached viewport + paper geometry */
+var viewInit = false;
+
+/* Viewport + paper geometry, read once per render/resize. Paper layout
+   coords: the paper's untransformed box inside #scanScroll's content (the
+   viewport no longer scrolls, so content coords = viewport coords). */
+function cacheViewGeom() {
+  if (!el.scanScroll || !el.paper) return;
+  var r = el.scanScroll.getBoundingClientRect();
+  var ox = el.paper.offsetLeft + (el.viewer ? el.viewer.offsetLeft : 0);
+  var oy = el.paper.offsetTop + (el.viewer ? el.viewer.offsetTop : 0);
+  vg = {
+    w: el.scanScroll.clientWidth,
+    h: el.scanScroll.clientHeight,
+    rectL: r.left,
+    rectT: r.top,
+    ox: ox,                       /* viewer padding: free space around the paper */
+    oy: oy,
+    pw: el.paper.clientWidth,
+    ph: el.paper.clientHeight,
+    cx: ox + el.paper.clientWidth / 2,   /* transform origin (paper centre) */
+    cy: oy + el.paper.clientHeight / 2
+  };
+}
+
+/* Zoom that fits the page's displayed width to the viewport width. z = 1 is
+   width-fit unrotated (the paper is laid out width: 100%); rotated a quarter
+   turn the displayed width is the paper's height, so fit scales by pw/ph. */
+function fitZoom() {
+  if (!vg || !vg.ph) return 1;
+  return (view.rot % 180) ? vg.pw / vg.ph : 1;
+}
+
+/* Displayed half-extents of the paper after rotate + scale. */
+function viewHalves() {
+  return (view.rot % 180)
+    ? { hw: vg.ph / 2 * view.z, hh: vg.pw / 2 * view.z }
+    : { hw: vg.pw / 2 * view.z, hh: vg.ph / 2 * view.z };
+}
+
+/* Keep the paper from leaving the viewport: edges may not cross the inner
+   padding; a page smaller than the viewport stays centred on that axis. */
+function clampView() {
+  if (!vg) return;
+  var hv = viewHalves();
+  if (2 * hv.hw <= vg.w) view.tx = vg.w / 2 - vg.cx;
+  else view.tx = Math.min(vg.ox - (vg.cx - hv.hw), Math.max(vg.w - vg.ox - (vg.cx + hv.hw), view.tx));
+  if (2 * hv.hh <= vg.h) view.ty = vg.h / 2 - vg.cy;
+  else view.ty = Math.min(vg.oy - (vg.cy - hv.hh), Math.max(vg.h - vg.oy - (vg.cy + hv.hh), view.ty));
+}
+
+function applyView() {
+  if (!el.paper) return;
+  el.paper.style.transform =
+    "translate(" + view.tx.toFixed(1) + "px," + view.ty.toFixed(1) + "px)" +
+    " scale(" + view.z.toFixed(4) + ") rotate(" + view.rot + "deg)";
+  if (el.zoomFit) {
+    el.zoomFit.textContent = Math.round(view.z / fitZoom() * 100) + "%";
+  }
+}
+
+/* Fit zoom, centred horizontally; top-aligned vertically like the old
+   initial scroll position (centred when the page fits the viewport). */
+function resetView() {
+  if (!vg) return;
+  view.z = fitZoom();
+  var hv = viewHalves();
+  view.tx = vg.w / 2 - vg.cx;
+  view.ty = (2 * hv.hh <= vg.h) ? vg.h / 2 - vg.cy : vg.oy + hv.hh - vg.cy;
+  clampView();
+  applyView();
+}
+
+/* Zoom by factor around viewport point (px, py): the paper point under the
+   cursor stays under the cursor. With the origin at the paper centre C,
+   screen = C + t + z*R*(p - C); holding p fixed gives t' below. */
+function zoomAt(px, py, factor) {
+  if (!vg) return;
+  var fz = fitZoom();
+  var z2 = Math.min(ZOOM_MAX_FIT * fz, Math.max(fz, view.z * factor));
+  if (z2 === view.z) return;
+  var k = z2 / view.z;
+  view.tx = (px - vg.cx) - k * (px - vg.cx - view.tx);
+  view.ty = (py - vg.cy) - k * (py - vg.cy - view.ty);
+  view.z = z2;
+  clampView();
+  applyView();
+}
+
+function rotateView() {
+  view.rot = (view.rot + 90) % 360;
+  resetView();           /* refit: a quarter turn swaps the displayed axes */
+  updateReprocessBtn();
+}
+
+/* Called at the end of every renderScan: refresh the geometry cache, refit
+   when the paper size changed (first render, image probe, pane resize),
+   otherwise keep the user's zoom and just re-clamp/re-apply. */
+function viewOnRender() {
+  if (!el.paper) return;
+  var resized = !vg || el.paper.clientWidth !== vg.pw || el.paper.clientHeight !== vg.ph;
+  cacheViewGeom();
+  if (!viewInit || resized) {
+    viewInit = true;
+    resetView();
+  } else {
+    clampView();
+    applyView();
+  }
+  updateReprocessBtn();
+}
+
+function resetViewState() {
+  view.z = 1; view.tx = 0; view.ty = 0; view.rot = 0;
+  viewInit = false;
+}
+
+/* Pan so the word's box sits inside the viewport (replaces the old
+   scroll-into-view: the viewport no longer scrolls). */
+function ensureBoxVisible(w) {
+  if (!vg || !w.boxEl) return;
+  var s = S.scale;
+  var px = (w.bbox[0] + w.bbox[2] / 2) * s - vg.pw / 2;   /* rel. paper centre */
+  var py = (w.bbox[1] + w.bbox[3] / 2) * s - vg.ph / 2;
+  var rad = view.rot * Math.PI / 180;
+  var cos = Math.cos(rad), sin = Math.sin(rad);
+  var dx = vg.cx + view.tx + view.z * (px * cos - py * sin);
+  var dy = vg.cy + view.ty + view.z * (px * sin + py * cos);
+  var m = 48, ax = 0, ay = 0;
+  if (dx < m) ax = m - dx; else if (dx > vg.w - m) ax = vg.w - m - dx;
+  if (dy < m) ay = m - dy; else if (dy > vg.h - m) ay = vg.h - m - dy;
+  if (!ax && !ay) return;
+  view.tx += ax;
+  view.ty += ay;
+  clampView();
+  applyView();
+}
+
+/* Palm-leaf scans are extreme-aspect (very wide, very short): they are the
+   pages that may need OCR re-run at a better orientation, so they always
+   show the Re-analyze button (other pages show it once rotated). */
+function isExtremeAspect() {
+  var w = S.coordW || IMG_W, h = S.pageH || PAGE_H;
+  var a = w / h;
+  return a >= 2.5 || a <= 0.4;
+}
+
+function updateReprocessBtn() {
+  if (!el.reprocess) return;
+  var show = !!(S.jobId && !window.PC_API.USE_MOCK && S.page &&
+    window.PC_API.reprocessPage) && (view.rot !== 0 || isExtremeAspect());
+  el.reprocess.hidden = !show;
+  if (!show) disarmReprocess();
+}
+
+/* Re-analyze = POST /jobs/{id}/pages/{n}/reprocess?rotate=<view rotation>:
+   the backend re-runs OCR for this page with the rotation baked in and
+   drops the page's saved fixes (its lines are replaced). Destructive enough
+   to arm first: one click warns, the second within 5s fires. */
+var REPROCESS_ARM_MS = 5000;
+var reprocessBusy = false;
+var reprocessArmTimer = null;
+
+function disarmReprocess() {
+  if (reprocessArmTimer) { clearTimeout(reprocessArmTimer); reprocessArmTimer = null; }
+  if (el.reprocess && !reprocessBusy) el.reprocess.textContent = "Re-analyze";
+}
+
+function onReprocessClick() {
+  if (reprocessBusy) return;
+  if (!reprocessArmTimer) {
+    el.reprocess.textContent = "Sure? Page fixes are reset";
+    reprocessArmTimer = setTimeout(disarmReprocess, REPROCESS_ARM_MS);
+    return;
+  }
+  clearTimeout(reprocessArmTimer);
+  reprocessArmTimer = null;
+  var jobId = S.jobId, page = Number(S.page.page), rot = view.rot;
+  reprocessBusy = true;
+  el.reprocess.disabled = true;
+  el.reprocess.textContent = "Re-analyzing…";
+  function done() {
+    reprocessBusy = false;
+    el.reprocess.disabled = false;
+    el.reprocess.textContent = "Re-analyze";
+  }
+  flushSave()  /* keep the other pages' fixes before the map is replaced */
+    .then(function () { return window.PC_API.reprocessPage(jobId, page, rot); })
+    .then(function () { return window.PC_API.getJob(jobId); })
+    .then(function (job) {
+      var pages = job.result && job.result.pages;
+      if (!pages || !pages.length) throw new Error("job returned no pages");
+      resetViewState();  /* the new scan already has the rotation baked in */
+      /* The image route answers with an immutable cache header: bust it so
+         the freshly rotated render is fetched, not the old pixels. */
+      var imageUrl = window.PC_API.pageImageUrl(jobId, page) + "?v=" + Date.now();
+      var idx = Math.min(page, pages.length) - 1;
+      loadJob(pages[idx], {
+        jobId: jobId, pageCount: pages.length, pages: pages,
+        filename: job.filename || "", mode: job.mode, imageUrl: imageUrl
+      });
+      done();  /* loadJob re-renders but keeps the button element */
+      toast(rot ? "Page re-analyzed with a " + rot + "° rotation" : "Page re-analyzed");
+    })
+    .catch(function (err) {
+      done();
+      toast("Re-analyze failed · " + ((err && err.message) || "server error"));
+    });
+}
+
+/* Viewport gestures. Pointer events unify mouse drag and two-finger pinch;
+   every move only writes view.* and the one transform string. A press that
+   moves past DRAG_THRESHOLD becomes a pan, and the click it still generates
+   is swallowed (capture phase) so a drag never toggles a word box. */
+function wireScanView() {
+  var vp = el.scanScroll;
+  var pointers = {};
+  var pcount = 0;
+  var dragging = false, moved = false;
+  var downX = 0, downY = 0, lastX = 0, lastY = 0;
+  var pinch = null;
+  var suppressClick = false;
+
+  function pointerList() {
+    var out = [];
+    for (var id in pointers) out.push(pointers[id]);
+    return out;
+  }
+
+  vp.addEventListener("wheel", function (e) {
+    if (!vg) return;
+    e.preventDefault();
+    var delta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+    zoomAt(e.clientX - vg.rectL, e.clientY - vg.rectT, Math.exp(-delta * 0.0015));
+  }, { passive: false });
+
+  /* Capture is taken LATE: capturing on pointerdown retargets the click to
+     the viewport, which would break word-box selection and the toolbar
+     buttons. Only a real drag (past DRAG_THRESHOLD) or a pinch captures. */
+  vp.addEventListener("pointerdown", function (e) {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+    pcount++;
+    if (pcount === 1) {
+      dragging = true;
+      moved = false;
+      downX = lastX = e.clientX;
+      downY = lastY = e.clientY;
+      vp.classList.add("is-dragging");
+    } else if (pcount === 2) {
+      dragging = false;
+      try { vp.setPointerCapture(e.pointerId); } catch (err) {}
+      var pts = pointerList();
+      pinch = {
+        d: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y),
+        x: (pts[0].x + pts[1].x) / 2,
+        y: (pts[0].y + pts[1].y) / 2
+      };
+      moved = true;
+    }
+  });
+
+  vp.addEventListener("pointermove", function (e) {
+    var p = pointers[e.pointerId];
+    if (!p) return;
+    p.x = e.clientX;
+    p.y = e.clientY;
+    if (pinch && pcount >= 2) {
+      var pts = pointerList();
+      var d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      var mx = (pts[0].x + pts[1].x) / 2, my = (pts[0].y + pts[1].y) / 2;
+      if (pinch.d > 0 && d > 0) {
+        zoomAt(mx - vg.rectL, my - vg.rectT, d / pinch.d);
+        view.tx += mx - pinch.x;
+        view.ty += my - pinch.y;
+        clampView();
+        applyView();
+      }
+      pinch = { d: d, x: mx, y: my };
+    } else if (dragging) {
+      if (!moved) {
+        moved = Math.hypot(e.clientX - downX, e.clientY - downY) > DRAG_THRESHOLD;
+        if (moved) { try { vp.setPointerCapture(e.pointerId); } catch (err) {} }
+      }
+      if (moved) {
+        view.tx += e.clientX - lastX;
+        view.ty += e.clientY - lastY;
+        clampView();
+        applyView();
+      }
+      lastX = e.clientX;
+      lastY = e.clientY;
+    }
+  });
+
+  function release(e) {
+    if (!pointers[e.pointerId]) return;
+    delete pointers[e.pointerId];
+    pcount--;
+    if (pcount < 2) pinch = null;
+    if (pcount === 1) {
+      var pts = pointerList();
+      dragging = true;
+      lastX = pts[0].x;
+      lastY = pts[0].y;
+    } else if (pcount === 0) {
+      if (dragging && moved) suppressClick = true;
+      dragging = false;
+      vp.classList.remove("is-dragging");
+    }
+  }
+  vp.addEventListener("pointerup", release);
+  vp.addEventListener("pointercancel", release);
+
+  vp.addEventListener("click", function (e) {
+    /* The second click of a double-click must not select the word under the
+       cursor: dblclick means reset-to-fit here, not "click faster". */
+    if (e.detail > 1) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    if (suppressClick) {
+      suppressClick = false;
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, true);
+
+  vp.addEventListener("dblclick", function (e) {
+    e.preventDefault();
+    resetView();
+  });
 }
 
 /* ---------------- legend ---------------- */
@@ -1267,7 +1619,7 @@ function renderBadges() {
     " · " + (doubtLeft ? doubtLeft + " doubt" : "no doubt left");
   b.addEventListener("click", function () {
     clearActive();
-    el.scanScroll.scrollTop = 0;
+    resetView();
     el.textScroll.scrollTop = 0;
     el.queue.scrollTop = 0;
   });
@@ -2686,6 +3038,20 @@ function init() {
     renderLegend();
   });
 
+  el.viewer = $("viewer");
+  el.zoomOut = $("zoomOutBtn");
+  el.zoomFit = $("zoomFitBtn");
+  el.zoomIn = $("zoomInBtn");
+  el.rotate = $("rotateBtn");
+  el.reprocess = $("reprocessBtn");
+  el.zoomOut.addEventListener("click", function () { if (vg) zoomAt(vg.w / 2, vg.h / 2, 1 / 1.25); });
+  el.zoomIn.addEventListener("click", function () { if (vg) zoomAt(vg.w / 2, vg.h / 2, 1.25); });
+  el.zoomFit.addEventListener("click", resetView);
+  el.rotate.addEventListener("click", rotateView);
+  el.reprocess.addEventListener("click", onReprocessClick);
+  wireScanView();
+  resetViewState();
+
   el.exportBtn.addEventListener("click", openExport);
   wireExport();
   wireAiAll();
@@ -2740,6 +3106,7 @@ function loadJob(doc, meta) {
   S.saveError = false;
   S.corrDirty = false;
   S.dictCount = 0;
+  resetViewState();
   saveWarned = false;
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
   loadPage(doc);

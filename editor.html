@@ -68,11 +68,22 @@
         </div>
       </div>
       <div class="scan-scroll" id="scanScroll">
-        <div class="viewer">
+        <div class="viewer" id="viewer">
           <div class="paper" id="paper"></div>
-          <div class="heat-legend" id="heatLegend" hidden>
-            Clean <i class="h-scale" aria-hidden="true"></i> Damaged
-          </div>
+        </div>
+        <!-- Scan view tools (editor.js: wireScanView). Wheel/pinch zooms
+             around the cursor, drag pans, double-click or the % button
+             resets to fit; rotate turns the view 90° client-side and offers
+             a server-side re-analyze (re-OCR with the rotation applied). -->
+        <div class="scan-tools" id="scanTools" role="group" aria-label="Scan view">
+          <button type="button" class="btn btn--soft btn--sm btn--icon" id="zoomOutBtn" aria-label="Zoom out" title="Zoom out"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.2 10.2 14 14M4.8 7h4.4"/></svg></button>
+          <button type="button" class="btn btn--soft btn--sm scan-zoom-fit" id="zoomFitBtn" title="Reset the view to fit (or double-click the scan)">100%</button>
+          <button type="button" class="btn btn--soft btn--sm btn--icon" id="zoomInBtn" aria-label="Zoom in" title="Zoom in"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.2 10.2 14 14M4.8 7h4.4M7 4.8v4.4"/></svg></button>
+          <button type="button" class="btn btn--soft btn--sm btn--icon" id="rotateBtn" aria-label="Rotate the scan 90 degrees" title="Rotate the view 90°"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.7 1.8v2.6h-2.6"/></svg></button>
+          <button type="button" class="btn btn--outline btn--sm" id="reprocessBtn" hidden>Re-analyze</button>
+        </div>
+        <div class="heat-legend" id="heatLegend" hidden>
+          Clean <i class="h-scale" aria-hidden="true"></i> Damaged
         </div>
       </div>
     </section>
