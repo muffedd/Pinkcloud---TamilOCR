@@ -388,11 +388,14 @@ def test_multi_image_exports_span_all_pages(client, multi_images):
     assert rec["master"]["files"] == [
         "master-001.png", "master-002.jpg", "master-003.webp"]
     assert client.get(f"/jobs/{jid}/export.txt").status_code == 200
-    pdf = client.get(f"/jobs/{jid}/export.pdf?receipt_page=false")
+    pdf = client.get(f"/jobs/{jid}/export.pdf")
     assert pdf.status_code == 200
     import pypdfium2 as pdfium
     doc = pdfium.PdfDocument(pdf.content)
-    assert len(doc) == 3
+    # visible text page(s) first, then the 3 scans; no receipt page
+    assert len(doc) == 4
+    assert all(pdfium.raw.FPDF_PAGEOBJ_IMAGE in {o.type for o in doc[i].get_objects()}
+               for i in (1, 2, 3))
     doc.close()
 
 

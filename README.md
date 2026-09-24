@@ -4,7 +4,7 @@
 
 Palm-leaf manuscripts and old Tamil print break ordinary OCR. The ink is faded, the pages are stained or warped, and the letterforms are older than the ones modern models were trained on. Pink Cloud accepts that the machine will be wrong sometimes. It scores every word, shows a reviewer only the words it doubts, and makes each fix a single keystroke. The result is Unicode Tamil text and a searchable PDF you can trust, without proofreading every line by hand.
 
-> **Status:** the upload, review, library and export pages all run against the FastAPI backend on `main`, and the upload, editor and library pages also run fully offline in demo mode (`?mock=1`). The backend runs upload → quality routing → Tamil OCR (**Gemini** for FAST pages, **Sarvam** for HEAVY; marked stub pages if both are unavailable), serves page images, saves reviewer corrections, and exports a searchable PDF, TXT and DOCX with a processing receipt. See [Current state](#current-state).
+> **Status:** the upload, review, library and export pages all run against the FastAPI backend on `main`, and the upload, editor and library pages also run fully offline in demo mode (`?mock=1`). The backend runs upload → quality routing → Tamil OCR (**Gemini** for FAST pages, **Sarvam** for HEAVY; marked stub pages if both are unavailable), serves page images, saves reviewer corrections, and exports a PDF (recognized Tamil text first, then the searchable scan), TXT and DOCX, plus a processing receipt. See [Current state](#current-state).
 
 ## How it works
 
@@ -34,7 +34,7 @@ The editor sits in a sidebar shell (Workflow: Upload, Tamil OCR, Review, Export,
 
 ## The export page
 
-`export.html?job=<id>` shows the job's processing receipt as a card (`GET /jobs/{id}/receipt`) with **Download PDF** (the scan with the Tamil text layer under it) and **Download TXT**. DOCX comes from the backend; Markdown, CSV and XML are built in the browser from the job and its saved corrections. The page has its own loading, job-not-found and not-ready states, and waits for a job that is still processing. `?reviewer=<name>` is written into the receipt and the exports.
+`export.html?job=<id>` shows the job's processing receipt as a card (`GET /jobs/{id}/receipt`) with **Download PDF** (the recognized Tamil text as readable pages, then the scan with the Tamil text layer under it; no receipt page) and **Download TXT**. DOCX comes from the backend; Markdown, CSV and XML are built in the browser from the job and its saved corrections. The page has its own loading, job-not-found and not-ready states, and waits for a job that is still processing. `?reviewer=<name>` is written into the receipt and the exports.
 
 ## Current state
 

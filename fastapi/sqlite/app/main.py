@@ -905,15 +905,17 @@ def export_txt(job_id: str, reviewer: str | None = None):
 
 
 @app.get("/jobs/{job_id}/export.pdf")
-def export_pdf(job_id: str, reviewer: str | None = None, receipt_page: bool = True):
-    """Searchable PDF: scan image + invisible Tamil text layer per line,
-    a visible receipt page at the end, provenance in the PDF Info dict."""
+def export_pdf(job_id: str, reviewer: str | None = None, receipt_page: bool = False):
+    """Text-first PDF: the recognized (corrections-applied) lines as visible
+    Tamil text pages, then each scan with its invisible text layer. No
+    receipt page (receipt_page is accepted for old links and ignored; the
+    receipt is GET /jobs/{id}/receipt). Job id + SHA-256 in the Info dict."""
     job, pages = _done_job(job_id)
     masters = storage.master_paths(job_id)
     if not masters:
         raise HTTPException(status_code=410, detail="master file missing")
     receipt = _receipt(job, pages, reviewer)
-    data = _export.build_pdf(masters, pages, receipt, receipt_page=receipt_page)
+    data = _export.build_pdf(masters, pages, receipt)
     return Response(
         data, media_type="application/pdf",
         headers={

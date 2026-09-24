@@ -8,6 +8,7 @@ python-dotenv==1.2.3   # uvicorn --env-file: loads the git-ignored repo-root .en
 python-multipart==0.0.32
 opencv-python-headless==5.0.0.93
 pypdfium2==5.13.0
+uharfbuzz==0.56.2   # export.pdf: shapes the visible Tamil text pages (wheels for Windows/macOS/Linux, no system libs)
 numpy==2.3.5
 pillow==12.3.0
 python-docx==1.2.0   # export.docx (Word export)

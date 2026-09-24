@@ -156,9 +156,11 @@ def test_multi_image_total_size_capped(client, monkeypatch):
     assert client.post("/jobs", files=one).status_code == 200
 
 
-# ---- F7: Tamil filename on the PDF receipt page --------------------------
+# ---- F7: Tamil filename, PDF export (no receipt page any more) ----------
 
-def test_receipt_page_renders_tamil_filename(tmp_path):
+def test_pdf_tamil_filename_no_receipt_page(tmp_path):
+    """The PDF has no receipt page; an empty job still opens with a visible
+    note (not a blank page) and the Tamil name only goes in the metadata."""
     import pypdfium2 as pdfium
     master = tmp_path / "m.png"
     cv2.imwrite(str(master), np.full((400, 600, 3), 240, np.uint8))
@@ -168,18 +170,12 @@ def test_receipt_page_renders_tamil_filename(tmp_path):
            "status": "done", "created_at": "2026-01-01T00:00:00+00:00"}
     receipt = export.build_receipt(job, [page])
     pdf = pdfium.PdfDocument(export.build_pdf(master, [page], receipt))
-    text = pdf[1].get_textpage().get_text_range()
-    assert f"File: {TAMIL_NAME}" in text
-    fonts = set()
-    for obj in pdf[1].get_objects():
-        if obj.type == pdfium.raw.FPDF_PAGEOBJ_TEXT:
-            import ctypes
-            f = pdfium.raw.FPDFTextObj_GetFont(obj.raw)
-            buf = ctypes.create_string_buffer(256)
-            pdfium.raw.FPDFFont_GetBaseFontName(f, buf, 256)
-            fonts.add(buf.value.decode())
-    assert any("Tamil" in f for f in fonts), fonts   # Tamil line uses Noto
-    assert any("Helvetica" in f for f in fonts), fonts  # ASCII lines unchanged
+    assert len(pdf) == 2  # note page + scan
+    assert export.EMPTY_TEXT_NOTE in pdf[0].get_textpage().get_text_range()
+    for i in range(len(pdf)):
+        text = pdf[i].get_textpage().get_text_range()
+        assert "File:" not in text and "receipt" not in text.lower()
+    assert TAMIL_NAME in pdf.get_metadata_dict()["Title"]
 
 
 # ---- F6: no "[stub]" lines in txt / docx bodies ----------------------------

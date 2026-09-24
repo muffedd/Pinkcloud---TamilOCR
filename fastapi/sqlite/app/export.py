@@ -8,18 +8,24 @@ Three outputs for a finished job:
   - build_docx()     -> bytes: Word document, same text as build_txt()
                         (one heading per page) + the receipt as a final
                         section. Needs python-docx.
-  - build_pdf()      -> bytes: searchable PDF. Each page is the scan image
-                        with an INVISIBLE text layer (one text object per OCR
-                        line, placed and stretched over the line bbox, the
-                        hOCR-to-PDF idea), plus a visible receipt page at the
-                        end and the provenance in the PDF Info dictionary.
+  - build_pdf()      -> bytes: text-first PDF. It opens with the recognized
+                        (corrections-applied) lines as VISIBLE, readable
+                        Tamil text pages, then the scan pages, each with an
+                        INVISIBLE text layer (one text object per OCR line,
+                        placed and stretched over the line bbox, the
+                        hOCR-to-PDF idea). No receipt page: the receipt lives
+                        at GET /jobs/{id}/receipt. Job id + master SHA-256
+                        go in the PDF Info dictionary.
 
 Offline, pinned deps only: pypdfium2 (PDFium page-object API) + Pillow.
 The Tamil text layer uses the bundled fonts/noto-sans-tamil.ttf, embedded
 as a CID font so PDFium writes a ToUnicode map -> Ctrl+F and pdftotext
-return the real Unicode Tamil text. The glyphs are not shaped (no
-HarfBuzz in PDFium's writer), which does not matter: the layer is
-invisible and only exists for search / copy.
+return the real Unicode Tamil text. PDFium's writer does not shape
+glyphs, which does not matter for the invisible layers (search / copy
+only). The VISIBLE text pages are shaped with HarfBuzz (uharfbuzz):
+each line is drawn as filled glyph outlines (vector paths, so vowel signs
+and conjuncts come out right), with an invisible Unicode text object over
+it so the same line is still extractable, searchable and copyable.
 
 Bboxes in the page JSON are on the 1600px-capped image from
 pdfutil.load_pages(), so we embed exactly that image and map
@@ -264,7 +270,7 @@ def build_receipt(job: dict, pages: list[dict], reviewer: str | None = None,
 
 
 def receipt_lines(r: dict) -> list[str]:
-    """Human-readable receipt (used in TXT header and the PDF receipt page)."""
+    """Human-readable receipt (used in the TXT header and the DOCX section)."""
     tiers = ", ".join(f"{k}={v}" for k, v in sorted(r["corrections"]["by_tier"].items())) or "none"
     warn = ([f"WARNING - corrections not fully applied: {r['corrections_error']}"]
             if r.get("corrections_error") else [])
@@ -439,13 +445,183 @@ if _PDFIUM_LOCK is None:
 
 
 def build_pdf(master: Path | list[Path], pages: list[dict], receipt: dict,
-              receipt_page: bool = True) -> bytes:
+              receipt_page: bool = False) -> bytes:
+    """receipt_page is accepted for old callers and ignored: the PDF never
+    carries a receipt page any more (GET /jobs/{id}/receipt has the data)."""
     with _PDFIUM_LOCK:
-        return _build_pdf(master, pages, receipt, receipt_page)
+        return _build_pdf(master, pages, receipt)
 
 
-def _build_pdf(master: Path | list[Path], pages: list[dict], receipt: dict,
-               receipt_page: bool) -> bytes:
+# ---- visible text pages ---------------------------------------------------
+
+TEXT_PAGE_W, TEXT_PAGE_H = 595.0, 842.0   # A4 portrait, points
+TEXT_MARGIN = 56.0
+TEXT_SIZE = 13.0
+TEXT_LEADING = TEXT_SIZE * 1.7
+LABEL_SIZE = 9.0
+EMPTY_TEXT_NOTE = "No text was recognized in this document."
+
+
+def _hb_font(data: bytes):
+    import uharfbuzz as hb
+    face = hb.Face(data)
+    return hb.Font(face), face.upem
+
+
+def _shape(hb_font, text: str):
+    import uharfbuzz as hb
+    buf = hb.Buffer()
+    buf.add_str(text)
+    buf.guess_segment_properties()
+    hb.shape(hb_font, buf, {})
+    return buf.glyph_infos, buf.glyph_positions
+
+
+def _shaped_width(hb_font, upem: int, text: str, size: float) -> float:
+    _, pos = _shape(hb_font, text)
+    return sum(p.x_advance for p in pos) * size / upem
+
+
+class _PathPen:
+    """fontTools-style pen that writes glyph outlines into one PDFium path
+    object, mapping font units -> page points (scale + origin)."""
+
+    def __init__(self, path, scale: float, ox: float, oy: float):
+        self.path, self.k, self.ox, self.oy = path, scale, ox, oy
+        self.cur = (0.0, 0.0)
+
+    def _pt(self, p):
+        return self.ox + p[0] * self.k, self.oy + p[1] * self.k
+
+    def moveTo(self, p):
+        import pypdfium2.raw as r
+        r.FPDFPath_MoveTo(self.path, *self._pt(p))
+        self.cur = p
+
+    def lineTo(self, p):
+        import pypdfium2.raw as r
+        r.FPDFPath_LineTo(self.path, *self._pt(p))
+        self.cur = p
+
+    def curveTo(self, *pts):
+        import pypdfium2.raw as r
+        c1, c2, end = pts[-3], pts[-2], pts[-1]
+        r.FPDFPath_BezierTo(self.path, *self._pt(c1), *self._pt(c2), *self._pt(end))
+        self.cur = end
+
+    def qCurveTo(self, *pts):
+        # TrueType quadratic run: off-curve points with implied on-curve
+        # midpoints; each quad goes out as an exact cubic.
+        *offs, end = pts
+        if not offs:
+            return self.lineTo(end)
+        for i, c in enumerate(offs):
+            nxt = end if i == len(offs) - 1 else (
+                (c[0] + offs[i + 1][0]) / 2, (c[1] + offs[i + 1][1]) / 2)
+            p0 = self.cur
+            c1 = (p0[0] + 2 / 3 * (c[0] - p0[0]), p0[1] + 2 / 3 * (c[1] - p0[1]))
+            c2 = (nxt[0] + 2 / 3 * (c[0] - nxt[0]), nxt[1] + 2 / 3 * (c[1] - nxt[1]))
+            self.curveTo(c1, c2, nxt)
+
+    def closePath(self):
+        import pypdfium2.raw as r
+        r.FPDFPath_Close(self.path)
+
+    def endPath(self):
+        pass
+
+
+def _draw_shaped_line(pdf_raw, page_raw, font, hb_font, upem: int, text: str,
+                      size: float, x: float, y: float) -> None:
+    """Visible shaped glyph outlines + an invisible Unicode text object over
+    the same span (so extraction / search / copy return the real text)."""
+    import pypdfium2.raw as r
+    infos, pos = _shape(hb_font, text)
+    k = size / upem
+    path = r.FPDFPageObj_CreateNewPath(ctypes.c_float(x), ctypes.c_float(y))
+    pen_x = 0.0
+    for info, p in zip(infos, pos):
+        pen = _PathPen(path, k, x + (pen_x + p.x_offset) * k, y + p.y_offset * k)
+        hb_font.draw_glyph_with_pen(info.codepoint, pen)
+        pen_x += p.x_advance
+    r.FPDFPageObj_SetFillColor(path, 20, 20, 20, 255)
+    r.FPDFPath_SetDrawMode(path, r.FPDF_FILLMODE_WINDING, False)
+    r.FPDFPage_InsertObject(page_raw, path)
+    width = pen_x * k
+    _add_text(pdf_raw, page_raw, font, text, size, x, y,
+              width if width > 0 else None, invisible=True)
+
+
+def _wrap(hb_font, upem: int, text: str, size: float, max_w: float) -> list[str]:
+    words = text.split()
+    out, cur = [], ""
+    for w in words:
+        cand = f"{cur} {w}" if cur else w
+        if cur and _shaped_width(hb_font, upem, cand, size) > max_w:
+            out.append(cur)
+            cur = w
+        else:
+            cur = cand
+    if cur:
+        out.append(cur)
+    return out
+
+
+def _text_page_blocks(pages: list[dict], n_pages: int) -> list[tuple[str, str]]:
+    """[("label"|"line", text)] in reading order, one label per source page
+    when the job has more than one page."""
+    by_no = {int(p.get("page", i + 1)): p for i, p in enumerate(pages)}
+    blocks: list[tuple[str, str]] = []
+    for n in range(1, n_pages + 1):
+        bodies = _export_bodies(by_no.get(n) or {})
+        if n_pages > 1:
+            blocks.append(("label", f"Page {n}"))
+        blocks.extend(("line", b) for b in bodies)
+    if not any(kind == "line" for kind, _ in blocks):
+        blocks = [("note", EMPTY_TEXT_NOTE)]
+    return blocks
+
+
+def _add_text_pages(pdf, font, helv, hb_font, upem: int, pages: list[dict],
+                    n_pages: int) -> int:
+    """Visible retyped-text pages (A4). Returns how many were added."""
+    max_w = TEXT_PAGE_W - 2 * TEXT_MARGIN
+    added = 0
+    page = None
+    y = 0.0
+
+    def new_page():
+        nonlocal page, y, added
+        if page is not None:
+            page.gen_content()
+        page = pdf.new_page(TEXT_PAGE_W, TEXT_PAGE_H)
+        added += 1
+        y = TEXT_PAGE_H - TEXT_MARGIN - TEXT_SIZE
+
+    new_page()
+    for kind, text in _text_page_blocks(pages, n_pages):
+        if kind == "label":
+            if y < TEXT_PAGE_H - TEXT_MARGIN - TEXT_SIZE:  # not first on page
+                y -= TEXT_LEADING * 0.6
+            if y < TEXT_MARGIN + TEXT_LEADING:
+                new_page()
+            _add_text(pdf.raw, page.raw, helv, text, LABEL_SIZE,
+                      TEXT_MARGIN, y, None, invisible=False)
+            y -= TEXT_LEADING
+            continue
+        for vis in _wrap(hb_font, upem, text, TEXT_SIZE, max_w) or [""]:
+            if y < TEXT_MARGIN:
+                new_page()
+            if vis:
+                _draw_shaped_line(pdf.raw, page.raw, font, hb_font, upem, vis,
+                                  TEXT_SIZE, TEXT_MARGIN, y)
+            y -= TEXT_LEADING
+    page.gen_content()
+    return added
+
+
+def _build_pdf(master: Path | list[Path], pages: list[dict],
+               receipt: dict) -> bytes:
     import pypdfium2 as pdfium
     import pypdfium2.raw as r
     from PIL import Image
@@ -453,13 +629,22 @@ def _build_pdf(master: Path | list[Path], pages: list[dict], receipt: dict,
     from .pdfutil import load_pages
 
     images = load_pages(master)  # same 1600px-capped images the bboxes use
+    if not images:
+        # Never ship a PDF without the document: fail loudly instead.
+        raise RuntimeError("no page images for the export PDF")
     by_no = {int(p.get("page", i + 1)): p for i, p in enumerate(pages)}
 
     pdf = pdfium.PdfDocument.new()
-    font, _font_buf = _load_font(pdf.raw, FONT_PATH.read_bytes())
+    font_data = FONT_PATH.read_bytes()
+    font, _font_buf = _load_font(pdf.raw, font_data)
+    hb_font, upem = _hb_font(font_data)
     helv = r.FPDFText_LoadStandardFont(pdf.raw, b"Helvetica")
     keep = []  # keep JPEG buffers alive until save
     try:
+        # 1) visible retyped text first: page 1 shows the document's content
+        _add_text_pages(pdf, font, helv, hb_font, upem, pages, len(images))
+
+        # 2) the scans, each with its invisible (searchable) text layer
         for i, img in enumerate(images, start=1):
             h_px, w_px = img.shape[:2]
             w_pt, h_pt = w_px * PT_PER_PX, h_px * PT_PER_PX
@@ -485,20 +670,6 @@ def _build_pdf(master: Path | list[Path], pages: list[dict], receipt: dict,
                           x * PT_PER_PX, baseline, bw * PT_PER_PX, invisible=True)
             page.gen_content()
 
-        if receipt_page:  # visible, searchable provenance page at the end
-            page = pdf.new_page(595, 842)
-            y = 800.0
-            for k, line in enumerate(receipt_lines(receipt)):
-                size = 16 if k == 0 else 10
-                # Helvetica has no Tamil glyphs (tofu boxes for a Tamil
-                # filename); non-ASCII lines use the embedded Noto Sans
-                # Tamil, which also covers Latin. ASCII lines unchanged.
-                face = helv if line.isascii() else font
-                _add_text(pdf.raw, page.raw, face, line, size, 50, y, None,
-                          invisible=False)
-                y -= 26 if k == 0 else 16
-            page.gen_content()
-
         out = io.BytesIO()
         pdf.save(out)
     finally:
@@ -509,11 +680,9 @@ def _build_pdf(master: Path | list[Path], pages: list[dict], receipt: dict,
 
     return _add_info_dict(out.getvalue(), {
         "Title": f"{receipt['filename']} (Pink Cloud OCR)",
-        "Producer": "Pink Cloud export (pypdfium2)",
-        "Subject": "Searchable Tamil OCR export with processing receipt",
+        "Producer": "Pink Cloud export (pypdfium2 + HarfBuzz)",
+        "Subject": "Tamil OCR text followed by the searchable scan",
         "Keywords": f"master-sha256:{receipt['master']['sha256']} job:{receipt['job_id']}",
         "PinkCloudJobId": receipt["job_id"],
         "PinkCloudMasterSHA256": receipt["master"]["sha256"],
-        "PinkCloudReceipt": json.dumps(receipt, ensure_ascii=False,
-                                       separators=(",", ":")),
     })

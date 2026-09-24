@@ -57,11 +57,86 @@ def test_pdf_text_layer_has_tamil_word(tmp_path):
     data = export.build_pdf(master, [page], receipt)
     assert data.startswith(b"%PDF")
     pdf = pdfium.PdfDocument(data)
-    assert len(pdf) == 2  # scan page + receipt page
-    text = pdf[0].get_textpage().get_text_range()
-    assert TAMIL_WORD in text
-    assert "0" * 64 in pdf[1].get_textpage().get_text_range()
+    assert len(pdf) == 2  # visible text page + scan page, no receipt page
+    assert TAMIL_WORD in pdf[0].get_textpage().get_text_range()  # visible text
+    assert TAMIL_WORD in pdf[1].get_textpage().get_text_range()  # scan layer
+    for i in range(len(pdf)):
+        assert "0" * 64 not in pdf[i].get_textpage().get_text_range()
     assert pdf.get_metadata_dict()["Keywords"].startswith("master-sha256:" + "0" * 64)
+
+
+RECEIPT_MARKERS = ("Pink Cloud processing receipt", "processing receipt",
+                   "Master SHA-256", "Job:", "Reviewer:", "Processing time")
+
+POEM = ["அகர முதல எழுத்தெல்லாம் ஆதி",
+        "பகவன் முதற்றே உலகு",
+        "கற்றதனால் ஆய பயனென்கொல் " + TAMIL_WORD]
+
+
+def _real_scan_job(client, lines, name="50823516_poem_44.jpg"):
+    """Upload a real image, then store known OCR lines as the job result."""
+    import json
+    img = np.full((1200, 1600, 3), 235, np.uint8)
+    cv2.putText(img, "SCAN", (200, 300), cv2.FONT_HERSHEY_SIMPLEX, 4, (20, 20, 20), 8)
+    ok, buf = cv2.imencode(".jpg", img)
+    jid = client.post("/jobs", files={"file": (name, buf.tobytes(), "image/jpeg")}).json()["job_id"]
+    page = _page([{"id": f"L{i}", "seq": i, "body": b,
+                   "bbox": [100, 100 + i * 70, 1200, 60], "confidence": 0.95}
+                  for i, b in enumerate(lines, 1)])
+    db.set_result(jid, "done", json.dumps({"pages": [page]}, ensure_ascii=False))
+    return jid
+
+
+def _ink(pdf_page) -> float:
+    """Share of non-white pixels when the page is rendered."""
+    g = np.asarray(pdf_page.render(scale=1).to_pil().convert("L"))
+    return float((g < 200).mean())
+
+
+def test_export_pdf_page1_is_visible_ocr_text_no_receipt(client):
+    """Regression (user report): the PDF must open with his document's
+    recognized text, visibly, and carry no receipt page at all."""
+    import pypdfium2 as pdfium
+    jid = _real_scan_job(client, POEM)
+    r = client.get(f"/jobs/{jid}/export.pdf")
+    assert r.status_code == 200
+    pdf = pdfium.PdfDocument(r.content)
+    assert len(pdf) == 2  # text page, scan page
+    first = pdf[0].get_textpage().get_text_range()
+    for line in POEM:
+        assert line in first, line
+    assert _ink(pdf[0]) > 0.003  # glyphs are actually drawn, not an invisible layer
+    # the visible text is real vector glyphs (paths), the scan is page 2
+    kinds0 = {o.type for o in pdf[0].get_objects()}
+    assert pdfium.raw.FPDF_PAGEOBJ_PATH in kinds0
+    assert pdfium.raw.FPDF_PAGEOBJ_IMAGE not in kinds0
+    assert pdfium.raw.FPDF_PAGEOBJ_IMAGE in {o.type for o in pdf[1].get_objects()}
+    assert all(line in pdf[1].get_textpage().get_text_range() for line in POEM)
+    for i in range(len(pdf)):
+        text = pdf[i].get_textpage().get_text_range()
+        for marker in RECEIPT_MARKERS:
+            assert marker not in text, (i, marker)
+    assert "PinkCloudReceipt" not in pdf.get_metadata_dict()
+    # old links with ?receipt_page=true still get no receipt page
+    old = pdfium.PdfDocument(client.get(f"/jobs/{jid}/export.pdf",
+                                        params={"receipt_page": True}).content)
+    assert len(old) == 2
+    # the receipt data itself is still served by its own endpoint
+    rc = client.get(f"/jobs/{jid}/receipt")
+    assert rc.status_code == 200 and rc.json()["lines"]["total"] == len(POEM)
+
+
+def test_export_pdf_long_text_flows_onto_more_text_pages_in_order(client):
+    import pypdfium2 as pdfium
+    lines = [f"{i:03d} " + POEM[i % 3] for i in range(90)]
+    jid = _real_scan_job(client, lines, name="long.jpg")
+    pdf = pdfium.PdfDocument(client.get(f"/jobs/{jid}/export.pdf").content)
+    assert len(pdf) >= 3  # >=2 text pages + the scan
+    text_pages = len(pdf) - 1
+    visible = "\n".join(pdf[i].get_textpage().get_text_range() for i in range(text_pages))
+    pos = [visible.index(l) for l in lines]
+    assert pos == sorted(pos)  # reading order kept across page breaks
+    assert pdfium.raw.FPDF_PAGEOBJ_IMAGE in {o.type for o in pdf[len(pdf) - 1].get_objects()}
 
 
 def test_receipt_counts(client, job_id):

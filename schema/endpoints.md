@@ -228,18 +228,23 @@ that is written into the receipt (the backend does not store a reviewer yet).
 
 | Method | Path | Returns |
 |---|---|---|
-| GET | `/jobs/{job_id}/export.pdf` | Searchable PDF (`application/pdf`, attachment). `?receipt_page=false` drops the last page |
+| GET | `/jobs/{job_id}/export.pdf` | Text-first searchable PDF (`application/pdf`, attachment). No receipt page; `?receipt_page` is accepted for old links and ignored |
 | GET | `/jobs/{job_id}/export.txt` | UTF-8 text: `# ` provenance header, then `=== page N ===` blocks of line bodies in `seq` order |
 | GET | `/jobs/{job_id}/receipt` | Processing receipt JSON (below) |
 
 Both exports also send an `X-Master-SHA256` header.
 
-**PDF:** each page is the 1600px-capped scan (same image the bboxes use, 150 dpi) with an invisible
-Tamil text layer: one text object per line, stretched over its `bbox`, font = bundled
-`fonts/noto-sans-tamil.ttf` (CID, ToUnicode) so Ctrl+F / `pdftotext` find the Tamil words. `[stub]`
-lines are left out of the text layer. A visible receipt page is appended, and the Info dictionary
-carries `Title`, `Keywords` (`master-sha256:<hash> job:<id>`) plus custom keys `PinkCloudJobId`,
-`PinkCloudMasterSHA256`, `PinkCloudReceipt` (the receipt JSON).
+**PDF:** opens with the recognized text: the corrections-applied line bodies in `seq` order as
+visible, readable Tamil on A4 pages (13 pt, `Page N` label per source page on multi-page jobs,
+long lines wrapped, "No text was recognized in this document." when there is none). The glyphs are
+shaped with HarfBuzz (`uharfbuzz`) and drawn as vector outlines from the bundled
+`fonts/noto-sans-tamil.ttf`, with an invisible Unicode text object over each line so the text is
+copyable and `pdftotext` returns it. Then come the scans: each page is the 1600px-capped scan (same
+image the bboxes use, 150 dpi) with an invisible Tamil text layer: one text object per line,
+stretched over its `bbox` (CID font, ToUnicode) so Ctrl+F finds the words on the scan. `[stub]`
+lines are left out of both. There is **no receipt page**; the receipt is `GET /jobs/{id}/receipt`.
+The Info dictionary carries `Title`, `Keywords` (`master-sha256:<hash> job:<id>`) plus custom keys
+`PinkCloudJobId`, `PinkCloudMasterSHA256`.
 
 **Receipt JSON:**
 
