@@ -252,6 +252,41 @@ function buildModel(doc) {
   rebuildQueue();
 }
 
+/* Which OCR engine read this page (page.ocr_engine from the backend:
+   FAST pages go to Gemini, HEAVY pages to Sarvam, the other engine is the
+   fallback; "stub" = neither produced text). Older jobs and the offline
+   demo carry no ocr_engine: no tag. Shown after the page sub-line with the
+   page's processing time, so "why was this slow" has an answer. */
+var ENGINE_NAMES = { gemini: "Gemini", sarvam: "Sarvam", stub: "No OCR" };
+function engineTag(doc) {
+  var e = doc && doc.ocr_engine;
+  if (!e || !ENGINE_NAMES[e]) return null;
+  var text = ENGINE_NAMES[e] + (e !== "stub" && doc.ocr_fallback ? " (fallback)" : "");
+  var ms = Number(doc.processing_ms);
+  if (ms > 0) text += " · " + (ms < 10000 ? (ms / 1000).toFixed(1) : String(Math.round(ms / 1000))) + "s";
+  var first = doc.profile === "HEAVY" ? "Sarvam" : doc.profile === "FAST" ? "Gemini" : null;
+  var title = e === "stub"
+    ? "No OCR engine produced text for this page (both engines failed)."
+    : "Read by " + ENGINE_NAMES[e] + "." +
+      (first ? " " + doc.profile + " pages go to " + first + " first" +
+        (doc.ocr_fallback ? "; " + first + " failed, so " + ENGINE_NAMES[e] + " took over." : ".") : "") +
+      (ms > 0 ? " Page took " + (ms / 1000).toFixed(1) + "s end to end." : "");
+  return { text: text, title: title, engine: e, fallback: !!doc.ocr_fallback };
+}
+function renderEngineTag(doc) {
+  var old = el.scanSub.parentNode && el.scanSub.parentNode.querySelector(".eng-tag");
+  if (old) old.remove();
+  var t = engineTag(doc);
+  if (!t) return;
+  var tag = document.createElement("span");
+  tag.className = "eng-tag";
+  tag.setAttribute("data-engine", t.engine);
+  if (t.fallback) tag.setAttribute("data-fallback", "1");
+  tag.title = t.title;
+  tag.textContent = t.text;
+  el.scanSub.insertAdjacentElement("afterend", tag);
+}
+
 /* ---------------- suggestions (contract: schema/suggestions-contract.md) ----------------
    page.suggestions[] = [{line, word, before, candidates: [{text, score, source}]}]
      line   - line id ("L3"), matches lines[].id
@@ -1174,6 +1209,7 @@ function renderBadges() {
   });
   el.pageBadges.appendChild(b);
   el.scanSub.textContent = "page " + S.page.page + " of " + (S.pageCount || 1) + " · " + S.page.profile + " · " + state;
+  renderEngineTag(S.page);
   /* Export is always reachable once a page is loaded, whatever the page
      state (was: only clean/repaired/precomputed, which left Sarvam and stub
      pages - state "queued" - with a dead button). The export dialog handles

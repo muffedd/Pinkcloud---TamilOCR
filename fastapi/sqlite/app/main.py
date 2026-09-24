@@ -39,6 +39,7 @@ from fastapi.responses import FileResponse
 
 from . import db, storage
 from .ocr import (_safe_error, engine_status, failed_page_lines, ocr_page,
+                  page_engine, reset_page_engine,
                   warn_legacy_env)
 from .pdfutil import load_pages, probe_decode, to_gray
 from .preprocess import Mapper, prepare
@@ -217,13 +218,16 @@ def _pipeline(job_id: str, master: Path | list[Path]) -> list[dict]:
         #     that escapes ocr_page() must not sink the job: that page
         #     gets a marked stub line (-> needs_review) and the other
         #     pages still run.
+        reset_page_engine()
         try:
             ocr_lines, ocr_ms = ocr_page(prepared, profile)
             ocr_lines = mapper.to_page(ocr_lines)
+            engine, primary = page_engine()
         except Exception as exc:
             logging.getLogger("pinkcloud.job").exception(
                 "job %s: OCR failed on page %d", job_id, page_number)
             ocr_lines, ocr_ms = failed_page_lines(img, exc), 0.0
+            engine, primary = "stub", page_engine()[1]
 
         # (6b) Per-line confidence from the text check ("text looks
         #      malformed" score), not Sarvam's layout-block score, which
@@ -244,6 +248,9 @@ def _pipeline(job_id: str, master: Path | list[Path]) -> list[dict]:
                 },
                 ocr_lines=ocr_lines,
                 processing_ms=page_ms,
+                ocr_engine=engine,
+                ocr_fallback=(engine is not None and primary is not None
+                              and engine != primary),
             )
         )
         _set_progress(job_id, page_number, total)

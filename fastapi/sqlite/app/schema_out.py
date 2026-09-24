@@ -122,6 +122,8 @@ def build_page_result(
     ocr_lines: list[dict],
     processing_ms: float,
     suggestions: list[dict] | None = None,
+    ocr_engine: str | None = None,
+    ocr_fallback: bool | None = None,
 ) -> dict[str, Any]:
     """Assemble the contract JSON for one page.
 
@@ -167,6 +169,13 @@ def build_page_result(
         "needs_review": needs_review,
         "processing_ms": int(round(processing_ms)),
     }
+    if ocr_engine is not None:
+        # Which engine read this page: "gemini" | "sarvam" | "stub".
+        # ocr_fallback: the route's first engine failed and the other one
+        # (or the stub) produced the page. Omitted when unknown (older
+        # jobs, tests that bypass ocr_page), so old pages look as before.
+        page["ocr_engine"] = ocr_engine
+        page["ocr_fallback"] = bool(ocr_fallback)
     if suggestions is not None:
         page["suggestions"] = suggestions
     return page

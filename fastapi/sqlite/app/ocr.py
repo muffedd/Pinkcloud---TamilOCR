@@ -43,6 +43,7 @@ import io
 import json
 import logging
 import os
+import threading
 import time
 import zipfile
 
@@ -50,6 +51,23 @@ logger = logging.getLogger("pinkcloud.ocr")
 
 # Which engine produced the last page, and the last per-engine failure.
 _LAST_ENGINE: str | None = None
+# Per-thread record of which engine read the page this thread last OCR'd
+# (a job's pages run on one worker thread, so concurrent jobs don't mix).
+# _pipeline reads it right after ocr_page() to stamp page.ocr_engine.
+_PAGE_ENGINE = threading.local()
+
+
+def reset_page_engine() -> None:
+    """Forget this thread's last page engine (call before ocr_page)."""
+    _PAGE_ENGINE.engine = None
+    _PAGE_ENGINE.primary = None
+
+
+def page_engine() -> tuple[str | None, str | None]:
+    """(engine that produced this thread's last page, engine its route
+    tried first). Both None if ocr_page() did not run since the reset."""
+    return (getattr(_PAGE_ENGINE, "engine", None),
+            getattr(_PAGE_ENGINE, "primary", None))
 _SARVAM_ERROR: str | None = None
 _GEMINI_ERROR: str | None = None
 
@@ -134,7 +152,9 @@ def ocr_page(img, profile: str | None = None) -> tuple[list[dict], float]:
     global _LAST_ENGINE, _SARVAM_ERROR, _GEMINI_ERROR
     t0 = time.perf_counter()
 
-    for engine in _route(profile):
+    route = _route(profile)
+    _PAGE_ENGINE.primary = route[0] if route else None
+    for engine in route:
         try:
             lines = _gemini_ocr(img) if engine == "gemini" else _sarvam_ocr(img)
         except Exception as exc:
@@ -149,9 +169,11 @@ def ocr_page(img, profile: str | None = None) -> tuple[list[dict], float]:
         else:
             _SARVAM_ERROR = None
         _LAST_ENGINE = engine
+        _PAGE_ENGINE.engine = engine
         return lines, (time.perf_counter() - t0) * 1000.0
 
     _LAST_ENGINE = "stub"
+    _PAGE_ENGINE.engine = "stub"
     return _stub_lines(img), (time.perf_counter() - t0) * 1000.0
 
 
