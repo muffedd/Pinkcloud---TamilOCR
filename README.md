@@ -4,7 +4,7 @@
 
 Palm-leaf manuscripts and old Tamil print break ordinary OCR. The ink is faded, the pages are stained or warped, and the letterforms are older than the ones modern models were trained on. Pink Cloud accepts that the machine will be wrong sometimes. It scores every word, shows a reviewer only the words it doubts, and makes each fix a single keystroke. The result is Unicode Tamil text and a searchable PDF you can trust, without proofreading every line by hand.
 
-> **Status:** the upload, review, library and export pages all run against the FastAPI backend on `main`, and the upload, editor and library pages also run fully offline in demo mode (`?mock=1`). The backend runs upload → quality routing → Tamil OCR (**Gemini** for FAST pages, **Sarvam** for HEAVY; marked stub pages if both are unavailable), serves page images, saves reviewer corrections, and exports a PDF (recognized Tamil text first, then the searchable scan), TXT and DOCX, plus a processing receipt. See [Current state](#current-state).
+> **Status:** the upload, review, library and export pages all run against the FastAPI backend on `main`, and the upload, editor and library pages also run fully offline in demo mode (`?mock=1`). The backend runs upload → quality routing → Tamil OCR (**Gemini** for FAST pages, **Sarvam** for HEAVY; marked stub pages if both are unavailable), serves page images, saves reviewer corrections, and exports a PDF (recognized Tamil text first, then the searchable scan), TXT and DOCX that carry only the transcribed text, plus a separate processing receipt endpoint. See [Current state](#current-state).
 
 ## How it works
 
@@ -34,7 +34,7 @@ The editor sits in a sidebar shell (Workflow: Upload, Tamil OCR, Review, Export,
 
 ## The export page
 
-`export.html?job=<id>` shows the job's processing receipt as a card (`GET /jobs/{id}/receipt`) with **Download PDF** (the recognized Tamil text as readable pages, then the scan with the Tamil text layer under it; no receipt page) and **Download TXT**. DOCX comes from the backend; Markdown, CSV and XML are built in the browser from the job and its saved corrections. The page has its own loading, job-not-found and not-ready states, and waits for a job that is still processing. `?reviewer=<name>` is written into the receipt and the exports.
+`export.html?job=<id>` shows the job (`GET /jobs/{id}`) with **Download PDF** (the recognized Tamil text as readable pages, then the scan with the Tamil text layer under it) and **Download TXT**. Every format carries only the transcribed text: no receipt card on the page and no receipt, header, job id or hash inside any file (the receipt JSON is still at `GET /jobs/{id}/receipt`). DOCX comes from the backend; Markdown, CSV and XML are built in the browser from the job and its saved corrections. The page has its own loading, job-not-found and not-ready states, and waits for a job that is still processing. `?reviewer=<name>` on `GET /jobs/{id}/receipt` is written into the receipt.
 
 ## Current state
 
@@ -128,7 +128,7 @@ The backend lives in `fastapi/sqlite/app/`.
 | `app/pdfutil.py` | PDF via pypdfium2, images via cv2; long side capped at 1600 px |
 | `app/ocr.py` | Routed OCR: Gemini (FAST) + Sarvam Document AI (HEAVY), each the other's fallback; marked stub when both fail |
 | `app/preprocess.py` | Safe-wins page cleanup before OCR (crop dark borders, deskew, background flatten, low-res upscale) with box mapping back to the page |
-| `app/export.py` | Applies saved corrections, builds the receipt and the PDF / TXT / DOCX exports |
+| `app/export.py` | Applies saved corrections, builds the receipt JSON and the text-only PDF / TXT / DOCX exports |
 | `app/schema_out.py` | Builds the frozen output contract JSON (`schema/schema.json`) |
 
 The output contract is in [`schema/schema.json`](schema/schema.json), the endpoint reference in [`schema/endpoints.md`](schema/endpoints.md), the corrections route in [`schema/corrections-endpoint.md`](schema/corrections-endpoint.md), the proposed suggestions field in [`schema/suggestions-contract.md`](schema/suggestions-contract.md), and a sample page in [`schema/doc_demo.json`](schema/doc_demo.json).
@@ -142,7 +142,7 @@ The output contract is in [`schema/schema.json`](schema/schema.json), the endpoi
 | `intro.js`, `intro.css` | Landing intro on `index.html` (from `design-drafts/pinkcloud-intro.html`): plays once per browser session, click/Esc/Skip jumps to the slide-up, skipped for reduced motion. Plain dots on the canvas colour, no orange glow behind the marks. Variants: `logo` (default, the `logo@2x.svg` cloud mark + "Pinkcloud" wordmark in dot-matrix), `pinkcloud` (bolt + "Pink Cloud"), `omni` (bolt + "Omni"). `?intro=0` off, `?intro=1` replay, `?intro=<variant>` plays and remembers that variant in the browser; any `?intro=` shows a variant picker on the sheet. Preview: `design-drafts/intro-variants.html` |
 | `loader.js`, `loader.css` | OCR processing overlay on `index.html`: shader D from `design-drafts/pink-cloud-loading-shader-D.html` (3D glyph swarm, canvas 2D, no dependencies). While a batch uploads and is read, the page being processed (the image itself, the first image of a ZIP, or a built-in sample page for PDF/TIFF) wraps into a globe, unrolls into a 3D page, and an orange scan moves down it with the batch progress (upload bytes 0-35%, reading 35-97% eased over time because the backend reports no OCR progress, done 100%). Finishes with "Page read" and fades out; Hide/Esc dismisses it for that batch, the file rows keep showing progress. Reduced motion: still page, scan steps with progress. The page card casts a small gray shadow (`--pc-loader-card-shadow-*` tokens), no orange wash behind it, and the scan glow is clipped to the card. `?loader=0` turns it off |
 | `library.html`, `library.js`, `library.css` | Library: job list (`GET /jobs`) and text search (`GET /search`, `?q=` kept in the URL); a hit opens `editor.html?job=<id>&page=<n>` |
-| `export.html`, `export.js`, `export.css` | Export page: receipt card, PDF/TXT downloads, plus DOCX (backend) and Markdown / CSV / XML (built in the browser); loading, missing and not-ready states |
+| `export.html`, `export.js`, `export.css` | Export page: PDF/TXT downloads, plus DOCX (backend) and Markdown / CSV / XML (built in the browser); loading, missing and not-ready states |
 | `nav-back.js` | Back button on Library and Export: returns to the previous Pink Cloud page, else to Upload (Library) or the job's editor (Export) |
 | `editor.html`, `editor.js`, `editor.css` | Review editor: sidebar shell, routed review queue with scan crops and suggestions, corrections save-back, page pager, export dialog |
 | `samples/editor/` | Offline editor fixtures from real Sarvam output (`make_fixtures.py`); fake suggestions |

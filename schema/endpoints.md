@@ -223,16 +223,22 @@ from the browser. The raw OpenAPI spec is at `/openapi.json`.
 ## Export + receipt (slice: pipe-export-receipt)
 
 Only for jobs with `status: "done"`. Unknown job → `404`; job still `pending` or `error` → `409`;
-master file gone from `uploads/` → `410` (PDF only). All three accept an optional `?reviewer=<name>`
-that is written into the receipt (the backend does not store a reviewer yet).
+master file gone from `uploads/` → `410` (PDF only). `/receipt` accepts an optional `?reviewer=<name>`
+that is written into the receipt (the backend does not store a reviewer yet); the export routes
+accept it for old links and ignore it.
+
+**Every export carries ONLY the transcribed (corrections-applied) text.** No receipt, header,
+job id, hash or reviewer appears in the file content of any format; the receipt is only
+`GET /jobs/{id}/receipt`.
 
 | Method | Path | Returns |
 |---|---|---|
 | GET | `/jobs/{job_id}/export.pdf` | Text-first searchable PDF (`application/pdf`, attachment). No receipt page; `?receipt_page` is accepted for old links and ignored |
-| GET | `/jobs/{job_id}/export.txt` | UTF-8 text: `# ` provenance header, then `=== page N ===` blocks of line bodies in `seq` order |
+| GET | `/jobs/{job_id}/export.txt` | UTF-8 text: only the line bodies in `seq` order, one per line. Multi-page jobs get a `=== page N ===` separator before each page; no header. Empty body when nothing was recognized |
+| GET | `/jobs/{job_id}/export.docx` | Word document: the same line text as `export.txt`, one paragraph per line (`Page N` heading per page on multi-page jobs). No title block, no receipt section. Filename + master SHA-256 only in the document properties |
 | GET | `/jobs/{job_id}/receipt` | Processing receipt JSON (below) |
 
-Both exports also send an `X-Master-SHA256` header.
+All three exports also send an `X-Master-SHA256` response header (not part of the file).
 
 **PDF:** opens with the recognized text: the corrections-applied line bodies in `seq` order as
 visible, readable Tamil on A4 pages (13 pt, `Page N` label per source page on multi-page jobs,

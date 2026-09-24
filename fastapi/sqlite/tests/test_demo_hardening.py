@@ -195,10 +195,10 @@ def _job():
 
 def test_txt_body_drops_stub_lines():
     p = _stub_page()
-    txt = export.build_txt([p], export.build_receipt(_job(), [p]))
-    body = txt.split("=== page 1 ===", 1)[1]
-    assert "[stub]" not in body and "உண்மை வரி" in body
-    assert "stub pages: 1" in txt  # receipt still reports it
+    receipt = export.build_receipt(_job(), [p])
+    txt = export.build_txt([p], receipt)
+    assert txt == "உண்மை வரி\n"  # transcribed text only, no receipt header
+    assert receipt["ocr"]["stub_pages"] == 1  # the receipt still reports it
 
 
 def test_docx_body_drops_stub_lines():
@@ -232,8 +232,10 @@ def test_damaged_corrections_visible_in_receipt(client, png_job, content):
     (storage.UPLOAD_ROOT / png_job / "corrections.json").write_text(content, encoding="utf-8")
     rc = client.get(f"/jobs/{png_job}/receipt").json()
     assert rc["corrections_error"]
+    # the problem is reported by the receipt only; the TXT export carries
+    # nothing but the transcribed text
     txt = client.get(f"/jobs/{png_job}/export.txt").text
-    assert "WARNING - corrections not fully applied" in txt
+    assert "WARNING" not in txt and not txt.startswith("#")
 
 
 def test_malformed_entries_reported(client, png_job):

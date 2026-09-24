@@ -6,8 +6,9 @@
 <title>Pink Cloud · Export</title>
 <!--
   Pink Cloud - page 3 of 3 (layout plan: upload -> editor -> export).
-  export.html?job=<job_id> reads GET /jobs/{id}/receipt and links the
-  existing GET /jobs/{id}/export.pdf and /export.txt downloads.
+  export.html?job=<job_id> reads GET /jobs/{id} and links the existing
+  GET /jobs/{id}/export.pdf, /export.txt and /export.docx downloads. Every
+  export carries only the transcribed text; no receipt card on this page.
   States: loading, missing job (no ?job= or 404), not ready (pending/error, 409).
   Components come from ui.css; page layout lives in export.css (scoped to .ex-app).
 -->
@@ -50,8 +51,8 @@
         <div class="card ex-state-card">
           <svg class="spin ex-state-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 2a6 6 0 1 1-6 6"/></svg>
           <div>
-            <p class="ex-state-title">Loading receipt</p>
-            <p class="small ex-muted">Reading the processing receipt for this job.</p>
+            <p class="ex-state-title">Loading export</p>
+            <p class="small ex-muted">Getting this job ready to download.</p>
           </div>
         </div>
       </section>
@@ -87,7 +88,7 @@
         <a class="btn btn--ghost ex-back" href="./index.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 8H3.5M7 4.5 3.5 8 7 11.5"/></svg><span class="lb"><span>Back to upload</span><span aria-hidden="true">Back to upload</span></span></a>
       </section>
 
-      <!-- Ready: receipt -->
+      <!-- Ready: downloads -->
       <section class="ex-state" data-state="ready" hidden>
         <header class="ex-head">
           <p class="eyebrow ex-muted">Export</p>
@@ -107,7 +108,7 @@
           </div>
           <div class="card ex-dl ex-dl--txt">
             <p class="ex-dl-title">Plain text</p>
-            <p class="small ex-muted">TXT · UTF-8, with a provenance header.</p>
+            <p class="small ex-muted">TXT · UTF-8, just the recognized text.</p>
             <a class="btn btn--outline" id="dlTxt" href="#" download><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5V10M5 7l3 3 3-3M3 12.5h10"/></svg><span class="lb"><span>Download TXT</span><span aria-hidden="true">Download TXT</span></span></a>
           </div>
 
@@ -121,24 +122,6 @@
               <button type="button" class="btn btn--outline btn--sm" id="dlXml" data-fmt="xml"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5V10M5 7l3 3 3-3M3 12.5h10"/></svg><span class="lb"><span>XML</span><span aria-hidden="true">XML</span></span></button>
             </div>
             <p class="small ex-muted ex-more-err" id="moreErr" role="status" hidden></p>
-          </div>
-        </div>
-
-        <div class="card ex-receipt">
-          <div class="ex-receipt-head">
-            <p class="ex-dl-title">Processing receipt</p>
-            <span class="small ex-muted" id="rJob"></span>
-          </div>
-          <dl class="ex-kv" id="rKv"></dl>
-          <div class="ex-hash">
-            <div class="ex-hash-head">
-              <span class="eyebrow ex-muted">Master SHA-256</span>
-              <span class="small" id="rVerified"></span>
-            </div>
-            <div class="ex-hash-row">
-              <code class="ex-hash-val" id="rSha"></code>
-              <button type="button" class="btn btn--soft btn--sm" id="copySha"><span class="lb"><span id="copyLbl">Copy</span><span aria-hidden="true" id="copyLbl2">Copy</span></span></button>
-            </div>
           </div>
         </div>
 

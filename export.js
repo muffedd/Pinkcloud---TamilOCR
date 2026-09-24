@@ -1,28 +1,27 @@
 /* Pink Cloud - Export / Result page (export.html?job=<job_id>).
-   GET /jobs/{id}/receipt -> receipt card; downloads link the existing
+   GET /jobs/{id} -> header (filename, pages, created); downloads link the existing
    GET /jobs/{id}/export.pdf, /export.txt and /export.docx endpoints.
    Markdown, CSV and XML are built in the browser from GET /jobs/{id} plus
    GET /jobs/{id}/corrections, applying the saved fixes with the same rule
    as the server's export.apply_corrections (page, line id, 1-based word;
    stale 'before' skipped), so every format carries the same text.
    404 -> missing job; 409 -> not ready (polls GET /jobs/{id} while pending).
-   Same ?api= override as api.js (default: same origin). ?reviewer= is
-   passed through to the receipt and both exports. */
+   Same ?api= override as api.js (default: same origin). Every export
+   carries ONLY the transcribed text: no receipt card here and no receipt
+   fields in any file (the receipt JSON stays at GET /jobs/{id}/receipt). */
 (function () {
   "use strict";
 
   var QS = new URLSearchParams(location.search);
   var API_BASE = (QS.get("api") || "").replace(/\/+$/, "");
   var JOB = (QS.get("job") || "").trim();
-  var REVIEWER = (QS.get("reviewer") || "").trim();
   var POLL_MS = 2000;
 
   var root = document.getElementById("exRoot");
   function $(id) { return document.getElementById(id); }
 
   function jobUrl(suffix) {
-    var u = API_BASE + "/jobs/" + encodeURIComponent(JOB) + (suffix || "");
-    return REVIEWER ? u + "?reviewer=" + encodeURIComponent(REVIEWER) : u;
+    return API_BASE + "/jobs/" + encodeURIComponent(JOB) + (suffix || "");
   }
 
   function show(state) {
@@ -40,14 +39,6 @@
     $("navReview").removeAttribute("href");
   }
 
-  function fmtMs(ms) {
-    ms = Number(ms) || 0;
-    if (ms < 1000) return ms + " ms";
-    var s = ms / 1000;
-    if (s < 60) return s.toFixed(1) + " s";
-    var m = Math.floor(s / 60), r = Math.round(s % 60);
-    return m + ":" + (r < 10 ? "0" : "") + r + " min";
-  }
   function fmtTime(iso) {
     if (!iso) return "-";
     var d = new Date(iso);
@@ -55,18 +46,6 @@
     return d.toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
   }
   function plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
-
-  function kv(label, value, note) {
-    var wrap = document.createElement("div");
-    var dt = document.createElement("dt"); dt.textContent = label;
-    var dd = document.createElement("dd"); dd.textContent = value;
-    if (note) {
-      var s = document.createElement("span"); s.className = "ex-kv-note"; s.textContent = note;
-      dd.appendChild(s);
-    }
-    wrap.appendChild(dt); wrap.appendChild(dd);
-    return wrap;
-  }
 
   function setEngine(engine) {
     if (!engine) return;
@@ -76,38 +55,24 @@
     $("engineText").textContent = engine === "stub" ? "OCR engine: stub" : "OCR engine: " + engine;
   }
 
-  function renderReceipt(r) {
-    var pages = r.page_count || 0;
-    document.title = "Pink Cloud · Export · " + (r.filename || "job");
-    $("rFilename").textContent = r.filename || "Untitled scan";
-    $("rSub").textContent = plural(pages, "page", "pages") + " · created " + fmtTime(r.time && r.time.created_at);
-    $("rJob").textContent = "Job " + r.job_id;
-
+  function renderReady(job) {
+    var pages = ((job.result && job.result.pages) || []).length;
+    document.title = "Pink Cloud · Export · " + (job.filename || "job");
+    $("rFilename").textContent = job.filename || "Untitled scan";
+    $("rSub").textContent = plural(pages, "page", "pages") + " · created " + fmtTime(job.created_at);
     $("dlPdf").href = jobUrl("/export.pdf");
     $("dlTxt").href = jobUrl("/export.txt");
     $("dlDocx").href = jobUrl("/export.docx");
-    RECEIPT = r;
-
-    var c = r.corrections || {}, p = r.pages || {}, l = r.lines || {}, t = r.time || {}, o = r.ocr || {};
-    var tiers = Object.keys(c.by_tier || {}).sort().map(function (k) { return k + " " + c.by_tier[k]; }).join(" · ");
-    var kvEl = $("rKv");
-    kvEl.textContent = "";
-    kvEl.appendChild(kv("Pages", String(pages), "auto " + (p.auto || 0) + " · review " + (p.human_review || 0)));
-    kvEl.appendChild(kv("Lines", String(l.total || 0), "auto " + (l.auto || 0) + " · review " + (l.human_review || 0)));
-    kvEl.appendChild(kv("Corrections", String(c.total || 0), (tiers || "no tiers") + " · " + plural(c.human_verdicts || 0, "verdict", "verdicts")));
-    kvEl.appendChild(kv("Reviewer", r.reviewer || "None recorded"));
-    kvEl.appendChild(kv("Processing time", fmtMs(t.processing_ms_total), "exported " + fmtTime(t.exported_at)));
-    kvEl.appendChild(kv("OCR engine", o.engine_now || "unknown", o.stub_pages ? plural(o.stub_pages, "stub page", "stub pages") : null));
-    setEngine(o.engine_now);
-
-    var m = r.master || {};
-    $("rSha").textContent = m.sha256 || "-";
-    var v = $("rVerified");
-    v.className = "small " + (m.verified_on_disk ? "ex-verified-ok" : "ex-verified-bad");
-    v.textContent = m.verified_on_disk ? "Verified on disk" : "Not verified on disk";
+    JOBINFO = job;
     show("ready");
   }
-
+  /* OCR engine badge from GET /health (same probe the editor uses). */
+  function loadEngine() {
+    fetch(API_BASE + "/health", { cache: "no-store" })
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (h) { if (h) setEngine(h.ocr_engine); })
+      .catch(function () { /* badge stays hidden */ });
+  }
   function renderMissing(msg) {
     if (msg) $("missingText").textContent = msg;
     show("missing");
@@ -140,24 +105,26 @@
         if (res.status === 404) return renderMissing();
         if (!res.ok) throw new Error("HTTP " + res.status);
         return res.json().then(function (job) {
-          if (job.status === "done") return loadReceipt();
+          if (job.status === "done") return renderReady(job);
           renderNotReady(job);
         });
       })
       .catch(function () { setTimeout(pollJob, POLL_MS * 2); });
   }
 
-  function loadReceipt() {
-    return fetch(jobUrl("/receipt"), { cache: "no-store" })
+  function loadJob() {
+    return fetch(API_BASE + "/jobs/" + encodeURIComponent(JOB), { cache: "no-store" })
       .then(function (res) {
         if (res.status === 404) return renderMissing();
-        if (res.status === 409) return pollJob();
         if (!res.ok) throw new Error("HTTP " + res.status);
-        return res.json().then(renderReceipt);
+        return res.json().then(function (job) {
+          if (job.status === "done") return renderReady(job);
+          renderNotReady(job);
+        });
       })
       .catch(function () {
         renderMissing("Could not reach the Pink Cloud backend. Check that it is running, then reload this page.");
-        $("missingText").previousElementSibling.textContent = "Receipt unavailable";
+        $("missingText").previousElementSibling.textContent = "Export unavailable";
       });
   }
 
@@ -232,7 +199,7 @@
   });
 
   /* ---------- client-built formats: Markdown, CSV, XML ---------- */
-  var RECEIPT = null;
+  var JOBINFO = null;
 
   function getJson(url, okMissing) {
     return fetch(url, { cache: "no-store" }).then(function (res) {
@@ -270,17 +237,17 @@
   }
 
   function mdEsc(t) { return t.replace(/([\\`*_\[\]<>|])/g, "\\$1").replace(/^(\s*)([#>+-]|\d+[.)])/, "$1\\$2"); }
-  function buildMd(pages, r) {
-    var out = ["# " + mdEsc(r.filename || "Pink Cloud export"), "",
-      "> Pink Cloud export · job " + r.job_id + " · master SHA-256 " + ((r.master || {}).sha256 || "-"), ""];
+  /* Transcribed text only: "## Page N" headings on multi-page jobs, no
+     title, job id or hash. */
+  function buildMd(pages) {
+    var multi = pages.length > 1, out = [];
     pages.forEach(function (p) {
-      out.push("## Page " + p.page, "");
       var ls = pageLines(p).map(mdEsc);
-      out.push(ls.length ? ls.join("  \n") : "_(no text)_", "");
+      if (multi) out.push("## Page " + p.page, "", ls.length ? ls.join("  \n") : "_(no text)_", "");
+      else if (ls.length) out.push(ls.join("  \n"), "");
     });
     return out.join("\n");
   }
-
   function csvCell(v) {
     v = v == null ? "" : String(v);
     return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
@@ -300,11 +267,9 @@
       .replace(/[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD\uD800-\uDFFF]/g, "")
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
-  function buildXml(pages, r) {
-    var m = r.master || {};
+  function buildXml(pages) {
     var out = ['<?xml version="1.0" encoding="UTF-8"?>',
-      '<document generator="Pink Cloud" job="' + xmlEsc(r.job_id) + '" filename="' + xmlEsc(r.filename) +
-      '" master-sha256="' + xmlEsc(m.sha256) + '" pages="' + pages.length + '">'];
+      '<document pages="' + pages.length + '">'];
     pages.forEach(function (p) {
       out.push('  <page n="' + p.page + '"' + (p.profile ? ' profile="' + xmlEsc(p.profile) + '"' : "") + ">");
       if (p.lines.length) p.lines.forEach(function (l) {
@@ -334,7 +299,7 @@
 
   function clientExport(fmt, btn) {
     var f = FORMATS[fmt], err = $("moreErr");
-    if (!f || !RECEIPT) return;
+    if (!f || !JOBINFO) return;
     err.hidden = true;
     btn.disabled = true;
     Promise.all([
@@ -342,8 +307,8 @@
       getJson(API_BASE + "/jobs/" + encodeURIComponent(JOB) + "/corrections", true)
     ]).then(function (res) {
       var pages = correctedPages(res[0].result && res[0].result.pages, res[1] && res[1].corrections);
-      var stem = String(RECEIPT.filename || "pinkcloud").replace(/\.[^.]+$/, "").replace(/[\\/:*?"<>|]+/g, "_") || "pinkcloud";
-      saveBlob(f.build(pages, RECEIPT), f.mime, stem + "." + fmt);
+      var stem = String(JOBINFO.filename || "pinkcloud").replace(/\.[^.]+$/, "").replace(/[\\/:*?"<>|]+/g, "_") || "pinkcloud";
+      saveBlob(f.build(pages), f.mime, stem + "." + fmt);
     }).catch(function (e) {
       err.textContent = "Could not build the " + fmt.toUpperCase() + " file (" + e.message + "). Try again, or use TXT.";
       err.hidden = false;
@@ -355,27 +320,12 @@
     b.addEventListener("click", function () { clientExport(b.getAttribute("data-fmt"), b); });
   });
 
-  /* copy the full hash */
-  $("copySha").addEventListener("click", function () {
-    var sha = $("rSha").textContent;
-    function done(label) {
-      $("copyLbl").textContent = label; $("copyLbl2").textContent = label;
-      setTimeout(function () { $("copyLbl").textContent = "Copy"; $("copyLbl2").textContent = "Copy"; }, 1600);
-    }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(sha).then(function () { done("Copied"); }, function () { done("Select to copy"); });
-    } else {
-      var range = document.createRange(); range.selectNodeContents($("rSha"));
-      var sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
-      done("Selected");
-    }
-  });
-
   if (!JOB) {
     renderMissing("Open this page from the editor's Export button, or upload a scan first.");
     $("missingText").previousElementSibling.textContent = "No job selected";
   } else {
     show("loading");
-    loadReceipt();
+    loadEngine();
+    loadJob();
   }
 })();

@@ -899,9 +899,11 @@ def get_receipt(job_id: str, reviewer: str | None = None):
 
 @app.get("/jobs/{job_id}/export.txt")
 def export_txt(job_id: str, reviewer: str | None = None):
-    """Plain UTF-8 text with a '# ' provenance header, page by page."""
+    """Plain UTF-8 text: ONLY the transcribed (corrections-applied) lines,
+    page by page. No header or receipt (that is GET /jobs/{id}/receipt);
+    ?reviewer is accepted for old links and ignored."""
     job, pages = _done_job(job_id)
-    body = _export.build_txt(pages, _receipt(job, pages, reviewer))
+    body = _export.build_txt(pages)
     return PlainTextResponse(
         body, media_type="text/plain; charset=utf-8",
         headers={
@@ -938,10 +940,11 @@ DOCX_MEDIA_TYPE = ("application/vnd.openxmlformats-officedocument."
 
 @app.get("/jobs/{job_id}/export.docx")
 def export_docx(job_id: str, reviewer: str | None = None):
-    """Word document: same corrections-applied text as export.txt, one
-    heading per page, receipt as the final section."""
+    """Word document: ONLY the same corrections-applied text as export.txt
+    ('Page N' heading per page on multi-page jobs). No receipt section;
+    ?reviewer is accepted for old links and ignored."""
     job, pages = _done_job(job_id)
-    data = _export.build_docx(pages, _receipt(job, pages, reviewer))
+    data = _export.build_docx(pages, filename=job["filename"], sha256=job["sha256"])
     return Response(
         data, media_type=DOCX_MEDIA_TYPE,
         headers={

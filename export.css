@@ -122,37 +122,6 @@ body.ex-body {
 .ex-more .ex-more-row .btn { margin-top: 0; }
 .ex-more-err { margin: var(--pc-space-2) 0 0; color: var(--pc-color-error); }
 
-/* Receipt: key-value grid + full hash */
-.ex-receipt { padding: var(--pc-space-6); display: flex; flex-direction: column; gap: var(--pc-space-4); }
-.ex-receipt-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--pc-space-3); flex-wrap: wrap; }
-.ex-receipt-head .small { font-family: var(--pc-font-mono); overflow-wrap: anywhere; }
-.ex-kv { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--pc-space-4) var(--pc-space-6); margin: 0; }
-.ex-kv > div { min-width: 0; display: flex; flex-direction: column; gap: var(--pc-space-1); }
-.ex-kv dt { font-weight: 500; font-size: var(--pc-fs-small); line-height: 1.45; letter-spacing: 0.01em; color: var(--pc-color-text-secondary); }
-.ex-kv dd { margin: 0; font-weight: 500; font-size: var(--pc-fs-btn); line-height: 1.45; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.ex-kv dd .ex-kv-note { display: block; font-size: var(--pc-fs-small); color: var(--pc-color-text-secondary); }
-
-.ex-hash { border-top: var(--pc-hairline); padding-top: var(--pc-space-4); display: flex; flex-direction: column; gap: var(--pc-space-2); }
-.ex-hash-head { display: flex; align-items: center; justify-content: space-between; gap: var(--pc-space-3); }
-.ex-verified-ok { color: var(--pc-color-success); }
-.ex-verified-bad { color: var(--pc-color-error); }
-.ex-hash-row { display: flex; align-items: center; gap: var(--pc-space-3); }
-/* full 64 chars, never ellipsised; wraps only when the column is too narrow */
-.ex-hash-val {
-  flex: 1;
-  min-width: 0;
-  padding: var(--pc-space-2) var(--pc-space-3);
-  border-radius: var(--pc-radius-input);
-  background: var(--pc-color-bg-subtle);
-  font-family: var(--pc-font-mono);
-  font-size: var(--pc-fs-toast);
-  line-height: 1.45;
-  color: var(--pc-color-text-primary);
-  word-break: break-all;
-  user-select: all;
-}
-.ex-hash-row .btn { flex: none; }
-
 .ex-back { align-self: flex-start; text-decoration: none; }
 
 /* ---------- Narrow: sidebar becomes a top strip, cards stack ---------- */

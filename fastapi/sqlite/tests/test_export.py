@@ -1,4 +1,5 @@
 """Tests for the export/receipt slice (app/export.py + /jobs/{id}/export.*).
+Every export carries only the transcribed text; the receipt is its own endpoint.
 
 Run from fastapi/sqlite/:  python -m pytest tests/test_export.py -v
 Works offline: the text-layer test feeds a hand-made page JSON.
@@ -157,7 +158,12 @@ def test_export_endpoints(client, job_id):
     assert p.status_code == 200 and p.content.startswith(b"%PDF")
     assert p.headers["content-type"] == "application/pdf"
     t = client.get(f"/jobs/{job_id}/export.txt")
-    assert t.status_code == 200 and "Master SHA-256" in t.text and "=== page 1 ===" in t.text
+    assert t.status_code == 200
+    # transcribed text only: no "# " header, no receipt, no page separator
+    # on a single-page job
+    assert not t.text.startswith("#") and "=== page" not in t.text
+    for marker in RECEIPT_MARKERS:
+        assert marker not in t.text
 
 
 def test_unknown_job_404(client):
@@ -232,9 +238,16 @@ def test_export_docx_endpoint(client, job_id):
     sha = hashlib.sha256(storage.master_path(job_id).read_bytes()).hexdigest()
     assert r.headers["x-master-sha256"] == sha
     text = _docx_text(r.content)
-    assert "Page 1" in text and "Processing receipt" in text
-    assert sha in text
-    assert "Reviewer: Anu" in text
+    # transcribed text only: no title block, no receipt section
+    assert "Pink Cloud export" not in text and "Page 1" not in text
+    assert sha not in text and "Anu" not in text
+    for marker in RECEIPT_MARKERS:
+        assert marker not in text
+    # provenance stays in the document properties only (like the PDF Info)
+    from docx import Document
+    import io
+    props = Document(io.BytesIO(r.content)).core_properties
+    assert props.keywords == "master-sha256:" + sha
 
 
 def test_export_docx_corrections_applied(client):
@@ -252,9 +265,7 @@ def test_export_docx_corrections_applied(client):
     ]}, ensure_ascii=False), encoding="utf-8")
     text = _docx_text(client.get(f"/jobs/{jid}/export.docx").content)
     assert fixed in text and raw not in text and "கற்றதனால்" in text
-    assert "Corrections: 1" in text
-    # receipt is the final section
-    assert text.index("Processing receipt") > text.index(fixed)
+    assert "Corrections" not in text and "receipt" not in text.lower()
 
 
 def test_export_docx_unfinished_job_409(client):
@@ -267,3 +278,44 @@ def test_export_docx_unfinished_job_409(client):
 
 def test_export_docx_unknown_job_404(client):
     assert client.get(f"/jobs/{'e' * 32}/export.docx").status_code == 404
+
+
+# --------------------------------------------------------------------------
+# every export carries ONLY the transcribed text (no receipt anywhere)
+# --------------------------------------------------------------------------
+
+def test_txt_export_is_only_transcribed_text(client):
+    jid = _real_scan_job(client, POEM, name="poem.jpg")
+    txt = client.get(f"/jobs/{jid}/export.txt", params={"reviewer": "Anu"}).text
+    assert txt == "\n".join(POEM) + "\n"
+    rc = client.get(f"/jobs/{jid}/receipt")  # receipt endpoint stays
+    assert rc.status_code == 200 and rc.json()["reviewer"] is None
+
+
+def test_docx_export_is_only_transcribed_text(client):
+    import io
+    from docx import Document
+    jid = _real_scan_job(client, POEM, name="poem2.jpg")
+    doc = Document(io.BytesIO(client.get(f"/jobs/{jid}/export.docx").content))
+    assert [p.text for p in doc.paragraphs] == POEM
+
+
+def test_multi_page_txt_and_docx_page_separators():
+    import io
+    from docx import Document
+    p1 = _page([{"id": "L1", "seq": 1, "body": POEM[0], "bbox": [0, 0, 1, 1], "confidence": 0.9}])
+    p2 = dict(_page([{"id": "L1", "seq": 1, "body": POEM[1], "bbox": [0, 0, 1, 1], "confidence": 0.9}]), page=2)
+    txt = export.build_txt([p2, p1])
+    assert txt == f"=== page 1 ===\n{POEM[0]}\n\n=== page 2 ===\n{POEM[1]}\n"
+    doc = Document(io.BytesIO(export.build_docx([p1, p2])))
+    assert [p.text for p in doc.paragraphs] == ["Page 1", POEM[0], "Page 2", POEM[1]]
+
+
+def test_empty_job_exports():
+    import io
+    from docx import Document
+    p = _page([])
+    p["text"] = ""
+    assert export.build_txt([p]) == ""
+    doc = Document(io.BytesIO(export.build_docx([p])))
+    assert [x.text for x in doc.paragraphs] == [export.EMPTY_TEXT_NOTE]
