@@ -423,10 +423,12 @@ def test_multi_image_exports_span_all_pages(client, multi_images):
     assert pdf.status_code == 200
     import pypdfium2 as pdfium
     doc = pdfium.PdfDocument(pdf.content)
-    # visible text page(s) first, then the 3 scans; no receipt page
-    assert len(doc) == 4
+    # one fitted text page per source page first, then the 3 scans; no receipt page
+    assert len(doc) == 6
+    assert all(pdfium.raw.FPDF_PAGEOBJ_IMAGE not in {o.type for o in doc[i].get_objects()}
+               for i in (0, 1, 2))
     assert all(pdfium.raw.FPDF_PAGEOBJ_IMAGE in {o.type for o in doc[i].get_objects()}
-               for i in (1, 2, 3))
+               for i in (3, 4, 5))
     doc.close()
 
 

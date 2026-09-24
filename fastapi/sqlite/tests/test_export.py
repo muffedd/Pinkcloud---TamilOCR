@@ -127,17 +127,107 @@ def test_export_pdf_page1_is_visible_ocr_text_no_receipt(client):
     assert rc.status_code == 200 and rc.json()["lines"]["total"] == len(POEM)
 
 
-def test_export_pdf_long_text_flows_onto_more_text_pages_in_order(client):
+def test_export_pdf_long_text_is_fitted_onto_its_one_text_page(client):
+    """A long page used to flow over several A4 text pages; now each source
+    page's text is shrunk/reflowed to fit ONE text page (in reading order)."""
     import pypdfium2 as pdfium
     lines = [f"{i:03d} " + POEM[i % 3] for i in range(90)]
     jid = _real_scan_job(client, lines, name="long.jpg")
     pdf = pdfium.PdfDocument(client.get(f"/jobs/{jid}/export.pdf").content)
-    assert len(pdf) >= 3  # >=2 text pages + the scan
-    text_pages = len(pdf) - 1
-    visible = "\n".join(pdf[i].get_textpage().get_text_range() for i in range(text_pages))
+    assert len(pdf) == 2  # one fitted text page + the scan
+    visible = pdf[0].get_textpage().get_text_range()
     pos = [visible.index(l) for l in lines]
-    assert pos == sorted(pos)  # reading order kept across page breaks
-    assert pdfium.raw.FPDF_PAGEOBJ_IMAGE in {o.type for o in pdf[len(pdf) - 1].get_objects()}
+    assert pos == sorted(pos)  # reading order kept
+    assert pdfium.raw.FPDF_PAGEOBJ_IMAGE in {o.type for o in pdf[1].get_objects()}
+    # every drawn glyph sits inside the page margins (nothing overflows)
+    w, h = pdf[0].get_size()
+    for o in pdf[0].get_objects():
+        l, b, r, t = o.get_bounds()
+        assert l >= export.TEXT_MARGIN - 1 and r <= w - export.TEXT_MARGIN + 1, (l, r)
+        assert b >= export.TEXT_MARGIN * 0.5 and t <= h - export.TEXT_MARGIN * 0.5, (b, t)
+
+
+def _fit_pdf(tmp_path, page_lines, shape=(1600, 1200)):
+    """build_pdf over len(page_lines) blank scans of `shape` (h, w)."""
+    import pypdfium2 as pdfium
+    masters, pages = [], []
+    for n, lines in enumerate(page_lines, 1):
+        m = tmp_path / f"m{n}.png"
+        cv2.imwrite(str(m), np.full((shape[0], shape[1], 3), 240, np.uint8))
+        masters.append(m)
+        p = _page([{"id": f"L{i}", "seq": i, "body": b,
+                    "bbox": [50, 50 + i * 20, 900, 18], "confidence": 0.95}
+                   for i, b in enumerate(lines, 1)])
+        p["page"] = n
+        pages.append(p)
+    job = {"id": "f" * 32, "filename": "fit.pdf", "sha256": "0" * 64,
+           "status": "done", "created_at": "2026-01-01T00:00:00+00:00"}
+    receipt = export.build_receipt(job, pages)
+    return pdfium.PdfDocument(export.build_pdf(masters, pages, receipt))
+
+
+PARA = ("அகர முதல எழுத்தெல்லாம் ஆதி பகவன் முதற்றே உலகு கற்றதனால் ஆய "
+        "பயனென்கொல் வாலறிவன் நற்றாள் தொழாஅர் எனின் மலர்மிசை ஏகினான் "
+        "மாணடி சேர்ந்தார் நிலமிசை நீடுவாழ் வார்")
+
+
+def test_fit_text_to_page_shrinks_and_wraps():
+    font_data = export.FONT_PATH.read_bytes()
+    hb, upem = export._hb_font(font_data)
+    # short text keeps the natural size
+    size, vis = export.fit_text_to_page(hb, upem, POEM, 483, 730)
+    assert size == export.TEXT_SIZE and vis == POEM
+    # a long paragraph wraps inside the width
+    size, vis = export.fit_text_to_page(hb, upem, [PARA], 200, 730)
+    assert len(vis) > 1
+    assert all(export._shaped_width(hb, upem, v, size) <= 200.01 for v in vis)
+    assert " ".join(vis) == PARA
+    # lots of paragraphs: the font shrinks until the block fits the height
+    many = [PARA] * 12
+    size, vis = export.fit_text_to_page(hb, upem, many, 483, 730)
+    assert export.FIT_MIN_SIZE <= size < export.TEXT_SIZE
+    need = size + (len(vis) - 1) * export.leading_for(size) + 0.3 * size
+    assert need <= 730
+
+
+def test_pdf_one_fitted_text_page_per_source_page(tmp_path):
+    """Multi-page job: text page N carries exactly source page N's text
+    (labelled "Page N"), then the N scans follow."""
+    dense = [PARA] * 10
+    pdf = _fit_pdf(tmp_path, [POEM, dense, []])
+    assert len(pdf) == 6  # 3 text pages + 3 scans
+    t = [pdf[i].get_textpage().get_text_range() for i in range(3)]
+    assert "Page 1" in t[0] and POEM[0] in t[0] and "மலர்மிசை" not in t[0]
+    assert t[0].count("வாலறிவன்") == 1
+    assert "Page 2" in t[1] and "Page 1" not in t[1] and t[1].count("வாலறிவன்") == 10
+    assert "Page 3" in t[2] and export.EMPTY_PAGE_NOTE in t[2]
+    for i in range(3, 6):
+        assert pdfium_image_page(pdf[i])
+
+
+def pdfium_image_page(page) -> bool:
+    import pypdfium2 as pdfium
+    return pdfium.raw.FPDF_PAGEOBJ_IMAGE in {o.type for o in page.get_objects()}
+
+
+def test_pdf_text_pages_are_a4_portrait_for_any_scan(tmp_path):
+    for shape in ((1000, 1600), (1600, 1000)):
+        w, h = _fit_pdf(tmp_path, [POEM], shape=shape)[0].get_size()
+        assert (round(w), round(h)) == (595, 842)
+
+
+def test_pdf_extreme_page_continues_instead_of_clipping(tmp_path):
+    """Too dense even at FIT_MIN_SIZE: continue on a "(continued)" page,
+    never drop text."""
+    lines = [f"{i:04d} {PARA}" for i in range(120)]
+    pdf = _fit_pdf(tmp_path, [lines])
+    assert len(pdf) >= 3  # >=2 text pages + scan
+    n_text = len(pdf) - 1
+    assert "(continued)" in pdf[1].get_textpage().get_text_range()
+    visible = "\n".join(pdf[i].get_textpage().get_text_range() for i in range(n_text))
+    pos = [visible.index(f"{i:04d}") for i in range(120)]
+    assert pos == sorted(pos)
+    assert pdfium_image_page(pdf[len(pdf) - 1])
 
 
 def test_receipt_counts(client, job_id):
