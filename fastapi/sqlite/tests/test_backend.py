@@ -271,6 +271,26 @@ def test_reading_order_same_band():
     assert [l["body"] for l in page["lines"]] == ["LEFT", "RIGHT"]
 
 
+def test_reading_order_keeps_engine_order_on_two_columns():
+    """The engine's emitted order is the reading order: a two-column page
+    (whole left column, then whole right column) must NOT be re-sorted
+    into interleaved y-bands."""
+    lines = [
+        {"body": "L-col 1", "bbox": [50, 100, 400, 40], "confidence": 0.9},
+        {"body": "L-col 2", "bbox": [50, 150, 400, 40], "confidence": 0.9},
+        {"body": "R-col 1", "bbox": [550, 100, 400, 40], "confidence": 0.9},
+        {"body": "R-col 2", "bbox": [550, 150, 400, 40], "confidence": 0.9},
+    ]
+    page = build_page_result(1, "FAST",
+                             {"blur": 900, "contrast": 0.8, "noise": 4,
+                              "skew_deg": 0},
+                             lines, 1.0)
+    bodies = ["L-col 1", "L-col 2", "R-col 1", "R-col 2"]
+    assert [l["body"] for l in page["lines"]] == bodies
+    assert [l["seq"] for l in page["lines"]] == [1, 2, 3, 4]
+    assert page["text"] == "\n".join(bodies)
+
+
 def test_page_result_matches_frozen_contract():
     """Only schema-defined keys, exact line shape (additionalProperties:false)."""
     page = build_page_result(1, "FAST",

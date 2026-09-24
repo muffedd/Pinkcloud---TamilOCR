@@ -100,21 +100,6 @@ def line_needs_review(line: dict, profile: str | None = None) -> bool:
     )
 
 
-def _reading_sort(ocr_lines: list[dict]) -> list[dict]:
-    """Sort lines top-to-bottom, left-to-right WITHIN a y-band.
-
-    A y-band tolerance keeps a right-hand box that sits a few pixels
-    higher than its left neighbour in the same visual line (reading
-    order must not flip because of a 3px baseline jitter).
-    The band height adapts to the median line height (default 12 px).
-    """
-    if not ocr_lines:
-        return []
-    heights = sorted(l["bbox"][3] for l in ocr_lines if l["bbox"][3] > 0)
-    band = max(12, int(heights[len(heights) // 2] * 0.6)) if heights else 12
-    return sorted(ocr_lines, key=lambda l: (round(l["bbox"][1] / band), l["bbox"][0]))
-
-
 def build_page_result(
     page_number: int,
     profile: str,
@@ -131,7 +116,11 @@ def build_page_result(
     schema/suggestions-contract.md); it is passed through untouched and the
     key is omitted entirely when None, so pages without the module look
     exactly as before."""
-    ordered = _reading_sort(ocr_lines)
+    # Keep the engine's emitted order. Sarvam already applied its own
+    # reading_order (ocr._parse_sarvam_page) and Gemini transcribes in
+    # reading order; re-sorting by y-band/x here interleaved the lines of
+    # two-column pages.
+    ordered = list(ocr_lines)
 
     lines = []
     for seq, line in enumerate(ordered, start=1):
