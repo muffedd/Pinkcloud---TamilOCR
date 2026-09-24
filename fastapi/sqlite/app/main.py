@@ -493,27 +493,33 @@ def _job_summary(job: dict) -> dict:
     """List-row shape for GET /jobs: everything a jobs UI needs without
     fetching each job's full result. page_count / pages_needing_review /
     receipt_url are null until the job is done; error carries the failure
-    message for failed jobs."""
-    result = parse_job_result(job["result_json"])
+    message for failed jobs.
+
+    The counts come from the row's summary columns (db.set_result and the
+    corrections PUT keep them current), so listing never parses the full
+    result JSON or reads corrections.json. corrections_count counts saved
+    reviewer fixes that still apply to the current OCR text (stale ones
+    whose before-word no longer matches are not counted)."""
     done = job["status"] == "done"
-    pages = (result or {}).get("pages") or [] if done else []
+    counts = {k: job.get(k) for k in db.SUMMARY_COLUMNS}
+    if done and counts["page_count"] is None:
+        # Row finished without counts (written outside set_result):
+        # compute once and store, so later lists read the columns.
+        counts = db.ensure_summary(job["id"]) or counts
+    error = None
+    if job["status"] == "error":
+        result = parse_job_result(job.get("result_json"))
+        error = (result or {}).get("error")
     return {
         "job_id": job["id"],
         "filename": job["filename"],
         "sha256": job["sha256"],
         "status": job["status"],
         "created_at": job["created_at"],
-        "page_count": len(pages) if done else None,
-        "pages_needing_review": (
-            sum(1 for p in pages if p.get("needs_review")) if done else None
-        ),
-        # Saved reviewer fixes that still apply to the current OCR text
-        # (stale ones whose before-word no longer matches are not counted).
-        "corrections_count": (
-            _export.count_applicable_corrections(job["id"], pages)
-            if done else None
-        ),
-        "error": (result or {}).get("error") if job["status"] == "error" else None,
+        "page_count": counts["page_count"] if done else None,
+        "pages_needing_review": counts["pages_needing_review"] if done else None,
+        "corrections_count": counts["corrections_count"] if done else None,
+        "error": error,
         "result_url": f"/jobs/{job['id']}",
         "receipt_url": f"/jobs/{job['id']}/receipt" if done else None,
     }
@@ -814,9 +820,10 @@ def put_corrections(job_id: str, body: CorrectionsDoc):
                 pass
             raise
         # Corrections are the S2 save path: the FTS index holds FINAL
-        # (corrected) line text, so refresh this job's rows with the new
-        # map. A no-op for unfinished jobs and FTS-less builds.
-        db.reindex_job(job_id)
+        # (corrected) line text and GET /jobs lists corrections_count from
+        # the row, so refresh both from the new map (corrections applied
+        # once). A no-op for unfinished jobs.
+        db.refresh_corrections(job_id)
     # Flywheel fold-in: only pairs this PUT newly accepted (diff vs the
     # previous map) teach the cross-job dictionary. Learning must never
     # break the save, so failures are logged, not raised.
