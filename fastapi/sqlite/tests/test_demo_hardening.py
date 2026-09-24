@@ -52,11 +52,10 @@ def _upload_pdf(client, n=3):
 
 
 def _fail_on_call(n, real):
-    calls = {"n": 0}
-
+    """Raise on page n's call. Pages OCR concurrently, so the page is read
+    from the worker context (main.current_page), not the call order."""
     def fn(*args, **kwargs):
-        calls["n"] += 1
-        if calls["n"] == n:
+        if main.current_page() == n:
             raise RuntimeError("engine blew up sk-secret-123")
         return real(*args, **kwargs)
     return fn

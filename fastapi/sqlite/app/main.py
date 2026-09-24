@@ -25,10 +25,13 @@ Run:  uvicorn app.main:app --reload
 Docs: see RUN.md
 """
 
+import contextvars
 import json
 import logging
+import os as _os
 import re
 import threading
+from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 import time
 import uuid
 from pathlib import Path
@@ -38,8 +41,8 @@ from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
 from . import db, storage
-from .ocr import (_safe_error, engine_status, failed_page_lines, ocr_page,
-                  page_engine, reset_page_engine,
+from .ocr import (_route, _safe_error, engine_status, failed_page_lines,
+                  job_breaker, ocr_page, page_engine, reset_page_engine,
                   warn_legacy_env)
 from .pdfutil import load_pages, probe_decode, to_gray
 from .preprocess import Mapper, prepare
@@ -159,8 +162,9 @@ def _job_error_json(exc: Exception) -> str:
 def _spawn_job(target, *args) -> threading.Thread:
     """Run one job's processing on its own background thread.
 
-    One thread per job; pages inside a job run sequentially (Sarvam allows
-    10 requests/min). Returns the started thread (tests join it)."""
+    One thread per job; inside it _pipeline fans pages out to OCR worker
+    pools (Gemini pages in parallel, Sarvam pages behind the process-wide
+    10/min submission throttle). Returns the started thread (tests join it)."""
     t = threading.Thread(target=target, args=args, daemon=True,
                          name=f"pinkcloud-job-{args[0][:8]}")
     t.start()
@@ -180,82 +184,169 @@ def _start_job(job_id: str, target, *args) -> None:
         db.set_result(job_id, "error", _job_error_json(exc))
 
 
-def _pipeline(job_id: str, master: Path | list[Path]) -> list[dict]:
-    """Process the master file(s) -> list of per-page contract JSON objects."""
-    pages_out: list[dict] = []
+def _env_workers(name: str, default: int, lo: int, hi: int) -> int:
+    try:
+        n = int(_os.environ.get(name) or default)
+    except ValueError:
+        n = default
+    return max(lo, min(hi, n))
 
-    # (4) Load every page as a 1600px-capped BGR image.
+
+# OCR worker pools per job. Gemini pages are independent HTTP calls, so they
+# run in parallel; Sarvam pages get a small lane, and the real rate limit is
+# the process-wide digitise throttle in ocr._sarvam_throttle (SARVAM_RPM).
+# Page number being OCR'd in the current worker context (logging / tests).
+_CURRENT_PAGE: contextvars.ContextVar[int | None] = contextvars.ContextVar(
+    "pinkcloud_current_page", default=None)
+
+
+def current_page() -> int | None:
+    """Page number the calling OCR worker is processing, else None."""
+    return _CURRENT_PAGE.get()
+
+
+GEMINI_WORKERS_DEFAULT = 6   # PINKCLOUD_GEMINI_WORKERS, clamped 1..8
+SARVAM_WORKERS_DEFAULT = 2   # PINKCLOUD_SARVAM_WORKERS, clamped 1..4
+
+
+def _ocr_one_page(job_id: str, page_number: int, img, profile: str,
+                  scores, route_ms: float) -> dict:
+    """Preprocess + OCR + freeze ONE page (runs on an OCR worker thread).
+
+    reset_page_engine / ocr_page / page_engine all run on this same thread,
+    so the per-thread engine record belongs to this page only."""
+    t_page = time.perf_counter()
+    _CURRENT_PAGE.set(page_number)  # this page's own context copy
+
+    # (5b) Safe-wins preprocessing on a COPY (crop dark borders, deskew,
+    #      grayscale background flatten, low-res upscale). The mapper puts
+    #      OCR boxes back on the 1600px page, so the bbox contract is
+    #      unchanged.
+    try:
+        prepared, mapper = prepare(img)
+    except Exception:
+        # Preprocessing crashing on ONE page must not sink the job
+        # (same rule as OCR): fall back to the raw page, identity map.
+        logging.getLogger("pinkcloud.job").exception(
+            "job %s: preprocessing failed on page %d; OCR on the raw page",
+            job_id, page_number)
+        prepared, mapper = img, Mapper((0, 0), 0.0, 1.0, img.shape[:2])
+
+    # (6) OCR, routed by profile: FAST -> Gemini, HEAVY -> Sarvam (the
+    #     other engine is the fallback; an engine with an outage earlier in
+    #     this job is skipped). A failure on ONE page that escapes
+    #     ocr_page() must not sink the job: that page gets a marked stub
+    #     line (-> needs_review) and the other pages still run.
+    reset_page_engine()
+    try:
+        ocr_lines, ocr_ms = ocr_page(prepared, profile)
+        ocr_lines = mapper.to_page(ocr_lines)
+        engine, primary = page_engine()
+    except Exception as exc:
+        logging.getLogger("pinkcloud.job").exception(
+            "job %s: OCR failed on page %d", job_id, page_number)
+        ocr_lines, ocr_ms = failed_page_lines(img, exc), 0.0
+        engine, primary = "stub", page_engine()[1]
+
+    # (6b) Per-line confidence from the text check ("text looks malformed"
+    #      score), not Sarvam's layout-block score (kept as
+    #      layout_confidence).
+    ocr_lines = score_ocr_lines(ocr_lines)
+
+    # (7) Freeze the contract JSON for this page. processing_ms is this
+    #     page's own work (routing + prep + OCR), not time spent queued.
+    page_ms = route_ms + (time.perf_counter() - t_page) * 1000.0
+    return build_page_result(
+        page_number=page_number,
+        profile=profile,
+        quality={
+            "blur": scores.blur,
+            "contrast": scores.contrast,
+            "noise": scores.noise,
+            "skew_deg": scores.skew_deg,
+        },
+        ocr_lines=ocr_lines,
+        processing_ms=page_ms,
+        ocr_engine=engine,
+        ocr_fallback=(engine is not None and primary is not None
+                      and engine != primary),
+    )
+
+
+def _pipeline(job_id: str, master: Path | list[Path]) -> list[dict]:
+    """Process the master file(s) -> list of per-page contract JSON objects.
+
+    Route every page first (cheap quality scores), then OCR: Gemini-routed
+    pages run on a thread pool, Sarvam-routed pages on a small lane behind
+    the Sarvam throttle, both at once. Results come back in page order.
+    One per-job circuit breaker is shared by all pages of the job."""
+    # (4) Load every page as a 1600px-capped BGR image (PDF renders are
+    #     serialized by PDFIUM_LOCK inside load_pages).
     pages_in = load_pages(master)
     total = len(pages_in)
     _set_progress(job_id, 0, total)
+    if not total:
+        return []
 
+    # (5) Quality metrics + FAST/HEAVY badge for every page, up front.
+    routed = []  # (page_number, img, profile, scores, route_ms, lane)
     for page_number, img in enumerate(pages_in, start=1):
-        t_page = time.perf_counter()
-        gray = to_gray(img)
-
-        # (5) Quality metrics + FAST/HEAVY badge. HEAVY pages would
-        #     normally go to a repair pass first — the skeleton just
-        #     OCR's them directly for now.
-        scores = compute_scores(gray)
+        t0 = time.perf_counter()
+        scores = compute_scores(to_gray(img))
         profile, scores = choose_profile(scores)
+        route = _route(profile)
+        lane = "sarvam" if route and route[0] == "sarvam" else "gemini"
+        routed.append((page_number, img, profile, scores,
+                       (time.perf_counter() - t0) * 1000.0, lane))
 
-        # (5b) Safe-wins preprocessing on a COPY (crop dark borders,
-        #      deskew, grayscale background flatten, low-res upscale).
-        #      The mapper puts OCR boxes back on the 1600px page, so the
-        #      bbox contract is unchanged.
+    n_gemini = sum(1 for r in routed if r[5] == "gemini")
+    n_sarvam = total - n_gemini
+    done_lock = threading.Lock()
+    done = {"n": 0}
+    results: dict[int, dict] = {}
+
+    def page_done(page_number: int, page: dict) -> None:
+        with done_lock:
+            results[page_number] = page
+            done["n"] += 1
+            _set_progress(job_id, done["n"], total)
+
+    def work(page_number, img, profile, scores, route_ms):
+        page_done(page_number, _ocr_one_page(
+            job_id, page_number, img, profile, scores, route_ms))
+
+    tag = job_id[:8]
+    pools: list[ThreadPoolExecutor] = []
+    futures = []
+    with job_breaker():
         try:
-            prepared, mapper = prepare(img)
-        except Exception:
-            # Preprocessing crashing on ONE page must not sink the job
-            # (same rule as OCR): fall back to the raw page, identity map.
-            logging.getLogger("pinkcloud.job").exception(
-                "job %s: preprocessing failed on page %d; OCR on the raw page",
-                job_id, page_number)
-            prepared, mapper = img, Mapper((0, 0), 0.0, 1.0, img.shape[:2])
+            lanes = {}
+            if n_gemini:
+                lanes["gemini"] = ThreadPoolExecutor(
+                    max_workers=min(n_gemini, _env_workers(
+                        "PINKCLOUD_GEMINI_WORKERS", GEMINI_WORKERS_DEFAULT, 1, 8)),
+                    thread_name_prefix=f"pinkcloud-job-{tag}-gemini")
+            if n_sarvam:
+                lanes["sarvam"] = ThreadPoolExecutor(
+                    max_workers=min(n_sarvam, _env_workers(
+                        "PINKCLOUD_SARVAM_WORKERS", SARVAM_WORKERS_DEFAULT, 1, 4)),
+                    thread_name_prefix=f"pinkcloud-job-{tag}-sarvam")
+            pools = list(lanes.values())
+            for page_number, img, profile, scores, route_ms, lane in routed:
+                # Each page runs in its own copy of this thread's context so
+                # it sees the job's circuit breaker (a ContextVar).
+                ctx = contextvars.copy_context()
+                futures.append(lanes[lane].submit(
+                    ctx.run, work, page_number, img, profile, scores, route_ms))
+            finished, _ = wait(futures, return_when=FIRST_EXCEPTION)
+            for f in futures:
+                if f in finished and f.exception() is not None:
+                    raise f.exception()
+        finally:
+            for pool in pools:
+                pool.shutdown(wait=True, cancel_futures=True)
 
-        # (6) OCR, routed by profile: FAST -> Gemini, HEAVY -> Sarvam
-        #     (the other engine is the fallback). A failure on ONE page
-        #     that escapes ocr_page() must not sink the job: that page
-        #     gets a marked stub line (-> needs_review) and the other
-        #     pages still run.
-        reset_page_engine()
-        try:
-            ocr_lines, ocr_ms = ocr_page(prepared, profile)
-            ocr_lines = mapper.to_page(ocr_lines)
-            engine, primary = page_engine()
-        except Exception as exc:
-            logging.getLogger("pinkcloud.job").exception(
-                "job %s: OCR failed on page %d", job_id, page_number)
-            ocr_lines, ocr_ms = failed_page_lines(img, exc), 0.0
-            engine, primary = "stub", page_engine()[1]
-
-        # (6b) Per-line confidence from the text check ("text looks
-        #      malformed" score), not Sarvam's layout-block score, which
-        #      is kept as layout_confidence.
-        ocr_lines = score_ocr_lines(ocr_lines)
-
-        # (7) Freeze the contract JSON for this page.
-        page_ms = (time.perf_counter() - t_page) * 1000.0
-        pages_out.append(
-            build_page_result(
-                page_number=page_number,
-                profile=profile,
-                quality={
-                    "blur": scores.blur,
-                    "contrast": scores.contrast,
-                    "noise": scores.noise,
-                    "skew_deg": scores.skew_deg,
-                },
-                ocr_lines=ocr_lines,
-                processing_ms=page_ms,
-                ocr_engine=engine,
-                ocr_fallback=(engine is not None and primary is not None
-                              and engine != primary),
-            )
-        )
-        _set_progress(job_id, page_number, total)
-
-    return pages_out
+    return [results[n] for n in sorted(results)]
 
 
 def _run_multi_job(job_id: str, uploads: list[tuple[str, bytes]],

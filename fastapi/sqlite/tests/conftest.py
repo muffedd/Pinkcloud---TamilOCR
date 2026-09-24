@@ -68,3 +68,14 @@ def _async_jobs_marker(request):
     _ASYNC["on"] = bool(request.node.get_closest_marker("async_jobs"))
     yield
     _ASYNC["on"] = False
+
+
+@pytest.fixture(autouse=True)
+def _fresh_sarvam_throttle():
+    """The Sarvam submission throttle is process-wide (SARVAM_RPM per 60 s);
+    start every test with an empty window so tests never wait on it."""
+    from app import ocr
+
+    ocr._reset_sarvam_throttle()
+    yield
+    ocr._reset_sarvam_throttle()

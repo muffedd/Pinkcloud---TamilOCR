@@ -112,10 +112,13 @@ therefore unchanged.
 | `GEMINI_API_KEY` | (none) | required for the FAST route |
 | `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Gemini vision model |
 | `GEMINI_LANGUAGE` | `Tamil` | prompt language name |
-| `GEMINI_TIMEOUT_S` | `120` | per-page HTTP budget |
+| `GEMINI_TIMEOUT_S` | `30` | per-request HTTP timeout |
 | `SARVAM_API_KEY` | (none) | required for the HEAVY route |
 | `SARVAM_LANGUAGE` | `ta-IN` | document language |
-| `SARVAM_TIMEOUT_S` | `120` | per-page budget (submit + poll + download) |
+| `SARVAM_TIMEOUT_S` | `120` | per-page budget (submit + poll + download), enforced on every HTTP call |
+| `SARVAM_RPM` | `10` | Sarvam digitise submissions per minute, process-wide |
+| `PINKCLOUD_GEMINI_WORKERS` | `6` | parallel Gemini pages per job (1-8) |
+| `PINKCLOUD_SARVAM_WORKERS` | `2` | parallel Sarvam pages per job (1-4), still behind `SARVAM_RPM` |
 | `SARVAM_POLL_S` | `3` | status poll interval |
 | `SARVAM_BASE_URL` | `https://api.sarvam.ai` | override for testing |
 | `OCR_ENGINE` | `sarvam` | `sarvam` or `gemini` when no page profile is given |
