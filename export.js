@@ -60,7 +60,7 @@
     document.title = "Pink Cloud · Export · " + (job.filename || "job");
     $("rFilename").textContent = job.filename || "Untitled scan";
     $("rSub").textContent = plural(pages, "page", "pages") + " · created " + fmtTime(job.created_at);
-    $("dlPdf").href = jobUrl("/export.pdf");
+    syncPdfScans();
     $("dlTxt").href = jobUrl("/export.txt");
     $("dlDocx").href = jobUrl("/export.docx");
     JOBINFO = job;
@@ -128,6 +128,19 @@
       });
   }
 
+  /* "Include original scans" switch: ON (default) = text pages then the
+     scans, the old export; OFF = text pages only. The choice travels as
+     ?include_scans=1/0 on the PDF link (the server treats a missing param
+     as 1, so old links keep working). */
+  var PDF_DESC_ON = "Your recognized Tamil text first, then the scan with a searchable text layer.";
+  var PDF_DESC_OFF = "Just your recognized Tamil text, one page per scan page. Still searchable.";
+  function syncPdfScans() {
+    var on = $("pdfScans").checked;
+    $("dlPdf").href = jobUrl("/export.pdf?include_scans=" + (on ? "1" : "0"));
+    $("pdfDesc").textContent = on ? PDF_DESC_ON : PDF_DESC_OFF;
+  }
+  $("pdfScans").addEventListener("change", syncPdfScans);
+
   /* PDF download: fetch it here instead of a bare link, so a slow multi-page
      build shows a visible busy state and a failure shows the server's real
      status/detail instead of a silent or generic browser error. */
@@ -164,6 +177,7 @@
     if (pdfBusy) return;
     var btn = $("dlPdf");
     pdfBusy = true;
+    $("pdfScans").disabled = true;
     btn.setAttribute("aria-busy", "true");
     btn.setAttribute("aria-disabled", "true");
     btn.style.opacity = "0.6";
@@ -190,6 +204,7 @@
       })
       .then(function () {
         pdfBusy = false;
+        $("pdfScans").disabled = false;
         btn.removeAttribute("aria-busy");
         btn.removeAttribute("aria-disabled");
         btn.style.opacity = "";

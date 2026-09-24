@@ -14,7 +14,8 @@ Three outputs for a finished job:
   - build_pdf()      -> bytes: text-first PDF. It opens with the recognized
                         (corrections-applied) lines as VISIBLE, readable
                         Tamil text pages - one A4 page per source page, the
-                        text shrunk/reflowed to fit it - then the scan pages, each with an
+                        text shrunk/reflowed to fit it - then (unless
+                        include_scans=False) the scan pages, each with an
                         INVISIBLE text layer (one text object per OCR line,
                         placed and stretched over the line bbox, the
                         hOCR-to-PDF idea). No receipt page: the receipt lives
@@ -474,11 +475,15 @@ def _add_info_dict(pdf_bytes: bytes, info: dict[str, str]) -> bytes:
 
 
 def build_pdf(master: Path | list[Path], pages: list[dict], receipt: dict,
-              receipt_page: bool = False) -> bytes:
+              receipt_page: bool = False, include_scans: bool = True) -> bytes:
     """receipt_page is accepted for old callers and ignored: the PDF never
-    carries a receipt page any more (GET /jobs/{id}/receipt has the data)."""
+    carries a receipt page any more (GET /jobs/{id}/receipt has the data).
+
+    include_scans=False drops the scan pages: the PDF is only the visible
+    text pages (still one per source page, each with its invisible Unicode
+    layer, so it stays searchable). Default True keeps the old output."""
     with _PDFIUM_LOCK:
-        return _build_pdf(master, pages, receipt)
+        return _build_pdf(master, pages, receipt, include_scans=include_scans)
 
 
 # ---- visible text pages ---------------------------------------------------
@@ -746,7 +751,7 @@ def _add_text_pages(pdf, font, helv, hb_font, upem: int, pages: list[dict],
 
 
 def _build_pdf(master: Path | list[Path], pages: list[dict],
-               receipt: dict) -> bytes:
+               receipt: dict, include_scans: bool = True) -> bytes:
     import pypdfium2 as pdfium
     import pypdfium2.raw as r
     from PIL import Image
@@ -771,7 +776,8 @@ def _build_pdf(master: Path | list[Path], pages: list[dict],
         _add_text_pages(pdf, font, helv, hb_font, upem, pages, images)
 
         # 2) the scans, each with its invisible (searchable) text layer
-        for i, img in enumerate(images, start=1):
+        #    (skipped when the user exported without the original scans)
+        for i, img in enumerate(images if include_scans else [], start=1):
             h_px, w_px = img.shape[:2]
             w_pt, h_pt = w_px * PT_PER_PX, h_px * PT_PER_PX
             page = pdf.new_page(w_pt, h_pt)
@@ -807,7 +813,8 @@ def _build_pdf(master: Path | list[Path], pages: list[dict],
     return _add_info_dict(out.getvalue(), {
         "Title": f"{receipt['filename']} (Pink Cloud OCR)",
         "Producer": "Pink Cloud export (pypdfium2 + HarfBuzz)",
-        "Subject": "Tamil OCR text followed by the searchable scan",
+        "Subject": ("Tamil OCR text followed by the searchable scan"
+                    if include_scans else "Tamil OCR text (scan pages not included)"),
         "Keywords": f"master-sha256:{receipt['master']['sha256']} job:{receipt['job_id']}",
         "PinkCloudJobId": receipt["job_id"],
         "PinkCloudMasterSHA256": receipt["master"]["sha256"],

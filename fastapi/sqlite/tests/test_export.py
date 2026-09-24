@@ -413,3 +413,82 @@ def test_empty_job_exports():
     assert export.build_txt([p]) == ""
     doc = Document(io.BytesIO(export.build_docx([p])))
     assert [x.text for x in doc.paragraphs] == [export.EMPTY_TEXT_NOTE]
+
+
+# ---- "Include original scans" toggle (export step) ------------------------
+
+def _scan_pages(pdf) -> list[int]:
+    import pypdfium2 as pdfium
+    return [i for i in range(len(pdf))
+            if pdfium.raw.FPDF_PAGEOBJ_IMAGE in {o.type for o in pdf[i].get_objects()}]
+
+
+def test_build_pdf_include_scans_default_and_on_keep_scan_pages(tmp_path):
+    """Default (and include_scans=True) is the old output: N text pages,
+    then N scans, each scan with its invisible Tamil layer."""
+    dense = [PARA] * 10
+    pdf = _fit_pdf(tmp_path, [POEM, dense])
+    assert len(pdf) == 4 and _scan_pages(pdf) == [2, 3]
+    assert all(l in pdf[2].get_textpage().get_text_range() for l in POEM)
+    assert "scan" in pdf.get_metadata_dict()["Subject"]
+
+
+def test_build_pdf_include_scans_off_is_text_pages_only(tmp_path):
+    """include_scans=False: only the fitted text pages (one per source page),
+    no images, and the text is still extractable/searchable."""
+    import pypdfium2 as pdfium
+    dense = [PARA] * 10
+    masters, pages = [], []
+    for n, lines in enumerate([POEM, dense], 1):
+        m = tmp_path / f"m{n}.png"
+        cv2.imwrite(str(m), np.full((1600, 1200, 3), 240, np.uint8))
+        masters.append(m)
+        p = _page([{"id": f"L{i}", "seq": i, "body": b,
+                    "bbox": [50, 50 + i * 20, 900, 18], "confidence": 0.95}
+                   for i, b in enumerate(lines, 1)])
+        p["page"] = n
+        pages.append(p)
+    job = {"id": "f" * 32, "filename": "fit.pdf", "sha256": "0" * 64,
+           "status": "done", "created_at": "2026-01-01T00:00:00+00:00"}
+    receipt = export.build_receipt(job, pages)
+    on = pdfium.PdfDocument(export.build_pdf(masters, pages, receipt, include_scans=True))
+    off = pdfium.PdfDocument(export.build_pdf(masters, pages, receipt, include_scans=False))
+    assert len(on) == 4
+    assert len(off) == 2 and _scan_pages(off) == []
+    t = [off[i].get_textpage().get_text_range() for i in range(2)]
+    assert "Page 1" in t[0] and all(l in t[0] for l in POEM)
+    assert "Page 2" in t[1] and "மலர்மிசை" in t[1] and POEM[2] not in t[1]
+    # the text pages are identical in both modes (same fit, same size)
+    for i in range(2):
+        assert off[i].get_size() == on[i].get_size()
+        assert off[i].get_textpage().get_text_range() == on[i].get_textpage().get_text_range()
+    assert _ink(off[0]) > 0.003
+    meta = off.get_metadata_dict()
+    assert meta["Keywords"].startswith("master-sha256:" + "0" * 64)
+    assert "not included" in meta["Subject"]
+
+
+def test_export_pdf_endpoint_include_scans_param(client):
+    """GET /export.pdf: missing include_scans = old behaviour (text + scan);
+    include_scans=1/true keeps the scan; include_scans=0/false drops it."""
+    import pypdfium2 as pdfium
+    jid = _real_scan_job(client, POEM, name="toggle.jpg")
+
+    def get(params=None):
+        r = client.get(f"/jobs/{jid}/export.pdf", params=params or {})
+        assert r.status_code == 200, r.text
+        assert r.headers["content-type"] == "application/pdf"
+        return pdfium.PdfDocument(r.content)
+
+    for params in (None, {"include_scans": "1"}, {"include_scans": "true"}):
+        pdf = get(params)
+        assert len(pdf) == 2 and _scan_pages(pdf) == [1], params
+    for params in ({"include_scans": "0"}, {"include_scans": "false"}):
+        pdf = get(params)
+        assert len(pdf) == 1 and _scan_pages(pdf) == [], params
+        assert all(l in pdf[0].get_textpage().get_text_range() for l in POEM)
+    # still combines with the legacy receipt_page flag
+    assert len(get({"include_scans": "0", "receipt_page": "true"})) == 1
+    # junk values are rejected, not silently treated as on/off
+    assert client.get(f"/jobs/{jid}/export.pdf",
+                      params={"include_scans": "maybe"}).status_code == 422

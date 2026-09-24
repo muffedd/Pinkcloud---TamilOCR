@@ -1147,9 +1147,12 @@ def export_txt(job_id: str, reviewer: str | None = None):
 
 
 @app.get("/jobs/{job_id}/export.pdf")
-def export_pdf(job_id: str, reviewer: str | None = None, receipt_page: bool = False):
+def export_pdf(job_id: str, reviewer: str | None = None, receipt_page: bool = False,
+               include_scans: bool = True):
     """Text-first PDF: the recognized (corrections-applied) lines as visible
-    Tamil text pages, then each scan with its invisible text layer. No
+    Tamil text pages, then each scan with its invisible text layer.
+    ?include_scans=0 (or false) leaves the scan pages out: text pages only.
+    Missing = 1, the old behaviour, so existing links are unchanged. No
     receipt page (receipt_page is accepted for old links and ignored; the
     receipt is GET /jobs/{id}/receipt). Job id + SHA-256 in the Info dict."""
     job, pages = _done_job(job_id)
@@ -1157,7 +1160,7 @@ def export_pdf(job_id: str, reviewer: str | None = None, receipt_page: bool = Fa
     if not masters:
         raise HTTPException(status_code=410, detail="master file missing")
     receipt = _receipt(job, pages, reviewer)
-    data = _export.build_pdf(masters, pages, receipt)
+    data = _export.build_pdf(masters, pages, receipt, include_scans=include_scans)
     return Response(
         data, media_type="application/pdf",
         headers={
