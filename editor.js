@@ -684,7 +684,9 @@ function setActive(key) {
   S.activeKey = key;
   if (prev) {
     refreshWordEl(prev);
-    if (prev.boxEl) prev.boxEl.className = boxClass(prev);
+    /* refreshBoxEl drops a box whose word no longer needs one (an OK word
+       that was active/hovered), matching a full renderScan. */
+    if (prev.boxEl) refreshBoxEl(prev);
     if (prev.rowEl) prev.rowEl.classList.remove("is-active");
     if (prev.cardEl) prev.cardEl.classList.remove("is-active");
   }
@@ -723,7 +725,9 @@ function setHover(key) {
   S.hoverLine = key ? S.byKey[key].lineId : null;
   if (prev) {
     refreshWordEl(prev);
-    if (prev.boxEl) prev.boxEl.className = boxClass(prev);
+    /* refreshBoxEl drops a box whose word no longer needs one (an OK word
+       that was active/hovered), matching a full renderScan. */
+    if (prev.boxEl) refreshBoxEl(prev);
   }
   var w = S.byKey[key];
   if (w) {
