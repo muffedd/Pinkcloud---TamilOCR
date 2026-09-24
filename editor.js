@@ -17,6 +17,10 @@ var IMG_W = 1600;
 /* Mock coordinate-space height for the placeholder paper. */
 var PAGE_H = 1400;
 /* Boxes are padded 3px outside their bbox. */
+/* Overlay coords stay fractional: the scan view magnifies the paper with a
+   CSS transform (up to 12x fit, more when rotated), so rounding to whole
+   layout px here would be magnified into a visible box/scan offset. */
+function opx(v) { return (Math.round(v * 100) / 100) + "px"; }
 var BOX_PAD = 3;
 
 var ICONS = {
@@ -793,10 +797,10 @@ function makeBoxEl(w) {
   b.dataset.key = w.key;
   b.setAttribute("role", "button");
   b.setAttribute("aria-label", w.text);
-  b.style.left = Math.round(w.bbox[0] * s - BOX_PAD) + "px";
-  b.style.top = Math.round(w.bbox[1] * s - BOX_PAD) + "px";
-  b.style.width = Math.round(w.bbox[2] * s + BOX_PAD * 2) + "px";
-  b.style.height = Math.round(w.bbox[3] * s + BOX_PAD * 2) + "px";
+  b.style.left = opx(w.bbox[0] * s - BOX_PAD);
+  b.style.top = opx(w.bbox[1] * s - BOX_PAD);
+  b.style.width = opx(w.bbox[2] * s + BOX_PAD * 2);
+  b.style.height = opx(w.bbox[3] * s + BOX_PAD * 2);
   if (w.autoApplied) b.style.borderColor = "var(--pc-color-primary)";
   return b;
 }
@@ -873,7 +877,7 @@ function renderScan() {
      1600x1400 placeholder space applies. Every box, the heatmap and
      click-hit-testing all use S.scale, so they follow this together. */
   S.scale = paperW / (S.coordW || IMG_W);
-  el.paper.style.height = Math.round((S.pageH || PAGE_H) * S.scale) + "px";
+  el.paper.style.height = opx((S.pageH || PAGE_H) * S.scale);
   /* Setting the height can add the scan pane's vertical scrollbar (a tall
      portrait page), which narrows the paper. The background image stretches
      to the new width, so re-read it and rescale or the boxes drift. */
@@ -881,7 +885,7 @@ function renderScan() {
   if (paperW2 && paperW2 !== paperW) {
     paperW = paperW2;
     S.scale = paperW / (S.coordW || IMG_W);
-    el.paper.style.height = Math.round((S.pageH || PAGE_H) * S.scale) + "px";
+    el.paper.style.height = opx((S.pageH || PAGE_H) * S.scale);
   }
   S.renderedW = paperW;
   var s = S.scale;
@@ -933,18 +937,18 @@ function renderScan() {
   S.lines.forEach(function (line) {
     var d = document.createElement("div");
     d.className = "paper-line";
-    d.style.left = Math.round(line.bbox[0] * s) + "px";
-    d.style.top = Math.round(line.bbox[1] * s) + "px";
-    d.style.width = Math.round(line.bbox[2] * s) + "px";
-    d.style.height = Math.round(line.bbox[3] * s) + "px";
+    d.style.left = opx(line.bbox[0] * s);
+    d.style.top = opx(line.bbox[1] * s);
+    d.style.width = opx(line.bbox[2] * s);
+    d.style.height = opx(line.bbox[3] * s);
     d.setAttribute("aria-label", line.body);
     line.paperEl = d;
     line.words.forEach(function (w) {
       var span = document.createElement("span");
       span.className = "paper-word";
       span.setAttribute("aria-hidden", "true");
-      span.style.left = Math.round((w.bbox[0] - line.bbox[0]) * s) + "px";
-      span.style.width = Math.round(w.bbox[2] * s) + "px";
+      span.style.left = opx((w.bbox[0] - line.bbox[0]) * s);
+      span.style.width = opx(w.bbox[2] * s);
       span.textContent = w.text;
       w.paperEl = span;
       d.appendChild(span);
@@ -987,10 +991,10 @@ function renderScan() {
       h.style.borderColor = heatColor(dmg, 0.85);
       h.title = "Damage " + Math.round(dmg * 100) + "% (text check " +
         (typeof line.conf === "number" ? line.conf.toFixed(2) : "?") + ")";
-      h.style.left = Math.round(line.bbox[0] * s - BOX_PAD) + "px";
-      h.style.top = Math.round(line.bbox[1] * s - BOX_PAD) + "px";
-      h.style.width = Math.round(line.bbox[2] * s + BOX_PAD * 2) + "px";
-      h.style.height = Math.round(line.bbox[3] * s + BOX_PAD * 2) + "px";
+      h.style.left = opx(line.bbox[0] * s - BOX_PAD);
+      h.style.top = opx(line.bbox[1] * s - BOX_PAD);
+      h.style.width = opx(line.bbox[2] * s + BOX_PAD * 2);
+      h.style.height = opx(line.bbox[3] * s + BOX_PAD * 2);
       layer.appendChild(h);
     });
   }
@@ -1000,10 +1004,10 @@ function renderScan() {
     var r = document.createElement("div");
     r.className = "box box-region" + (S.hoverLine === line.id ? " show" : "");
     r.setAttribute("data-line", line.id);
-    r.style.left = Math.round(line.bbox[0] * s - BOX_PAD) + "px";
-    r.style.top = Math.round(line.bbox[1] * s - BOX_PAD) + "px";
-    r.style.width = Math.round(line.bbox[2] * s + BOX_PAD * 2) + "px";
-    r.style.height = Math.round(line.bbox[3] * s + BOX_PAD * 2) + "px";
+    r.style.left = opx(line.bbox[0] * s - BOX_PAD);
+    r.style.top = opx(line.bbox[1] * s - BOX_PAD);
+    r.style.width = opx(line.bbox[2] * s + BOX_PAD * 2);
+    r.style.height = opx(line.bbox[3] * s + BOX_PAD * 2);
     regionEls.push(r);
     layer.appendChild(r);
   });
@@ -1851,11 +1855,11 @@ function placePopup(w, arrow) {
     el.pop.classList.add("above");
     if (top < 8) top = 8;
   }
-  el.pop.style.left = Math.round(left) + "px";
-  el.pop.style.top = Math.round(top) + "px";
+  el.pop.style.left = opx(left);
+  el.pop.style.top = opx(top);
   var ax = w.el.offsetLeft + w.el.offsetWidth / 2 - left;
   ax = Math.max(12, Math.min(popW - 24, ax));
-  arrow.style.left = Math.round(ax) + "px";
+  arrow.style.left = opx(ax);
 }
 
 function closePopup() {
