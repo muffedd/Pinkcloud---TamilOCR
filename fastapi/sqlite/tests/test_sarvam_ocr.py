@@ -311,3 +311,30 @@ def test_status_before_any_page_neither_key_is_stub(env):
     env.delenv("SARVAM_API_KEY", raising=False)
     env.delenv("GEMINI_API_KEY", raising=False)
     assert ocr.engine_status()["ocr_engine"] == "stub"
+
+
+def test_parse_drops_low_confidence_english_commentary():
+    """Blocks with no Tamil letter AND layout confidence < 0.4 are model
+    commentary, not page text: they must not reach the lines."""
+    page = {"blocks": [
+        {"coordinates": {"x1": 0, "y1": 0, "x2": 100, "y2": 10},
+         "text": "This image does not contain any legible text.",
+         "confidence": 0.12, "reading_order": 1},
+        {"coordinates": {"x1": 0, "y1": 10, "x2": 100, "y2": 20},
+         "text": "அகர முதல", "confidence": 0.12, "reading_order": 2},
+        {"coordinates": {"x1": 0, "y1": 20, "x2": 100, "y2": 30},
+         "text": "Chapter 3", "confidence": 0.85, "reading_order": 3},
+        {"coordinates": {"x1": 0, "y1": 30, "x2": 100, "y2": 40},
+         "text": "௧௨", "confidence": 0.2, "reading_order": 4},
+        {"coordinates": {"x1": 0, "y1": 40, "x2": 100, "y2": 50},
+         "text": "No text\nwas found", "confidence": 0.39, "reading_order": 5},
+        {"coordinates": {"x1": 0, "y1": 50, "x2": 100, "y2": 60},
+         "text": "p. 12", "confidence": 0.4, "reading_order": 6},
+    ]}
+    lines = ocr._parse_sarvam_page(page, 100, 100)
+    # low-conf Tamil kept; high-conf English kept; conf == 0.4 kept;
+    # low-conf commentary and low-conf Tamil-digits-only dropped
+    assert [l["body"] for l in lines] == ["அகர முதல", "Chapter 3", "p. 12"]
+    page_json = build_page_result(1, "FAST", {"blur": 1, "contrast": 1, "noise": 1,
+                                              "skew_deg": 0}, lines, 1.0)
+    assert "legible" not in page_json["text"] and "No text" not in page_json["text"]

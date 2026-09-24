@@ -47,6 +47,8 @@ import threading
 import time
 import zipfile
 
+from .textcheck import has_tamil_letter
+
 logger = logging.getLogger("pinkcloud.ocr")
 
 # Which engine produced the last page, and the last per-engine failure.
@@ -323,6 +325,11 @@ def _page_json_from_zip(data: bytes) -> dict:
         return json.loads(zf.read(names[0]).decode("utf-8"))
 
 
+# Layout confidence below which a block with no Tamil letter is treated
+# as model commentary and dropped (see _parse_sarvam_page).
+SARVAM_COMMENTARY_CONF = 0.4
+
+
 def _parse_sarvam_page(page: dict, img_w: int, img_h: int) -> list[dict]:
     """Convert one Sarvam page JSON into contract lines.
 
@@ -363,6 +370,13 @@ def _parse_sarvam_page(page: dict, img_w: int, img_h: int) -> list[dict]:
         except (TypeError, ValueError):
             conf = 0.0
         conf = max(0.0, min(1.0, conf))
+
+        # Sarvam sometimes emits English model commentary as a block
+        # ("This image does not contain any legible text"). Such blocks
+        # have no Tamil letter and a low layout score; keep them out of
+        # the page text and every export.
+        if conf < SARVAM_COMMENTARY_CONF and not has_tamil_letter(" ".join(parts)):
+            continue
 
         # A box with no width or no height cannot frame the text; zero it
         # (same "unknown box" marking as an unparseable box). Checking only

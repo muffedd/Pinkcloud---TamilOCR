@@ -30,7 +30,8 @@ from __future__ import annotations
 import re
 import unicodedata
 
-__all__ = ["score_line", "line_signals", "orphan_signs", "tamil_share"]
+__all__ = ["score_line", "line_signals", "orphan_signs", "tamil_share",
+           "has_tamil_letter"]
 
 # ---- character classes (ported from text_filter.py) ------------------------
 TAMIL = re.compile(r"[\u0b80-\u0bff]")
@@ -63,6 +64,13 @@ def tamil_share(text: str) -> float | None:
     if not letters:
         return None
     return sum(bool(TAMIL.fullmatch(c)) for c in letters) / len(letters)
+
+
+def has_tamil_letter(text: str) -> bool:
+    """True when `text` holds at least one Tamil LETTER (a vowel or
+    consonant in U+0B80-U+0BFF). Vowel signs, virama, Tamil digits and
+    symbols alone do not count: they never make a readable Tamil word."""
+    return any("\u0b80" <= ch <= "\u0bff" and ch.isalpha() for ch in text or "")
 
 
 def orphan_signs(text: str) -> list[int]:
