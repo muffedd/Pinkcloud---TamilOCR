@@ -252,3 +252,25 @@ def test_no_corrections_file_no_error(client, png_job):
     rc = client.get(f"/jobs/{png_job}/receipt").json()
     assert rc["corrections_error"] is None
     assert "WARNING" not in client.get(f"/jobs/{png_job}/export.txt").text
+
+
+def test_preprocess_crash_falls_back_to_raw_page(client, monkeypatch):
+    """prepare() raising on a page must not sink the job: the page is OCR'd
+    on the raw 1600px image with an identity mapper, job still done."""
+    seen = []
+
+    def boom(img):
+        raise RuntimeError("cv2 exploded")
+
+    def fake_ocr(img, profile=None):
+        seen.append(img)
+        return ([{"body": "சரி", "bbox": [1, 1, 10, 10], "confidence": 0.9}], 1.0)
+
+    monkeypatch.setattr(main, "prepare", boom)
+    monkeypatch.setattr(main, "ocr_page", fake_ocr)
+    job = _upload_pdf(client)
+    assert job["status"] == "done"
+    pages = job["result"]["pages"]
+    assert [p["page"] for p in pages] == [1, 2, 3]
+    assert all(p["lines"][0]["body"] == "சரி" for p in pages)
+    assert len(seen) == 3 and all(getattr(img, "ndim", 0) == 3 for img in seen)

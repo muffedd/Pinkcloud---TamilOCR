@@ -89,10 +89,13 @@ def engine_status() -> dict:
     selected = selected_engine()
     if _LAST_ENGINE is not None:
         engine = _LAST_ENGINE
-    elif selected == "sarvam":
-        engine = "sarvam" if _sarvam_key() else "stub"
     else:
-        engine = "gemini" if _gemini_key() else "stub"
+        # Before any page: the selected engine if keyed. If not, the OTHER
+        # keyed engine still means real OCR (the routes cross-fall-back), so
+        # report it; "stub" is only honest when neither engine can run.
+        other = "gemini" if selected == "sarvam" else "sarvam"
+        keyed = {"sarvam": bool(_sarvam_key()), "gemini": bool(_gemini_key())}
+        engine = selected if keyed[selected] else (other if keyed[other] else "stub")
     status = {
         "ocr_engine": engine,
         "ocr_engine_selected": selected,
@@ -339,14 +342,18 @@ def _parse_sarvam_page(page: dict, img_w: int, img_h: int) -> list[dict]:
             conf = 0.0
         conf = max(0.0, min(1.0, conf))
 
+        # A box with no width or no height cannot frame the text; zero it
+        # (same "unknown box" marking as an unparseable box). Checking only
+        # BOTH dimensions left half-degenerate boxes as bogus 1px slivers.
+        degenerate = x2 <= x1 or y2 <= y1
         bw = max(1, int(round(x2 - x1)))
         step = max(0.0, (y2 - y1)) / len(parts)
         for i, text in enumerate(parts):
-            ly = int(round(y1 + i * step))
-            lh = max(1, int(round(y1 + (i + 1) * step)) - ly)
-            if x2 <= x1 and y2 <= y1:
+            if degenerate:
                 bbox = [0, 0, 0, 0]
             else:
+                ly = int(round(y1 + i * step))
+                lh = max(1, int(round(y1 + (i + 1) * step)) - ly)
                 bbox = [int(round(x1)), ly, bw, lh]
             lines.append({"body": text, "bbox": bbox, "confidence": conf})
     return lines

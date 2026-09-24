@@ -8,8 +8,9 @@ Pipeline per upload:
   4. load pages           -> pdfutil.py  (PDF via pypdfium2, images via
      cv2, ALL pages of multi-page TIFFs)
   5. score + route        -> router.py   (FAST / HEAVY badge per page)
-  6. OCR fast pass        -> ocr.py      (Sarvam Document AI, marked stub
-     fallback; engine failures are logged and shown in /health)
+  6. OCR fast pass        -> ocr.py      (FAST -> Gemini, HEAVY -> Sarvam,
+     cross-fallback, marked stub output; engine failures are logged and
+     shown in /health)
   6b. text check          -> textcheck.py (per-line confidence = "text looks
      malformed" score; Sarvam's layout score kept as layout_confidence)
   7. build contract JSON  -> schema_out.py
@@ -40,7 +41,7 @@ from . import db, storage
 from .ocr import (_safe_error, engine_status, failed_page_lines, ocr_page,
                   warn_legacy_env)
 from .pdfutil import load_pages, probe_decode, to_gray
-from .preprocess import prepare
+from .preprocess import Mapper, prepare
 from .router import choose_profile, compute_scores
 from .schema_out import (build_job_result, build_page_result, enrich_page,
                          parse_job_result, score_ocr_lines)
@@ -103,8 +104,9 @@ def on_startup() -> None:
     """Create the SQLite table at boot.
 
     Sarvam is a hosted API read per page, so there is no engine to load;
-    /health reports sarvam_key_set. Removed PaddleOCR settings (OCR_ENGINE,
-    SARVAM_FALLBACK=paddle) only log a warning.
+    /health reports which keys are set. Removed PaddleOCR settings
+    (SARVAM_FALLBACK=paddle, an OCR_ENGINE value other than sarvam|gemini)
+    only log a warning.
     """
     logging.basicConfig(level=logging.INFO)
     db.init_db()
@@ -200,7 +202,15 @@ def _pipeline(job_id: str, master: Path | list[Path]) -> list[dict]:
         #      deskew, grayscale background flatten, low-res upscale).
         #      The mapper puts OCR boxes back on the 1600px page, so the
         #      bbox contract is unchanged.
-        prepared, mapper = prepare(img)
+        try:
+            prepared, mapper = prepare(img)
+        except Exception:
+            # Preprocessing crashing on ONE page must not sink the job
+            # (same rule as OCR): fall back to the raw page, identity map.
+            logging.getLogger("pinkcloud.job").exception(
+                "job %s: preprocessing failed on page %d; OCR on the raw page",
+                job_id, page_number)
+            prepared, mapper = img, Mapper((0, 0), 0.0, 1.0, img.shape[:2])
 
         # (6) OCR, routed by profile: FAST -> Gemini, HEAVY -> Sarvam
         #     (the other engine is the fallback). A failure on ONE page

@@ -14,7 +14,7 @@
   /* =======================================================
      API SEAM — the only place that knows about the backend.
      Contract: schema/endpoints.md (fastapi/sqlite, app 0.2.0).
-       GET  /health          → {ok, ocr_engine: sarvam|stub, sarvam_key_set, ocr_error?}
+       GET  /health          → {ok, ocr_engine: gemini|sarvam|stub, gemini_key_set, sarvam_key_set, ocr_error?}
        POST /jobs  (form field "file", ONE file) → {job_id} | 400/422 {detail}
        GET  /jobs/{job_id}   → {status: pending|done|error,
                                 result: {pages:[…]} | {error} | null} | 404

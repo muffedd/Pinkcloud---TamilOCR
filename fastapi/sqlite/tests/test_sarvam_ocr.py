@@ -278,3 +278,36 @@ def test_key_is_never_hardcoded():
     src = pathlib.Path(ocr.__file__).read_text(encoding="utf-8")
     assert 'os.environ.get("SARVAM_API_KEY")' in src
     assert "sk_" not in src
+
+
+def test_parse_half_degenerate_box_is_zeroed():
+    """A box with no width OR no height cannot frame the text: zero it,
+    like an unparseable box. (Was: only BOTH-degenerate boxes were zeroed,
+    leaving bogus 1px slivers.)"""
+    page = {"blocks": [
+        {"coordinates": {"x1": 50, "y1": 10, "x2": 40, "y2": 100},
+         "text": "a\nb", "confidence": 0.5, "reading_order": 1},
+        {"coordinates": {"x1": 0, "y1": 50, "x2": 100, "y2": 50},
+         "text": "c", "confidence": 0.5, "reading_order": 2},
+        {"coordinates": {"x1": 10, "y1": 10, "x2": 90, "y2": 40},
+         "text": "d", "confidence": 0.5, "reading_order": 3},
+    ]}
+    lines = ocr._parse_sarvam_page(page, 100, 100)
+    assert [ln["bbox"] for ln in lines] == [[0, 0, 0, 0]] * 3 + [[10, 10, 80, 30]]
+
+
+def test_status_before_any_page_falls_back_to_the_keyed_engine(env):
+    """Selected engine unkeyed but the other keyed: /health must show the
+    keyed one (routes cross-fall-back), not cry stub."""
+    env.delenv("SARVAM_API_KEY", raising=False)
+    env.setenv("GEMINI_API_KEY", "gem-fake")
+    st = ocr.engine_status()
+    assert st["ocr_engine"] == "gemini"
+    assert st["ocr_engine_selected"] == "sarvam"
+    assert "ocr_error" not in st
+
+
+def test_status_before_any_page_neither_key_is_stub(env):
+    env.delenv("SARVAM_API_KEY", raising=False)
+    env.delenv("GEMINI_API_KEY", raising=False)
+    assert ocr.engine_status()["ocr_engine"] == "stub"
