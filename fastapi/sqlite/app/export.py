@@ -13,7 +13,8 @@ Three outputs for a finished job:
                         section. Needs python-docx.
   - build_pdf()      -> bytes: text-first PDF. It opens with the recognized
                         (corrections-applied) lines as VISIBLE, readable
-                        Tamil text pages, then the scan pages, each with an
+                        Tamil text pages - one A4 page per source page, the
+                        text shrunk/reflowed to fit it - then the scan pages, each with an
                         INVISIBLE text layer (one text object per OCR line,
                         placed and stretched over the line bbox, the
                         hOCR-to-PDF idea). No receipt page: the receipt lives
@@ -481,13 +482,37 @@ def build_pdf(master: Path | list[Path], pages: list[dict], receipt: dict,
 
 
 # ---- visible text pages ---------------------------------------------------
+#
+# One visible text page per source page: each scan page's recognized text is
+# fitted onto its own A4 text page instead of
+# flowing continuously, so text page N always matches scan page N. Fitting
+# keeps every OCR line as its own line (reflowed inside the page width when
+# it is too long) and shrinks the font from TEXT_SIZE down to FIT_MIN_SIZE
+# until the whole page's text fits. Only when even FIT_MIN_SIZE overflows
+# (a very dense page) does the text continue on a "(continued)" page, so
+# nothing is ever clipped.
 
 TEXT_PAGE_W, TEXT_PAGE_H = 595.0, 842.0   # A4 portrait, points
 TEXT_MARGIN = 56.0
-TEXT_SIZE = 13.0
-TEXT_LEADING = TEXT_SIZE * 1.7
+TEXT_SIZE = 13.0                           # largest (natural) text size
+FIT_MIN_SIZE = 5.0                         # smallest size before continuing
+LEADING_RATIO = 1.7                        # line pitch / font size at >= 10pt
+                                           # (Tamil vowel signs need room)
+MIN_LEADING_RATIO = 1.45                   # tighter pitch at FIT_MIN_SIZE
+TEXT_LEADING = TEXT_SIZE * LEADING_RATIO
+
+
+def leading_for(size: float) -> float:
+    """Line pitch for a font size: LEADING_RATIO at 10pt and up, easing to
+    MIN_LEADING_RATIO at FIT_MIN_SIZE so dense pages still fit legibly."""
+    if size >= 10.0:
+        return size * LEADING_RATIO
+    t = max(0.0, (size - FIT_MIN_SIZE) / (10.0 - FIT_MIN_SIZE))
+    return size * (MIN_LEADING_RATIO + t * (LEADING_RATIO - MIN_LEADING_RATIO))
 LABEL_SIZE = 9.0
+LABEL_GAP = LABEL_SIZE * 2.2               # label line + space under it
 EMPTY_TEXT_NOTE = "No text was recognized in this document."
+EMPTY_PAGE_NOTE = "No text was recognized on this page."
 
 
 def _hb_font(data: bytes):
@@ -505,9 +530,24 @@ def _shape(hb_font, text: str):
     return buf.glyph_infos, buf.glyph_positions
 
 
+_WIDTH_CACHE: dict[tuple[int, str], int] = {}
+
+
+def _units_width(hb_font, text: str) -> int:
+    """Shaped advance width in font units (size independent, so it is
+    cached and reused across every candidate size tried while fitting)."""
+    key = (id(hb_font), text)
+    w = _WIDTH_CACHE.get(key)
+    if w is None:
+        if len(_WIDTH_CACHE) > 50000:
+            _WIDTH_CACHE.clear()
+        _, pos = _shape(hb_font, text)
+        w = _WIDTH_CACHE[key] = sum(p.x_advance for p in pos)
+    return w
+
+
 def _shaped_width(hb_font, upem: int, text: str, size: float) -> float:
-    _, pos = _shape(hb_font, text)
-    return sum(p.x_advance for p in pos) * size / upem
+    return _units_width(hb_font, text) * size / upem
 
 
 class _PathPen:
@@ -581,6 +621,9 @@ def _draw_shaped_line(pdf_raw, page_raw, font, hb_font, upem: int, text: str,
 
 
 def _wrap(hb_font, upem: int, text: str, size: float, max_w: float) -> list[str]:
+    """Greedy word wrap on shaped widths. A single word wider than the line
+    stays whole on its own line (never split inside a Tamil cluster); the
+    fitter shrinks the font until such words fit where it can."""
     words = text.split()
     out, cur = [], ""
     for w in words:
@@ -595,56 +638,110 @@ def _wrap(hb_font, upem: int, text: str, size: float, max_w: float) -> list[str]
     return out
 
 
-def _text_page_blocks(pages: list[dict], n_pages: int) -> list[tuple[str, str]]:
-    """[("label"|"line", text)] in reading order, one label per source page
-    when the job has more than one page."""
+def _layout(hb_font, upem: int, bodies: list[str], size: float,
+            max_w: float) -> tuple[list[str], bool]:
+    """Visual lines for one source page at `size` (each OCR line starts a
+    new line, then wraps), plus whether every line fits the width."""
+    vis: list[str] = []
+    fits_w = True
+    for b in bodies:
+        parts = _wrap(hb_font, upem, b, size, max_w) or [""]
+        for part in parts:
+            if part and _shaped_width(hb_font, upem, part, size) > max_w + 0.01:
+                fits_w = False
+        vis.extend(parts)
+    return vis, fits_w
+
+
+def fit_text_to_page(hb_font, upem: int, bodies: list[str], avail_w: float,
+                     avail_h: float) -> tuple[float, list[str]]:
+    """Largest font size in [FIT_MIN_SIZE, TEXT_SIZE] at which `bodies`
+    (wrapped to avail_w) fit inside avail_h, and the wrapped lines at that
+    size. Returns FIT_MIN_SIZE when nothing in range fits (caller then
+    continues onto another page). Height model: the first baseline sits one
+    `size` below the top, every further line one leading_for(size) lower, and the last
+    line keeps a descender's worth (0.3 * size) above the bottom margin."""
+
+    def fits(size: float):
+        vis, fits_w = _layout(hb_font, upem, bodies, size, avail_w)
+        need = size + (len(vis) - 1) * leading_for(size) + 0.3 * size
+        return fits_w and need <= avail_h, vis
+
+    ok, vis = fits(TEXT_SIZE)
+    if ok:
+        return TEXT_SIZE, vis
+    lo, hi = FIT_MIN_SIZE, TEXT_SIZE  # invariant: hi does not fit
+    ok, lo_vis = fits(lo)
+    if not ok:
+        return FIT_MIN_SIZE, lo_vis
+    for _ in range(12):  # ~0.002pt resolution
+        mid = (lo + hi) / 2
+        ok, mid_vis = fits(mid)
+        if ok:
+            lo, lo_vis = mid, mid_vis
+        else:
+            hi = mid
+    size = int(lo * 4) / 4.0  # snap down to a quarter point
+    if size < FIT_MIN_SIZE:
+        size = FIT_MIN_SIZE
+    ok, vis = fits(size)
+    return (size, vis) if ok else (lo, lo_vis)
+
+
+def _source_bodies(pages: list[dict], n_pages: int) -> list[list[str]]:
     by_no = {int(p.get("page", i + 1)): p for i, p in enumerate(pages)}
-    blocks: list[tuple[str, str]] = []
-    for n in range(1, n_pages + 1):
-        bodies = _export_bodies(by_no.get(n) or {})
-        if n_pages > 1:
-            blocks.append(("label", f"Page {n}"))
-        blocks.extend(("line", b) for b in bodies)
-    if not any(kind == "line" for kind, _ in blocks):
-        blocks = [("note", EMPTY_TEXT_NOTE)]
-    return blocks
+    return [_export_bodies(by_no.get(n) or {}) for n in range(1, n_pages + 1)]
 
 
 def _add_text_pages(pdf, font, helv, hb_font, upem: int, pages: list[dict],
-                    n_pages: int) -> int:
-    """Visible retyped-text pages (A4). Returns how many were added."""
-    max_w = TEXT_PAGE_W - 2 * TEXT_MARGIN
+                    images: list) -> int:
+    """Visible retyped-text pages: one per source page, each fitted to its
+    page (see fit_text_to_page). Returns how many pages were added."""
+    n_pages = len(images)
+    per_page = _source_bodies(pages, n_pages)
+    empty_doc = not any(per_page)
+    labelled = n_pages > 1
     added = 0
-    page = None
-    y = 0.0
 
-    def new_page():
-        nonlocal page, y, added
-        if page is not None:
+    for n, bodies in enumerate(per_page, start=1):
+        pw, ph = TEXT_PAGE_W, TEXT_PAGE_H
+        avail_w = pw - 2 * TEXT_MARGIN
+        top = ph - TEXT_MARGIN
+        if empty_doc:
+            bodies = [EMPTY_TEXT_NOTE] if n == 1 else []
+        elif not bodies:
+            bodies = [EMPTY_PAGE_NOTE]
+        label_h = LABEL_GAP if labelled else 0.0
+        if not bodies:  # empty doc: pages after the first just carry a label
+            bodies = [""]
+        size, vis = fit_text_to_page(hb_font, upem, bodies, avail_w,
+                                     top - label_h - TEXT_MARGIN)
+        leading = leading_for(size)
+        part = 0
+        i = 0
+        while True:
+            page = pdf.new_page(pw, ph)
+            added += 1
+            y = top
+            if labelled or part:
+                label = f"Page {n}" if labelled else ""
+                if part:
+                    label = (label + " (continued)").strip()
+                y -= LABEL_SIZE
+                _add_text(pdf.raw, page.raw, helv, label, LABEL_SIZE,
+                          TEXT_MARGIN, y, None, invisible=False)
+                y = top - LABEL_GAP
+            y -= size  # first baseline
+            while i < len(vis) and y >= TEXT_MARGIN + 0.3 * size - 0.01:
+                if vis[i]:
+                    _draw_shaped_line(pdf.raw, page.raw, font, hb_font, upem,
+                                      vis[i], size, TEXT_MARGIN, y)
+                y -= leading
+                i += 1
             page.gen_content()
-        page = pdf.new_page(TEXT_PAGE_W, TEXT_PAGE_H)
-        added += 1
-        y = TEXT_PAGE_H - TEXT_MARGIN - TEXT_SIZE
-
-    new_page()
-    for kind, text in _text_page_blocks(pages, n_pages):
-        if kind == "label":
-            if y < TEXT_PAGE_H - TEXT_MARGIN - TEXT_SIZE:  # not first on page
-                y -= TEXT_LEADING * 0.6
-            if y < TEXT_MARGIN + TEXT_LEADING:
-                new_page()
-            _add_text(pdf.raw, page.raw, helv, text, LABEL_SIZE,
-                      TEXT_MARGIN, y, None, invisible=False)
-            y -= TEXT_LEADING
-            continue
-        for vis in _wrap(hb_font, upem, text, TEXT_SIZE, max_w) or [""]:
-            if y < TEXT_MARGIN:
-                new_page()
-            if vis:
-                _draw_shaped_line(pdf.raw, page.raw, font, hb_font, upem, vis,
-                                  TEXT_SIZE, TEXT_MARGIN, y)
-            y -= TEXT_LEADING
-    page.gen_content()
+            if i >= len(vis):
+                break
+            part += 1
     return added
 
 
@@ -669,8 +766,9 @@ def _build_pdf(master: Path | list[Path], pages: list[dict],
     helv = r.FPDFText_LoadStandardFont(pdf.raw, b"Helvetica")
     keep = []  # keep JPEG buffers alive until save
     try:
-        # 1) visible retyped text first: page 1 shows the document's content
-        _add_text_pages(pdf, font, helv, hb_font, upem, pages, len(images))
+        # 1) visible retyped text first: page 1 shows the document's content,
+        #    one text page per source page, each fitted to its page
+        _add_text_pages(pdf, font, helv, hb_font, upem, pages, images)
 
         # 2) the scans, each with its invisible (searchable) text layer
         for i, img in enumerate(images, start=1):
