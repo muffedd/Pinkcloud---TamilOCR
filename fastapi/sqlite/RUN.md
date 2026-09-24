@@ -47,11 +47,14 @@ commit them. The git-ignored repo-root `.env` is supported via uvicorn's
 | `GEMINI_API_KEY` | (none) | Gemini API key. Required for the FAST route. |
 | `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Gemini vision model for OCR. |
 | `GEMINI_LANGUAGE` | `Tamil` | Language name used in the OCR prompt. |
-| `GEMINI_TIMEOUT_S` | `120` | Per-page HTTP budget. |
+| `GEMINI_TIMEOUT_S` | `30` | Per-request HTTP timeout. |
 | `SARVAM_API_KEY` | (none) | Sarvam API subscription key. Required for the HEAVY route. |
 | `OCR_ENGINE` | `sarvam` | `sarvam` or `gemini` when no page profile is given. |
 | `SARVAM_LANGUAGE` | `ta-IN` | Document language sent to Sarvam. |
-| `SARVAM_TIMEOUT_S` | `120` | Time budget per page (submit + poll + download). |
+| `SARVAM_TIMEOUT_S` | `120` | Time budget per page (submit + poll + download), enforced on every HTTP call. |
+| `SARVAM_RPM` | `10` | Sarvam digitise submissions per minute, process-wide. |
+| `PINKCLOUD_GEMINI_WORKERS` | `6` | Parallel Gemini pages per job (1-8). |
+| `PINKCLOUD_SARVAM_WORKERS` | `2` | Parallel Sarvam pages per job (1-4), still behind `SARVAM_RPM`. |
 | `SARVAM_POLL_S` | `3` | Seconds between status polls. |
 | `SARVAM_BASE_URL` | `https://api.sarvam.ai` | Override only for testing. |
 

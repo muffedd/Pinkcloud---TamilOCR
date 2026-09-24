@@ -89,11 +89,10 @@ def test_post_returns_before_ocr_and_poll_goes_pending_to_done(client, monkeypat
 
 def test_progress_counts_pages_of_a_multi_image_job(client, monkeypatch):
     gates = [threading.Event(), threading.Event()]
-    n = {"i": 0}
 
     def ocr(img, profile=None):
-        i = n["i"]
-        n["i"] += 1
+        # pages OCR concurrently: key on the page, not the call order
+        i = main.current_page() - 1
         assert gates[i].wait(10)
         return [{"body": f"வரி {i}", "bbox": [10, 10, 500, 30], "confidence": 0.5}], 1.0
 

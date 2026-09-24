@@ -258,7 +258,8 @@ def test_removed_paddle_settings_log_warning(env, caplog):
 
 
 def test_timeout_raises_and_returns_stub(env):
-    env.setenv("SARVAM_TIMEOUT_S", "0")
+    # a small budget (not 0: a spent budget now stops before the first call)
+    env.setenv("SARVAM_TIMEOUT_S", "0.5")
     env.setenv("SARVAM_POLL_S", "1")
     fake = FakeSarvam(statuses=("running",))
     _patch_client(env, fake)

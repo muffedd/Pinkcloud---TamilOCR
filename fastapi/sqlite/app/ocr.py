@@ -19,11 +19,15 @@ Environment:
   GEMINI_API_KEY    Gemini API key. Read at call time, never logged.
   GEMINI_MODEL      default "gemini-3.5-flash-lite".
   GEMINI_LANGUAGE   prompt language name, default "Tamil".
-  GEMINI_TIMEOUT_S  per-page HTTP budget, default 120.
+  GEMINI_TIMEOUT_S  per-request HTTP timeout, default 30.
   SARVAM_API_KEY    Sarvam API subscription key. Read at call time, never
                     logged, never stored.
   SARVAM_LANGUAGE   default "ta-IN".
   SARVAM_TIMEOUT_S  per-page budget for the whole Sarvam job, default 120.
+                    Enforced on every HTTP call (each call's timeout is
+                    the time left), not only before sleeps.
+  SARVAM_RPM        Sarvam digitise submissions allowed per minute across
+                    the whole process (all jobs, all threads), default 10.
   SARVAM_POLL_S     status poll interval, default 3.
   SARVAM_BASE_URL   default "https://api.sarvam.ai".
 
@@ -35,10 +39,17 @@ certainty).
 
 Engine failures are logged (logger.exception) and surfaced in /health via
 engine_status(); stub output is never presented as real OCR text.
+
+Per-job circuit breaker: inside job_breaker() (the pipeline opens one per
+job), an engine that times out, hits a network failure or answers 5xx is
+skipped for the rest of that job, so one outage costs one timeout, not
+one per page. Outside a job (direct ocr_page calls) nothing is skipped.
 """
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import io
 import json
 import logging
@@ -46,6 +57,7 @@ import os
 import threading
 import time
 import zipfile
+from collections import deque
 
 logger = logging.getLogger("pinkcloud.ocr")
 
@@ -129,6 +141,65 @@ def engine_status() -> dict:
     return status
 
 
+# --------------------------------------------------------------------------
+# Per-job circuit breaker
+# --------------------------------------------------------------------------
+
+class JobBreaker:
+    """Engines that had an outage (timeout / network / 5xx) in this job.
+
+    Shared by every OCR worker thread of one job; thread-safe."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._open: dict[str, str] = {}
+
+    def is_open(self, engine: str) -> bool:
+        with self._lock:
+            return engine in self._open
+
+    def trip(self, engine: str, reason: str) -> bool:
+        """Mark engine as down for this job. True if this call tripped it."""
+        with self._lock:
+            if engine in self._open:
+                return False
+            self._open[engine] = reason
+            return True
+
+    def opened(self) -> dict[str, str]:
+        with self._lock:
+            return dict(self._open)
+
+
+# ContextVar, not threading.local: the pipeline runs each page in a copy of
+# the job thread's context, so every worker sees the same JobBreaker.
+_JOB_BREAKER: contextvars.ContextVar[JobBreaker | None] = contextvars.ContextVar(
+    "pinkcloud_job_breaker", default=None)
+
+
+@contextlib.contextmanager
+def job_breaker():
+    """Open a fresh per-job breaker for the code (and copied contexts) inside."""
+    breaker = JobBreaker()
+    token = _JOB_BREAKER.set(breaker)
+    try:
+        yield breaker
+    finally:
+        _JOB_BREAKER.reset(token)
+
+
+def _is_outage(exc: BaseException) -> bool:
+    """True for failures that mean the engine is down right now (timeout,
+    network failure, HTTP 5xx), as opposed to a bad page or a 4xx."""
+    if getattr(exc, "outage", False):
+        return True
+    try:
+        import httpx
+    except ImportError:  # pragma: no cover
+        return False
+    return isinstance(exc, (httpx.TimeoutException, httpx.TransportError))
+
+
 # Routing: FAST -> Gemini, HEAVY -> Sarvam. The other engine is the
 # fallback; if both fail the page gets a marked [stub] line.
 _ROUTES = {"FAST": ("gemini", "sarvam"), "HEAVY": ("sarvam", "gemini")}
@@ -154,7 +225,10 @@ def ocr_page(img, profile: str | None = None) -> tuple[list[dict], float]:
 
     route = _route(profile)
     _PAGE_ENGINE.primary = route[0] if route else None
+    breaker = _JOB_BREAKER.get()
     for engine in route:
+        if breaker is not None and breaker.is_open(engine):
+            continue  # engine had an outage earlier in this job: skip it
         try:
             lines = _gemini_ocr(img) if engine == "gemini" else _sarvam_ocr(img)
         except Exception as exc:
@@ -163,6 +237,10 @@ def ocr_page(img, profile: str | None = None) -> tuple[list[dict], float]:
             else:
                 _SARVAM_ERROR = _safe_error(exc)
             logger.exception("%s OCR failed", engine.capitalize())
+            if (breaker is not None and _is_outage(exc)
+                    and breaker.trip(engine, _safe_error(exc))):
+                logger.warning("%s skipped for the rest of this job after: %s",
+                               engine.capitalize(), _safe_error(exc))
             continue
         if engine == "gemini":
             _GEMINI_ERROR = None
@@ -188,7 +266,48 @@ _SARVAM_OK = {"completed", "partially_completed"}
 
 
 class SarvamError(RuntimeError):
-    pass
+    """Sarvam failure. outage=True marks timeout / network / 5xx failures
+    (the per-job circuit breaker skips Sarvam after one of these)."""
+
+    def __init__(self, msg: str = "", outage: bool = False):
+        super().__init__(msg)
+        self.outage = outage
+
+
+# Process-wide Sarvam submission throttle (the rate limit is per API key,
+# so it spans every job and worker thread).
+_SARVAM_STAMPS: deque = deque()
+_SARVAM_STAMPS_LOCK = threading.Lock()
+# Never-set Event: .wait(t) is a plain sleep that tests patching time.sleep
+# do not turn into a busy loop.
+_THROTTLE_WAIT = threading.Event().wait
+
+
+def _sarvam_rpm() -> int:
+    try:
+        return max(1, int(float(os.environ.get("SARVAM_RPM") or 10)))
+    except ValueError:
+        return 10
+
+
+def _sarvam_throttle() -> None:
+    """Block until one more digitise submission fits in the last 60 s."""
+    while True:
+        with _SARVAM_STAMPS_LOCK:
+            now = time.monotonic()
+            while _SARVAM_STAMPS and now - _SARVAM_STAMPS[0] >= 60.0:
+                _SARVAM_STAMPS.popleft()
+            if len(_SARVAM_STAMPS) < _sarvam_rpm():
+                _SARVAM_STAMPS.append(now)
+                return
+            wait = _SARVAM_STAMPS[0] + 60.0 - now
+        _THROTTLE_WAIT(max(0.05, wait))
+
+
+def _reset_sarvam_throttle() -> None:
+    """Forget past submissions (tests)."""
+    with _SARVAM_STAMPS_LOCK:
+        _SARVAM_STAMPS.clear()
 
 
 def _sarvam_key() -> str:
@@ -212,13 +331,19 @@ def _env_float(name: str, default: float) -> float:
 
 
 def _sarvam_request(client, method: str, url: str, deadline: float, **kw):
-    """HTTP call with retry on 429/503 (Sarvam's documented retryable codes)."""
+    """HTTP call with retry on 429/503 (Sarvam's documented retryable codes).
+
+    The page deadline is enforced on every call: each request's timeout is
+    the time left, and no request starts once the deadline has passed."""
     import httpx
 
     attempt = 0
     while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise SarvamError(f"{method} {url}: out of time", outage=True)
         try:
-            r = client.request(method, url, **kw)
+            r = client.request(method, url, timeout=min(remaining, 60.0), **kw)
         except httpx.TransportError as exc:
             r, err = None, exc
         else:
@@ -226,14 +351,20 @@ def _sarvam_request(client, method: str, url: str, deadline: float, **kw):
             if r.status_code not in (429, 503):
                 if r.status_code >= 400:
                     raise SarvamError(
-                        f"{method} {url} -> HTTP {r.status_code}: {r.text[:200]}"
+                        f"{method} {url} -> HTTP {r.status_code}: {r.text[:200]}",
+                        outage=r.status_code >= 500,
                     )
                 return r
+        if isinstance(err, httpx.TimeoutException) and deadline - time.monotonic() <= 0:
+            raise SarvamError(f"{method} {url}: out of time ({err})",
+                              outage=True) from err
         attempt += 1
         if attempt > 4:
             if err is not None:
-                raise SarvamError(f"{method} {url} failed: {err}") from err
-            raise SarvamError(f"{method} {url} -> HTTP {r.status_code} after retries")
+                raise SarvamError(f"{method} {url} failed: {err}",
+                                  outage=True) from err
+            raise SarvamError(f"{method} {url} -> HTTP {r.status_code} after retries",
+                              outage=r.status_code >= 500)
         wait = 2.0 ** attempt
         if r is not None:
             try:
@@ -241,7 +372,8 @@ def _sarvam_request(client, method: str, url: str, deadline: float, **kw):
             except ValueError:
                 pass
         if time.monotonic() + wait > deadline:
-            raise SarvamError(f"{method} {url}: out of time while retrying")
+            raise SarvamError(f"{method} {url}: out of time while retrying",
+                              outage=True)
         time.sleep(wait)
 
 
@@ -263,6 +395,8 @@ def _sarvam_ocr(img, client=None) -> list[dict]:
     lang = os.environ.get("SARVAM_LANGUAGE") or "ta-IN"
     budget = _env_float("SARVAM_TIMEOUT_S", 120.0)
     poll = max(0.0, _env_float("SARVAM_POLL_S", 3.0))
+    # Wait for a submission slot first; the page budget starts after it.
+    _sarvam_throttle()
     deadline = time.monotonic() + budget
 
     own = client is None
@@ -290,7 +424,8 @@ def _sarvam_ocr(img, client=None) -> list[dict]:
             if status in _SARVAM_TERMINAL:
                 break
             if time.monotonic() + poll > deadline:
-                raise SarvamError(f"job {job_id} still '{status}' after {budget:.0f}s")
+                raise SarvamError(f"job {job_id} still '{status}' after {budget:.0f}s",
+                                  outage=True)
             time.sleep(poll)
         if status not in _SARVAM_OK:
             raise SarvamError(f"job {job_id} ended with status '{status}'")
@@ -392,7 +527,12 @@ _GEMINI_URL = ("https://generativelanguage.googleapis.com/v1beta/models/"
 
 
 class GeminiError(RuntimeError):
-    pass
+    """Gemini failure. outage=True marks HTTP 5xx (timeouts and network
+    failures surface as httpx errors); the per-job breaker then skips it."""
+
+    def __init__(self, msg: str = "", outage: bool = False):
+        super().__init__(msg)
+        self.outage = outage
 
 
 def _gemini_key() -> str:
@@ -484,13 +624,14 @@ def _gemini_ocr(img, client=None) -> list[dict]:
 
     own = client is None
     if own:
-        client = httpx.Client(timeout=_env_float("GEMINI_TIMEOUT_S", 120.0))
+        client = httpx.Client(timeout=_env_float("GEMINI_TIMEOUT_S", 30.0))
     try:
         r = client.post(_GEMINI_URL.format(model=model),
                         headers={"x-goog-api-key": key}, json=body)
         if r.status_code >= 400:
             raise GeminiError(
-                f"generateContent -> HTTP {r.status_code}: {r.text[:200]}")
+                f"generateContent -> HTTP {r.status_code}: {r.text[:200]}",
+                outage=r.status_code >= 500)
         data = r.json()
     finally:
         if own:
