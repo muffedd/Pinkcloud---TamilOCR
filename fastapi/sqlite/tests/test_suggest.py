@@ -137,14 +137,15 @@ def test_gemini_candidates_cleaned_and_request_shape(client, monkeypatch):
         {"text": " வாளறிவன் ", "score": 3},      # stripped, score clamped
         {"text": "", "score": 0.9},             # blank
         {"text": "வாரறிவன்", "score": 0.2},
-        {"text": "extra", "score": 0.1},        # over the cap of 3
+        {"text": "extra", "score": 0.1},        # no Tamil letter
     ]}))
     _use(monkeypatch, "gemini", rec)
     r = client.post(f"/jobs/{_done_job()}/suggest", json=REQ)
     assert r.status_code == 200
+    # sorted by score, best first (was: the model's order)
     assert r.json() == {"candidates": [
-        {"text": "வாலறிவன்", "score": 0.91, "source": "llm"},
         {"text": "வாளறிவன்", "score": 1.0, "source": "llm"},
+        {"text": "வாலறிவன்", "score": 0.91, "source": "llm"},
         {"text": "வாரறிவன்", "score": 0.2, "source": "llm"},
     ]}
     (req,) = rec.requests
@@ -308,3 +309,36 @@ def test_mixed_tamil_word_still_goes_to_model(client, monkeypatch):
 def test_non_tamil_word_when_off_is_still_503(client):
     r = client.post(f"/jobs/{_done_job()}/suggest", json={**REQ, "before": "Aiyar"})
     assert r.status_code == 503
+
+
+# ---- clean_candidates: score order + Tamil-only candidates ------------------
+
+def test_clean_candidates_sorted_by_score_before_the_cap():
+    from app.suggest import clean_candidates
+    out = clean_candidates({"candidates": [
+        {"text": "அ", "score": 0.2},
+        {"text": "ஆ", "score": 0.5},
+        {"text": "இ", "score": 0.3},
+        {"text": "ஈ", "score": 0.9},          # listed last, best score
+    ]}, "உ")
+    assert [c["text"] for c in out] == ["ஈ", "ஆ", "இ"]
+    assert [c["score"] for c in out] == [0.9, 0.5, 0.3]
+
+
+def test_clean_candidates_ties_keep_model_order():
+    from app.suggest import clean_candidates
+    out = clean_candidates({"candidates": [
+        {"text": "அ", "score": 0.5}, {"text": "ஆ", "score": 0.5}]}, "உ")
+    assert [c["text"] for c in out] == ["அ", "ஆ"]
+
+
+def test_clean_candidates_drop_non_tamil():
+    from app.suggest import clean_candidates
+    out = clean_candidates({"candidates": [
+        {"text": "vaalarivan", "score": 0.99},   # Latin transliteration
+        {"text": "123", "score": 0.95},          # digits
+        {"text": "௧௨", "score": 0.9},            # Tamil digits, no letter
+        {"text": "\u0bcd\u0bbe", "score": 0.9},  # bare signs, no letter
+        {"text": "வாலறிவன்", "score": 0.4},
+    ]}, "வாழறிவன்")
+    assert out == [{"text": "வாலறிவன்", "score": 0.4, "source": "llm"}]
