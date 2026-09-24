@@ -166,6 +166,26 @@ function pageImageUrl(jobId, page) {
   return SCAN_IMAGE(jobId, page);
 }
 
+/* POST /jobs/{job_id}/pages/{n}/reprocess?rotate=<deg> - re-run OCR for one
+   page with the scan rotated `rotate` degrees clockwise first (0/90/180/270;
+   the editor's rotate button turns the view clockwise, so the same number
+   reproduces what the reviewer sees). The page's lines are replaced and its
+   saved corrections are dropped server-side. 404 unknown job/page, 409 job
+   not done, 422 bad rotate. Same error split as saveCorrections. */
+var REPROCESS = function (id, page, rotate) {
+  return API_BASE + "/jobs/" + encodeURIComponent(id) + "/pages/" + page +
+    "/reprocess?rotate=" + rotate;
+};
+
+function reprocessPage(jobId, page, rotate) {
+  return fetch(REPROCESS(jobId, page, rotate), { method: "POST" })
+    .catch(function () { throw ApiError("Backend unreachable (POST reprocess)", "down"); })
+    .then(function (res) {
+      if (!res.ok) throw httpError("POST reprocess -> " + res.status, res.status);
+      return res.json();
+    });
+}
+
 /* ---------------- AI fix + learned-fix dictionary (V4) ----------------
    Shapes: schema/ai-fix-contract.md (shipped backend contract).
 
@@ -269,6 +289,7 @@ window.PC_API = {
   getPage: getPage,
   getJob: getJob,
   pageImageUrl: pageImageUrl,
+  reprocessPage: reprocessPage,
   getCorrections: getCorrections,
   saveCorrections: saveCorrections,
   listJobs: listJobs,

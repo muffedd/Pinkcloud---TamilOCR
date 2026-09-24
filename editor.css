@@ -133,10 +133,27 @@ body {
 }
 
 /* ---------- Scan pane ---------- */
+/* Fixed viewport for the scan: the paper (scan + word boxes) moves inside
+   it with ONE CSS transform (editor.js: applyView), so overlays stay aligned
+   at every zoom level and rotation. Wheel/pinch zooms, drag pans, so native
+   scrolling and touch gestures are off. */
 .scan-scroll {
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
+  position: relative;
   background: var(--pc-color-scan-viewer-bg);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.scan-scroll.is-dragging {
+  cursor: grabbing;
+}
+
+.scan-scroll.is-dragging .box {
+  cursor: grabbing;
 }
 
 .viewer {
@@ -147,6 +164,8 @@ body {
 .paper {
   position: relative;
   width: 100%;
+  transform-origin: 50% 50%;
+  will-change: transform;
   border-radius: var(--pc-radius-box);
   background: linear-gradient(180deg, var(--pc-color-paper-top), var(--pc-color-paper-bottom));
   box-shadow: var(--pc-shadow-scan);
@@ -428,13 +447,20 @@ body {
 }
 
 
-/* Heat legend: sat half on the paper, half on the dark viewer. It now sits
-   in flow under the paper, and its swatches use the same fills the heatmap
-   draws (the Doubt swatch was brown while the heatmap is yellow). */
+/* Heat legend: floats over the scan viewport's bottom-left corner (it sits
+   in .scan-scroll, not .viewer, so zoom/pan never carries it off screen).
+   Swatches use the same fills the heatmap draws (the Doubt swatch was brown
+   while the heatmap is yellow). */
 .heat-legend {
-  position: static;
+  position: absolute;
+  left: var(--pc-space-3);
+  bottom: var(--pc-space-3);
+  z-index: 2;
   display: inline-flex;
-  margin-top: var(--pc-space-3);
+  background: var(--pc-color-bg-surface);
+  border-radius: var(--pc-radius-sm);
+  box-shadow: var(--pc-shadow-panel);
+  padding: var(--pc-space-1) var(--pc-space-2);
 }
 
 .heat-legend i {
@@ -1060,3 +1086,32 @@ span.sn-item { cursor: default; }
 .eng-tag[data-fallback="1"] { color: var(--pc-color-warning); background: var(--pc-color-warning-bg); box-shadow: none; }
 .eng-tag[data-engine="stub"] { color: var(--pc-color-error); }
 .eng-tag[data-engine="stub"]::before { background: var(--pc-color-error); }
+
+/* Scan view tools (zoom / fit / rotate / re-analyze): a floating toolbar
+   pinned to the scan viewport's top-right corner (the pane head has no room
+   for them next to the heat toggle and engine tag). Same surface treatment
+   as the heat legend. */
+.scan-tools {
+  position: absolute;
+  top: var(--pc-space-2);
+  right: var(--pc-space-2);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--pc-space-1);
+  padding: var(--pc-space-1);
+  background: var(--pc-color-bg-surface);
+  border-radius: var(--pc-radius-sm);
+  box-shadow: var(--pc-shadow-panel);
+}
+
+.scan-zoom-fit {
+  min-width: 44px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* .btn sets display, which beats the UA [hidden] rule (same fix as
+   .ai-all-btn[hidden]). */
+.scan-tools .btn[hidden] {
+  display: none;
+}

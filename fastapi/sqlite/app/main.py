@@ -839,6 +839,136 @@ def get_job_page_image(job_id: str, n: str):
                         headers={"Cache-Control": _CACHE_JOB})
 
 
+# --- reprocess: re-run OCR for one page, optionally rotated ----------------
+# The editor's rotate button turns the scan view clockwise client-side and
+# offers "Re-analyze": the same rotation is applied to the stored page here
+# and OCR runs again, so lines/bboxes come back in the orientation the
+# reviewer was looking at (palm-leaf scans are extreme-aspect and often need
+# a quarter turn). The page's lines are replaced; its saved reviewer fixes
+# are dropped (they pointed at the old OCR text), other pages keep theirs.
+
+_REPROCESS_ROTATIONS = {
+    0: None,
+    90: cv2.ROTATE_90_CLOCKWISE,
+    180: cv2.ROTATE_180,
+    270: cv2.ROTATE_90_COUNTERCLOCKWISE,
+}
+
+
+def _drop_page_corrections(job_id: str, page_number: int) -> None:
+    """Remove saved corrections for one page (reprocess replaced its lines).
+    Same write-then-rename discipline as the corrections PUT."""
+    path = _corrections_path(job_id)
+    if not path.is_file():
+        return
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        kept = [c for c in (doc.get("corrections") or [])
+                if isinstance(c, dict) and c.get("page") != page_number]
+    except (OSError, ValueError, AttributeError):
+        return  # unreadable: the next PUT rewrites it; never block reprocess
+    updated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    out = {"corrections": kept, "updated_at": updated_at}
+    with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=path.parent,
+            prefix=CORRECTIONS_FILE + ".", suffix=".tmp",
+            delete=False) as fh:
+        tmp_name = fh.name
+        try:
+            fh.write(json.dumps(out, ensure_ascii=False))
+        except BaseException:
+            fh.close()
+            os.unlink(tmp_name)
+            raise
+    try:
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
+@app.post("/jobs/{job_id}/pages/{n}/reprocess")
+def reprocess_job_page(job_id: str, n: str, rotate: int = Query(0)):
+    """Re-run the pipeline for page `n` (1-based) of a finished job, with
+    the stored page rotated `rotate` degrees clockwise first (0/90/180/270).
+    The job's OCR mode applies exactly as at upload (light/heavy force the
+    route, auto re-scores the rotated page). The rendered page image cache
+    is replaced so the scan route serves the rotated page; the page's saved
+    corrections are dropped.
+
+    404 unknown job/page, 409 job not done, 422 unsupported rotation."""
+    if not _JOB_ID_RE.fullmatch(job_id):
+        raise HTTPException(status_code=404, detail="job not found")
+    if not _PAGE_NO_RE.fullmatch(n) or int(n) < 1:
+        raise HTTPException(status_code=404, detail="page not found")
+    if rotate not in _REPROCESS_ROTATIONS:
+        raise HTTPException(
+            status_code=422,
+            detail="rotate must be 0, 90, 180 or 270 (degrees clockwise)")
+    job = db.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    if job["status"] != "done":
+        raise HTTPException(status_code=409,
+                            detail=f"job is {job['status']}, not done")
+    page_number = int(n)
+
+    # Serializes with corrections PUTs for this job (same lock): a reviewer
+    # saving fixes mid-reprocess never has them silently dropped afterwards.
+    with _corrections_lock(job_id):
+        masters = storage.master_paths(job_id)
+        if not masters:
+            raise HTTPException(status_code=404, detail="page not found")
+        with _PAGE_RENDER_LOCK:  # pypdfium2 is not thread-safe
+            try:
+                pages_in = load_pages(masters)
+            except Exception:
+                pages_in = []
+        if not 1 <= page_number <= len(pages_in):
+            raise HTTPException(status_code=404, detail="page not found")
+
+        img = pages_in[page_number - 1]
+        code = _REPROCESS_ROTATIONS[rotate]
+        if code is not None:
+            img = cv2.rotate(img, code)
+
+        t0 = time.perf_counter()
+        profile, scores = page_profile(to_gray(img), _job_mode(job))
+        route_ms = (time.perf_counter() - t0) * 1000.0
+        with job_breaker():
+            page = _ocr_one_page(job_id, page_number, img, profile, scores,
+                                 route_ms)
+
+        result = parse_job_result(job["result_json"]) or {}
+        pages = result.get("pages") or []
+        idx = next((i for i, p in enumerate(pages)
+                    if isinstance(p, dict) and p.get("page") == page_number),
+                   page_number - 1)
+        if not 0 <= idx < len(pages):
+            raise HTTPException(status_code=404, detail="page not found")
+        pages[idx] = page
+        _drop_page_corrections(job_id, page_number)
+        db.set_result(job_id, "done",
+                      json.dumps(build_job_result(pages), ensure_ascii=False))
+
+        # Replace the rendered page image so GET .../image serves what OCR
+        # just read (write-then-rename, same as the render cache).
+        target = storage.UPLOAD_ROOT / job_id / f"page-{page_number}.png"
+        tmp_path = target.with_name(
+            f"{target.name}.{uuid.uuid4().hex}.tmp.png")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if cv2.imwrite(str(tmp_path), img):
+            tmp_path.replace(target)
+        else:
+            tmp_path.unlink(missing_ok=True)
+
+    return {"job_id": job_id, "page": page_number, "rotate": rotate,
+            "status": "done"}
+
+
 # --- corrections: reviewer fixes persisted per job -----------------------
 # Contract: schema/corrections spec (editor at main 62843be builds on it).
 # PUT replaces the job's whole correction map; GET returns it. Stored as one
