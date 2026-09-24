@@ -12,7 +12,9 @@ Pipeline per upload:
      router's decision, auto keeps it)
   6. OCR fast pass        -> ocr.py      (FAST -> Gemini, HEAVY -> Sarvam,
      cross-fallback, marked stub output; engine failures are logged and
-     shown in /health)
+     shown in /health); extreme-aspect pages (palm leaves, long/short
+     side > banding.EXTREME_ASPECT) are OCR'd in horizontal bands through
+     the same route -> banding.py
   6b. text check          -> textcheck.py (per-line confidence = "text looks
      malformed" score; Sarvam's layout score kept as layout_confidence)
   7. build contract JSON  -> schema_out.py
@@ -45,6 +47,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 
 from . import db, storage
+from .banding import ocr_page_banded
 from .ocr import (_route, _safe_error, engine_status, failed_page_lines,
                   job_breaker, ocr_page, page_engine, reset_page_engine,
                   warn_legacy_env)
@@ -292,7 +295,9 @@ def _ocr_one_page(job_id: str, page_number: int, img, profile: str,
     #     line (-> needs_review) and the other pages still run.
     reset_page_engine()
     try:
-        ocr_lines, ocr_ms = ocr_page(prepared, profile)
+        # Extreme-aspect pages (palm leaves) are OCR'd in horizontal bands
+        # through the same ocr_page route; normal pages call it unchanged.
+        ocr_lines, ocr_ms = ocr_page_banded(prepared, profile, ocr_page)
         ocr_lines = mapper.to_page(ocr_lines)
         engine, primary = page_engine()
     except Exception as exc:
