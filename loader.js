@@ -1,5 +1,5 @@
 /* Pink Cloud - OCR processing overlay: shader D ("3D glyph swarm").
-   Ported from design-drafts/pink-cloud-loading-shader-D.html (reference
+   Ported from design-drafts/pink-cloud-loading-shader-D.html (removed; git history 3c53e7f) (reference
    cosmos.so/e/933016892). Canvas 2D, no dependencies.
 
    While a job runs, the page being read is cut into a glyph grid and wrapped

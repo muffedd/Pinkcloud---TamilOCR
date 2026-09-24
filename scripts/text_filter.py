@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Drop non-Tamil OCR lines, dedupe exact sentences and report confidence/marks.
 
-Usage: python3 scripts/text_filter.py ocr_outputs/repaired_gray/text/after_gray_sample1.txt
-       --json ocr_outputs/repaired_gray/json/sample1.json
+Usage: python3 scripts/text_filter.py path/to/ocr_text.txt
+       --json path/to/ocr_layout.json
 Confidence is the matching layout box's score (block-level, not text recognition).
 """
 import argparse

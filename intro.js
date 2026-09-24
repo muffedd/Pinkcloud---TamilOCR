@@ -6,7 +6,7 @@
    colour.
 
    Variants (all share one timeline, springs and colours from tokens.css;
-   ported from design-drafts/pinkcloud-intro.html, fake product page removed,
+   ported from design-drafts/pinkcloud-intro.html (removed; git history 3c53e7f), fake product page removed,
    the real page animates in instead):
      logo       the Pink Cloud logo (logo2.svg): cloud mark materialises,
                 springs up, "Pinkcloud" wordmark builds in beneath (default)
@@ -114,7 +114,7 @@
     return out;
   }
 
-  /* ================= variant: bolt + word (design-drafts/pinkcloud-intro.html) ================= */
+  /* ================= variant: bolt + word (from the removed design-drafts/pinkcloud-intro.html, in git history at 3c53e7f) ================= */
   function boltIntro(ctx, WORD) {
     var W, H, pitch, textDots = [], boltDots = [], L = {};
     var FONT_STACK = 'ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif';

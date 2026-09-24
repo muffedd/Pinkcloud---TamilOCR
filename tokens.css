@@ -143,7 +143,7 @@
   --pc-shadow-pill: none;
   --pc-shadow-scan: none;
 
-  /* ---------- Motion: one system for the whole UI (see design system/components/buttons-motion.html) ---------- */
+  /* ---------- Motion: one system for the whole UI (was design system/components/buttons-motion.html, removed; git history 3c53e7f) ---------- */
   --pc-motion-press: 90ms;
   --pc-motion-release: 220ms;
   --pc-motion-color: 150ms;
@@ -152,7 +152,7 @@
   --pc-ease-out: cubic-bezier(.23, 1, .32, 1);
   --pc-ease-spring: cubic-bezier(.34, 1.36, .64, 1);
   --pc-ease-in-out: cubic-bezier(.65, 0, .35, 1);
-  --pc-ease-bounce: cubic-bezier(.22, 1.9, .36, 1);     /* from design-drafts/icon-motion-*: big overshoot, tiny moves only (1-2px) */
+  --pc-ease-bounce: cubic-bezier(.22, 1.9, .36, 1);     /* from design-drafts/icon-motion-* (removed; git history 3c53e7f): big overshoot, tiny moves only (1-2px) */
   --pc-ease-overshoot: cubic-bezier(.34, 1.56, .64, 1); /* from icon-motion: press release springs back past rest */
   --pc-lift-hover: -1px;
   --pc-motion-pop: 420ms;    /* icon motion A: state icon / status dot springs in */
@@ -229,7 +229,7 @@
   --pc-qs-h: 28px;
   --pc-qs-pad: 0 8px 0 4px;
 
-  /* ---------- Landing intro (intro.js / intro.css, design-drafts/pinkcloud-intro.html) ---------- */
+  /* ---------- Landing intro (intro.js / intro.css, from the removed design-drafts/pinkcloud-intro.html, git history 3c53e7f) ---------- */
   --pc-intro-sheet-radius: 28px;           /* bottom corners of the sheet as it slides up */
   /* processing overlay (loader.js): gray, tight shadows - no orange halo */
   --pc-loader-card-shadow-color: #1E1A181F;

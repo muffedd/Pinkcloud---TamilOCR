@@ -1,5 +1,5 @@
 /* Pink Cloud - OCR processing overlay (loader.js).
-   Shader D ("3D glyph swarm", design-drafts/pink-cloud-loading-shader-D.html)
+   Shader D ("3D glyph swarm", design-drafts/pink-cloud-loading-shader-D.html, removed; git history 3c53e7f)
    running over the upload page while a job is read. Colors come from
    tokens.css; the canvas reads the same tokens at start. */
 .pc-loader {

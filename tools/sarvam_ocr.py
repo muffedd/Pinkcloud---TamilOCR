@@ -2,7 +2,7 @@
 """Transcribe an image or document with Sarvam Document AI.
 
 Usage: python3 tools/sarvam_ocr.py path/to/image.png
-       python3 tools/sarvam_ocr.py raw/sample2.png --output ocr_outputs/sarvam/raw/sample2
+       python3 tools/sarvam_ocr.py samples/editor/sample2.png --output ocr_outputs/sarvam/raw/sample2
 """
 import argparse
 import json

@@ -343,7 +343,7 @@ h1, h2, h3, h4, h5, h6, p {
   86% { transform: rotate(285deg); } 100% { transform: rotate(360deg); }
 }
 
-/* ---------- Icon motion (design-drafts/icon-motion-a.html + -b.html) ----------
+/* ---------- Icon motion (design-drafts/icon-motion-a.html + -b.html, removed; git history 3c53e7f) ----------
    A = spring: a state icon or status dot scales in, overshoots, settles.
    B = draw-on: icon strokes draw themselves when the icon appears.
    Never used in a sidebar or in the intro. Reduced motion: all off (below). */
