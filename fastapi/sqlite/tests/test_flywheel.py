@@ -187,3 +187,58 @@ def test_put_foldin_dictionary_and_skip(client, tmp_path):
 def test_dictionary_skip_validation(client):
     r = client.post("/dictionary/skip", json={"before": "", "after": "x"})
     assert r.status_code == 422
+
+
+# --- Turso failure must never 500 the editor ------------------------------
+
+class _BadTurso:
+    """Stand-in libsql module whose connect() is rejected (e.g. 401)."""
+    @staticmethod
+    def connect(*a, **kw):
+        raise RuntimeError("sync failed: 401 Unauthorized")
+
+
+class _BadQueryConn:
+    def execute(self, sql, *a):
+        if sql.strip().upper().startswith("SELECT 1"):
+            class _R:
+                def fetchall(self):
+                    return [(1,)]
+            return _R()
+        raise RuntimeError("stream error: 401")
+
+    def close(self):
+        pass
+
+
+class _BadQueryTurso:
+    @staticmethod
+    def connect(*a, **kw):
+        return _BadQueryConn()
+
+
+def _turso_env(monkeypatch, module):
+    monkeypatch.setenv("LIBSQL_URL", "libsql://example.turso.io")
+    monkeypatch.setenv("LIBSQL_AUTH_TOKEN", "bad-token")
+    monkeypatch.setattr(flywheel, "_libsql", module)
+    monkeypatch.setattr(flywheel, "_turso_down_until", 0.0)
+
+
+def test_bad_turso_token_falls_back_to_local(client, monkeypatch):
+    _turso_env(monkeypatch, _BadTurso)
+    assert flywheel.using_libsql() is True
+    r = client.get("/dictionary")
+    assert r.status_code == 200
+    assert "dictionary" in r.json()
+    assert flywheel.turso_active() is False  # backed off after the failure
+    r = client.post("/dictionary/skip",
+                    json={"before": "x", "after": "y"})
+    assert r.status_code == 200
+    assert flywheel._local_path().exists()
+
+
+def test_turso_query_failure_falls_back_to_local(client, monkeypatch):
+    _turso_env(monkeypatch, _BadQueryTurso)
+    r = client.get("/dictionary")
+    assert r.status_code == 200
+    assert flywheel.turso_active() is False

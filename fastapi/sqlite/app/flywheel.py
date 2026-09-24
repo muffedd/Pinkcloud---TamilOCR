@@ -16,10 +16,15 @@ LIBSQL_AUTH_TOKEN are both set AND the libsql package is installed,
 otherwise a plain local SQLite file (flywheel.db, next to pinkcloud.db).
 Zero config = local file, so dev, tests and the demo run unchanged; set
 the two env vars on Render to share one dictionary across deploys.
+If Turso rejects the connection (bad/expired token, wrong URL), reads
+and writes fall back to a local flywheel-local.db for TURSO_RETRY_S
+seconds instead of failing the request.
 """
 
+import logging
 import os
 import sqlite3
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -47,17 +52,53 @@ def using_libsql() -> bool:
             and bool(os.environ.get("LIBSQL_AUTH_TOKEN")))
 
 
+# When Turso rejects the connection (bad or expired token, wrong URL,
+# network), the flywheel drops to a LOCAL sqlite file for a while instead
+# of failing the request: a bad LIBSQL_AUTH_TOKEN must never 500 the
+# editor's /dictionary or corrections endpoints. Local-fallback writes
+# stay in that file and are not synced to Turso later.
+TURSO_RETRY_S = 300.0
+_turso_down_until = 0.0
+
+
+def _local_path() -> Path:
+    """The plain-sqlite fallback file used while Turso is unreachable.
+    Separate from DB_PATH so a half-initialised libsql replica file is
+    never opened by sqlite3."""
+    return DB_PATH.with_name(DB_PATH.stem + "-local" + DB_PATH.suffix)
+
+
+def _mark_turso_down() -> None:
+    global _turso_down_until
+    _turso_down_until = time.monotonic() + TURSO_RETRY_S
+
+
+def turso_active() -> bool:
+    """True when Turso is configured AND not in its failure back-off."""
+    return using_libsql() and time.monotonic() >= _turso_down_until
+
+
 def _connect():
-    """Open a connection in whichever mode is configured."""
-    if using_libsql():
-        conn = _libsql.connect(
-            str(DB_PATH),
-            sync_url=os.environ["LIBSQL_URL"],
-            auth_token=os.environ["LIBSQL_AUTH_TOKEN"],
-        )
-    else:
-        conn = sqlite3.connect(DB_PATH)
-    return conn
+    """Open a connection in whichever mode is configured. If the Turso
+    connection fails, log it (type name only, never the token) and fall
+    back to the local sqlite file for TURSO_RETRY_S seconds."""
+    if not using_libsql():
+        return sqlite3.connect(DB_PATH)
+    if turso_active():
+        try:
+            conn = _libsql.connect(
+                str(DB_PATH),
+                sync_url=os.environ["LIBSQL_URL"],
+                auth_token=os.environ["LIBSQL_AUTH_TOKEN"],
+            )
+            conn.execute("SELECT 1").fetchall()
+            return conn
+        except Exception as exc:
+            _mark_turso_down()
+            logging.getLogger("pinkcloud.flywheel").warning(
+                "Turso connection failed (%s); using local sqlite fallback "
+                "for %ds", type(exc).__name__, int(TURSO_RETRY_S))
+    return sqlite3.connect(_local_path())
 
 
 def _init(conn) -> None:
@@ -95,7 +136,6 @@ def _sync(conn) -> None:
         try:
             sync()
         except Exception:  # pragma: no cover - needs a live Turso backend
-            import logging
             logging.getLogger("pinkcloud.flywheel").exception(
                 "flywheel replica sync failed (writes are safe locally)")
 
@@ -170,7 +210,21 @@ def skip(before: str, after: str) -> None:
 
 def dictionary(limit: int = 200) -> list[dict]:
     """Pairs worth suggesting: accepted at least MIN_ACCEPTS times and
-    accepted more often than skipped, strongest first."""
+    accepted more often than skipped, strongest first. A Turso failure
+    mid-read falls back to the local file instead of raising."""
+    try:
+        return _dictionary(limit)
+    except Exception as exc:
+        if not turso_active():
+            raise
+        _mark_turso_down()
+        logging.getLogger("pinkcloud.flywheel").warning(
+            "Turso read failed (%s); dictionary served from local fallback",
+            type(exc).__name__)
+        return _dictionary(limit)
+
+
+def _dictionary(limit: int) -> list[dict]:
     conn = _connect()
     try:
         _init(conn)

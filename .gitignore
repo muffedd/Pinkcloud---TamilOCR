@@ -7,6 +7,7 @@ apikey.txt
 pinkcloud.db
 flywheel.db
 flywheel.db-*
+flywheel-local.db*
 uploads/
 __pycache__/
 *.pyc
