@@ -175,19 +175,19 @@ The experimental CPU repair pipeline is `repair/repair.py`, with `scripts/text_f
 
 ### OCR evaluation highlights
 
-CER is measured against `gt_cict_narrinai_p3.txt` (in git history), which matches sample1 only. Tamil ratio and garbage rate are fractions; confidence is the mean layout-box score, not recognition certainty. Segmentation differs between OCR providers.
+The current engines are Gemini (FAST route) and Sarvam Document AI (HEAVY route); the PaddleOCR-VL-1.6 rows this table used to show came from the retired engine. CER is measured against `gt_cict_narrinai_p3.txt` (in git history), which matches sample1 only, so sample2 is N/A. Tamil ratio and garbage rate are fractions. Confidence is Sarvam's mean layout-box score; Gemini returns text only, so its confidence is the `textcheck` line-quality proxy (`0.99` on every clean Tamil line) and the two are not directly comparable. Segmentation differs between providers.
 
 | Page / input | OCR path | Tamil ratio | Garbage rate | Repeat-loop lines | Mean confidence | CER | API latency |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| sample1 raw | PaddleOCR-VL-1.6 | 0.845 | 0.060 | 0 | 0.717 | 33.87% | Not recorded |
-| sample1 raw | Sarvam Document AI | 0.978 | 0.000 | 0 | 0.742 | **1.54%** | 12.54 s |
-| sample1 raw + filter | PaddleOCR-VL-1.6 | 0.979 | 0.001 | 0 | 0.712 | 27.22% | — |
-| sample2 raw | PaddleOCR-VL-1.6 | 0.920 | 0.055 | 1 | 0.808 | N/A | Not recorded |
-| sample2 raw | Sarvam Document AI | 0.920 | 0.000 | 0 | 0.759 | N/A | 9.51 s |
-| sample2 repaired grayscale | PaddleOCR-VL-1.6 | 0.974 | 0.007 | 0 | 0.744 | N/A | 267.34 s POST; ~305.47 s to saved result |
-| sample2 repaired grayscale | Sarvam Document AI | 0.986 | 0.000 | 0 | 0.798 | N/A | 17.03 s |
+| sample1 raw | Gemini 3.5 flash-lite (FAST) | 1.000 | 0.000 | 0 | 0.99 | 2.52% | 7.06 s |
+| sample1 raw | Sarvam Document AI (HEAVY) | 0.978 | 0.000 | 0 | 0.742 | **1.54%** | 12.54 s |
+| sample1 raw + text filter | Gemini 3.5 flash-lite (FAST) | 1.000 | 0.000 | 0 | 0.99 | 2.52% | — |
+| sample2 raw | Gemini 3.5 flash-lite (FAST) | 1.000 | 0.000 | 0 | 0.99 | N/A | 9.27 s |
+| sample2 raw | Sarvam Document AI (HEAVY) | 0.920 | 0.000 | 0 | 0.759 | N/A | 9.51 s |
+| sample2 repaired grayscale | Gemini 3.5 flash-lite (FAST) | 1.000 | 0.000 | 0 | 0.99 | N/A | 9.78 s |
+| sample2 repaired grayscale | Sarvam Document AI (HEAVY) | 0.986 | 0.000 | 0 | 0.798 | N/A | 17.03 s |
 
-Sarvam sample2 raw includes a false English “no legible text” preamble despite transcribing Tamil; its zero garbage rate does not capture this semantic error. Sample2 lacks matching ground truth, so no CER winner is established. These small tests suggest Sarvam performed better on the measured sample1 CER, but are not a general accuracy guarantee.
+The text filter drops no Gemini lines (its output is already all Tamil), so the `+ text filter` row matches the raw row. Sarvam sample2 raw includes a false English “no legible text” preamble despite transcribing Tamil; its zero garbage rate does not capture this semantic error. Sample2 lacks matching ground truth, so no CER winner is established there. On the one sample with ground truth, Sarvam (1.54%) still beats Gemini (2.52%) on CER; Gemini is the FAST route because it is quicker and its output is clean, not because it is more accurate. These are single-sample results, not a general accuracy guarantee.
 
 Detailed tables, OCR artifacts, and runnable checks: [`OCR_API_COMPARISON.md`](OCR_API_COMPARISON.md), [`OCR_TEST_SCORES.md`](OCR_TEST_SCORES.md), and [`OCR_PROGRESS_PROOF.md`](OCR_PROGRESS_PROOF.md). API credentials belong in deployment secrets, never in Git; the Sarvam API key is not part of this repository.
 
