@@ -349,16 +349,25 @@ def _dedup_hit(digest: str) -> dict | None:
     content hash, POST /jobs returns that job instead of spending another
     OCR run: {"job_id": <existing>, "status": "done", "duplicate": true}.
     The client treats it like any finished job and opens the editor on the
-    existing id. 'Valid' means the stored JSON parses; a corrupt stored
-    row, an 'error' job or a still-pending one never matches, so failures
-    always retry and in-flight uploads always run fresh."""
+    existing id. 'Valid' means the stored JSON parses to a non-empty page
+    list with no stub (OCR-failed) page; a corrupt stored row, a stub
+    result, an 'error' job or a still-pending one never matches, so
+    failures always retry and in-flight uploads always run fresh."""
     job = db.find_done_by_sha256(digest)
     if job is None:
         return None
     try:
-        if parse_job_result(job["result_json"]) is None:
-            return None
+        result = parse_job_result(job["result_json"])
     except ValueError:
+        return None
+    pages = result.get("pages") if isinstance(result, dict) else None
+    if not isinstance(pages, list) or not pages:
+        return None
+    # A page where both OCR engines failed carries marked [stub] lines but
+    # the job still ends 'done'. Never serve that as a dedup hit: the
+    # re-upload is how the user retries once the engine/key is fixed.
+    if any(isinstance(pg, dict) and pg.get("ocr_engine") == "stub"
+           for pg in pages):
         return None
     return {"job_id": job["id"], "status": "done", "duplicate": True}
 
