@@ -93,6 +93,12 @@ var LS_SKIPS = "pc.dictskips.";   /* + job id: auto-applied fixes the reviewer u
 var MOCK_STORAGE_ID = "demo-kural";
 
 var el = {};
+/* Line-region boxes for the current scan render, cached so setHover does
+   not re-query the DOM on every mouse crossing. Reset by renderScan. */
+var regionEls = [];
+/* The scan layer boxes live in, so a targeted update can add a box without
+   re-rendering the scan. Set by renderScan. */
+var scanLayer = null;
 var saveTimer = null;
 var saveWarned = false;
 
@@ -724,10 +730,9 @@ function setHover(key) {
     refreshWordEl(w);
     if (w.boxEl) w.boxEl.className = boxClass(w);
   }
-  var regions = el.paper.querySelectorAll(".box-region");
-  for (var i = 0; i < regions.length; i++) {
-    var show = regions[i].getAttribute("data-line") === S.hoverLine;
-    regions[i].classList.toggle("show", show);
+  /* Cached list (renderScan rebuilds it): no querySelectorAll per crossing. */
+  for (var i = 0; i < regionEls.length; i++) {
+    regionEls[i].classList.toggle("show", regionEls[i].getAttribute("data-line") === S.hoverLine);
   }
 }
 
@@ -752,14 +757,8 @@ function renderText() {
       s.textContent = w.text;
       w.el = s;
       refreshWordEl(w);
-      s.addEventListener("click", function () {
-        /* Second click on the active word opens the fix popup - the mouse
-           path to review or undo an auto-applied fix. */
-        if (S.activeKey === w.key) openPopup();
-        else select(w.key, "word");
-      });
-      s.addEventListener("mouseenter", function () { setHover(w.key); });
-      s.addEventListener("mouseleave", function () { setHover(null); });
+      /* Click and hover are delegated on el.textRows (wireDelegates):
+         second click on the active word opens the fix popup. */
       words.appendChild(s);
     });
     row.appendChild(gutter);
@@ -779,6 +778,44 @@ function boxClass(w) {
   if (w.bin === "doubt") return "box box-doubt";
   if (w.bin === "auto" && S.mode === "review") return "box box-auto";
   return "box";
+}
+
+/* One word box on the scan. No listeners: click/hover are delegated on
+   el.paper (wireDelegates). */
+function makeBoxEl(w) {
+  var s = S.scale;
+  var b = document.createElement("div");
+  b.className = boxClass(w);
+  b.dataset.key = w.key;
+  b.setAttribute("role", "button");
+  b.setAttribute("aria-label", w.text);
+  b.style.left = Math.round(w.bbox[0] * s - BOX_PAD) + "px";
+  b.style.top = Math.round(w.bbox[1] * s - BOX_PAD) + "px";
+  b.style.width = Math.round(w.bbox[2] * s + BOX_PAD * 2) + "px";
+  b.style.height = Math.round(w.bbox[3] * s + BOX_PAD * 2) + "px";
+  if (w.autoApplied) b.style.borderColor = "var(--pc-color-primary)";
+  return b;
+}
+
+/* Targeted scan update for one word (accept/undo): restyle its box, add it
+   if the word newly needs one, drop it if it no longer does - instead of
+   re-rendering the whole scan pane. Positions are unchanged (scale and
+   bboxes did not move), so only the class and auto outline need updates. */
+function refreshBoxEl(w) {
+  var cls = boxClass(w);
+  if (cls === "box") {
+    if (w.boxEl) { w.boxEl.remove(); w.boxEl = null; }
+    return;
+  }
+  if (w.boxEl && w.boxEl.parentNode) {
+    w.boxEl.className = cls;
+    w.boxEl.setAttribute("aria-label", w.text);
+    w.boxEl.style.borderColor = w.autoApplied ? "var(--pc-color-primary)" : "";
+  } else if (scanLayer) {
+    var b = makeBoxEl(w);
+    w.boxEl = b;
+    scanLayer.appendChild(b);
+  }
 }
 
 /* ---------------- heatmap color ----------------
@@ -845,6 +882,7 @@ function renderScan() {
   S.renderedW = paperW;
   var s = S.scale;
   el.paper.innerHTML = "";
+  regionEls = [];
 
   /* Live mode: draw the real scan behind the boxes (SCAN_IMAGE in api.js,
      GET /jobs/{id}/pages/{n}/image). Probe it once per page; on any failure
@@ -881,7 +919,13 @@ function renderScan() {
   /* Each word is drawn inside its own (approximate) word bbox, so the
      placeholder text lines up with the word boxes drawn on top of it
      instead of running past them. If a word is wider than its box, the
-     whole line's type is shrunk evenly to fit; nothing is clipped. */
+     whole line's type is shrunk evenly to fit; nothing is clipped.
+     The sheet is built in a fragment and appended once: appending each
+     word to the live document and measuring it there forced one reflow
+     per word. Now: append all, read every measurement in one pass (one
+     reflow), then apply the font-size writes. */
+  var frag = document.createDocumentFragment();
+  var fitLines = [];
   S.lines.forEach(function (line) {
     var d = document.createElement("div");
     d.className = "paper-line";
@@ -890,8 +934,7 @@ function renderScan() {
     d.style.width = Math.round(line.bbox[2] * s) + "px";
     d.style.height = Math.round(line.bbox[3] * s) + "px";
     d.setAttribute("aria-label", line.body);
-    el.paper.appendChild(d);
-    var fit = 1;
+    line.paperEl = d;
     line.words.forEach(function (w) {
       var span = document.createElement("span");
       span.className = "paper-word";
@@ -899,14 +942,29 @@ function renderScan() {
       span.style.left = Math.round((w.bbox[0] - line.bbox[0]) * s) + "px";
       span.style.width = Math.round(w.bbox[2] * s) + "px";
       span.textContent = w.text;
+      w.paperEl = span;
       d.appendChild(span);
-      var room = span.clientWidth;
-      var need = span.scrollWidth;
-      if (room > 0 && need > room) fit = Math.min(fit, room / need);
     });
-    if (fit < 1) {
+    frag.appendChild(d);
+    fitLines.push(d);
+  });
+  el.paper.appendChild(frag);
+  /* Measure pass (reads only): per line, the worst overflow ratio. */
+  var fits = fitLines.map(function (d) {
+    var fit = 1;
+    for (var i = 0; i < d.children.length; i++) {
+      var room = d.children[i].clientWidth;
+      var need = d.children[i].scrollWidth;
+      if (room > 0 && need > room) fit = Math.min(fit, room / need);
+    }
+    return fit;
+  });
+  /* Write pass: shrink the over-wide lines' type (small margin: glyph
+     widths do not scale exactly linearly). */
+  fitLines.forEach(function (d, i) {
+    if (fits[i] < 1) {
       var fs = parseFloat(getComputedStyle(d).fontSize) || 18;
-      d.style.fontSize = (fs * fit * 0.94).toFixed(2) + "px"; /* small margin: glyph widths do not scale exactly linearly */
+      d.style.fontSize = (fs * fits[i] * 0.94).toFixed(2) + "px";
     }
   });
   }
@@ -942,31 +1000,20 @@ function renderScan() {
     r.style.top = Math.round(line.bbox[1] * s - BOX_PAD) + "px";
     r.style.width = Math.round(line.bbox[2] * s + BOX_PAD * 2) + "px";
     r.style.height = Math.round(line.bbox[3] * s + BOX_PAD * 2) + "px";
+    regionEls.push(r);
     layer.appendChild(r);
   });
 
   /* Word boxes on top. */
   S.words.forEach(function (w) {
-    var cls = boxClass(w);
-    if (cls === "box") return; /* ok words draw no box */
-    var b = document.createElement("div");
-    b.className = cls;
-    b.dataset.key = w.key;
-    b.setAttribute("role", "button");
-    b.setAttribute("aria-label", w.text);
-    b.style.left = Math.round(w.bbox[0] * s - BOX_PAD) + "px";
-    b.style.top = Math.round(w.bbox[1] * s - BOX_PAD) + "px";
-    b.style.width = Math.round(w.bbox[2] * s + BOX_PAD * 2) + "px";
-    b.style.height = Math.round(w.bbox[3] * s + BOX_PAD * 2) + "px";
-    if (w.autoApplied) b.style.borderColor = "var(--pc-color-primary)";
-    b.addEventListener("click", function () { select(w.key, "box"); });
-    b.addEventListener("mouseenter", function () { setHover(w.key); });
-    b.addEventListener("mouseleave", function () { setHover(null); });
+    if (boxClass(w) === "box") { w.boxEl = null; return; } /* ok words draw no box */
+    var b = makeBoxEl(w);
     w.boxEl = b;
     layer.appendChild(b);
   });
 
   el.paper.appendChild(layer);
+  scanLayer = layer;
   el.heatLegend.hidden = !S.heat;
 }
 
@@ -999,7 +1046,16 @@ function renderLegend() {
 
 function renderQueue() {
   el.queue.innerHTML = "";
-  S.queue.forEach(function (w) {
+  var frag = document.createDocumentFragment();
+  S.queue.forEach(function (w) { frag.appendChild(buildQueueCard(w)); });
+  el.queue.appendChild(frag);
+  el.queueEmpty.hidden = S.queue.length > 0;
+  layoutCrops();
+}
+
+/* One queue card. No listeners: click/hover are delegated on el.queue and
+   suggestion clicks carry data-key/data-sugg (wireDelegates). */
+function buildQueueCard(w) {
     var card = document.createElement("div");
     card.className = "qcard" + (w.key === S.activeKey ? " is-active" : "") + (w.fixed ? " is-fixed" : "");
     card.dataset.key = w.key;
@@ -1052,18 +1108,20 @@ function renderQueue() {
     card.appendChild(row);
     card.appendChild(body);
 
-    function pick() { select(w.key, "queue"); }
-    row.addEventListener("click", pick);
-    crop.addEventListener("click", pick);
-    card.addEventListener("mouseenter", function () { setHover(w.key); });
-    card.addEventListener("mouseleave", function () { setHover(null); });
     w.rowEl = row;
     w.cardEl = card;
     w.cropEl = crop;
-    el.queue.appendChild(card);
-  });
-  el.queueEmpty.hidden = S.queue.length > 0;
-  layoutCrops();
+    return card;
+}
+
+/* Targeted queue update for one word (accept/undo): rebuild just its card
+   in place - the rest of the queue, and its scroll position, stay put. */
+function refreshQueueCard(w) {
+  var old = w.cardEl;
+  if (!old || !old.parentNode) return;
+  old.parentNode.replaceChild(buildQueueCard(w), old);
+  var c = w.cropEl;
+  if (c && c.clientWidth && c.clientHeight) layoutCropEl(w, c.clientWidth, c.clientHeight);
 }
 
 /* One numbered suggestion button (queue card and fix popup share it). */
@@ -1091,10 +1149,9 @@ function suggButton(w, c, i) {
     b.appendChild(src);
   }
   b.title = "Use " + c.text + " (" + (i + 1) + ")";
-  b.addEventListener("click", function (e) {
-    e.stopPropagation();
-    pickSuggestion(w, i);
-  });
+  /* Click handled by delegation on el.queue / el.pop (wireDelegates). */
+  b.dataset.key = w.key;
+  b.setAttribute("data-sugg", String(i));
   return b;
 }
 
@@ -1116,10 +1173,14 @@ function layoutCrops() {
   var cw = first.clientWidth;
   var ch = first.clientHeight;
   if (!cw || !ch) return;
-  var hasImg = !!(S.imageLoaded && S.pageImageUrl && S.coordW && S.pageH);
-  S.queue.forEach(function (w) {
+  S.queue.forEach(function (w) { layoutCropEl(w, cw, ch); });
+}
+
+/* Lay out one card's crop at cw x ch px (see layoutCrops). */
+function layoutCropEl(w, cw, ch) {
     var c = w.cropEl;
     if (!c) return;
+    var hasImg = !!(S.imageLoaded && S.pageImageUrl && S.coordW && S.pageH);
     c.innerHTML = "";
     if (!hasImg) {
       c.classList.add("is-placeholder");
@@ -1142,7 +1203,6 @@ function layoutCrops() {
     m.style.width = (w.bbox[2] * r.k).toFixed(1) + "px";
     m.style.height = (w.bbox[3] * r.k).toFixed(1) + "px";
     c.appendChild(m);
-  });
 }
 
 /* Crop window in bbox space for a cw x ch px crop box: {x, y, k} where k is
@@ -1535,6 +1595,20 @@ function pickSuggestion(w, i) {
   if (open || aiaLoad()) stepQueue(1); /* pre-fill run: stepQueue hops to the next AI reading / page */
 }
 
+/* Targeted view update after one word's text/state changed: the word span
+   (refreshWordEl), its placeholder paper word, its scan box, its queue card
+   and the counts - instead of re-rendering the whole scan pane and queue
+   per fix. */
+function refreshWordViews(w) {
+  refreshWordEl(w);
+  if (w.paperEl) w.paperEl.textContent = w.text;
+  if (w.line && w.line.paperEl) w.line.paperEl.setAttribute("aria-label", w.line.body);
+  refreshBoxEl(w);
+  refreshQueueCard(w);
+  renderCounts();
+  renderBadges();
+}
+
 /* Shared accept path: the word becomes a human fix, is saved back, and
    teaches the dictionary. */
 function acceptFix(w, tamil) {
@@ -1553,10 +1627,7 @@ function acceptFix(w, tamil) {
   recordCorrection(w);
   dictAdd(w.orig, w.text);
   closePopup();
-  renderScan();
-  renderQueue();
-  renderCounts();
-  renderBadges();
+  refreshWordViews(w);
 }
 
 function doReject() {
@@ -1598,11 +1669,7 @@ function doUndoAuto() {
   }
   if (S.dictCount > 0) S.dictCount--;
   retext();
-  refreshWordEl(w);
-  renderScan();
-  renderQueue();
-  renderCounts();
-  renderBadges();
+  refreshWordViews(w);
   toast("Learned fix undone · " + w.orig + " restored");
   if (w.el) w.el.focus();
 }
@@ -1648,6 +1715,83 @@ function wireSeg(node, onChange) {
     if (n !== null && n !== undefined) {
       e.preventDefault();
       set(n, true);
+    }
+  });
+}
+
+/* ---------------- delegated events ----------------
+   Word spans, scan boxes and queue cards are rebuilt on every render, so
+   per-element listeners meant re-attaching hundreds of handlers per render.
+   The persistent containers get one listener each; data-key attributes
+   carry the word identity. Hover uses mouseover/mouseout (they bubble;
+   mouseenter/mouseleave do not). */
+function keyWithin(container, target, selector) {
+  var node = target && target.closest ? target.closest(selector) : null;
+  return node && container.contains(node) ? node.getAttribute("data-key") : null;
+}
+
+function wireDelegates() {
+  /* Text pane: click selects (second click on the active word opens the
+     fix popup); hovering a word lights its line region and scan box. */
+  el.textRows.addEventListener("click", function (e) {
+    var key = keyWithin(el.textRows, e.target, "[data-key]");
+    if (!key || !S.byKey[key]) return;
+    if (S.activeKey === key) openPopup();
+    else select(key, "word");
+  });
+  el.textRows.addEventListener("mouseover", function (e) {
+    if (e.target === e.relatedTarget) return; /* rebuild under a stationary mouse: not a real move */
+    setHover(keyWithin(el.textRows, e.target, "[data-key]"));
+  });
+  el.textRows.addEventListener("mouseout", function (e) {
+    if (!e.relatedTarget || !el.textRows.contains(e.relatedTarget)) setHover(null);
+  });
+
+  /* Scan pane: word boxes (heat fills and line regions carry no data-key). */
+  el.paper.addEventListener("click", function (e) {
+    var key = keyWithin(el.paper, e.target, ".box[data-key]");
+    if (key && S.byKey[key]) select(key, "box");
+  });
+  el.paper.addEventListener("mouseover", function (e) {
+    if (e.target === e.relatedTarget) return; /* rebuild under a stationary mouse: not a real move */
+    setHover(keyWithin(el.paper, e.target, ".box[data-key]"));
+  });
+  el.paper.addEventListener("mouseout", function (e) {
+    if (!e.relatedTarget || !el.paper.contains(e.relatedTarget)) setHover(null);
+  });
+
+  /* Review queue: suggestion buttons first (they sit inside the card),
+     then the row / crop pick; hovering a card lights the word. */
+  el.queue.addEventListener("click", function (e) {
+    var opt = e.target && e.target.closest ? e.target.closest(".qs-opt") : null;
+    if (opt && el.queue.contains(opt)) {
+      pickSuggestion(S.byKey[opt.getAttribute("data-key")],
+        parseInt(opt.getAttribute("data-sugg"), 10));
+      return;
+    }
+    var pickEl = e.target && e.target.closest ? e.target.closest(".qrow, .qcrop") : null;
+    if (pickEl && el.queue.contains(pickEl)) {
+      var card = pickEl.closest(".qcard");
+      var key = card && card.getAttribute("data-key");
+      if (key && S.byKey[key]) select(key, "queue");
+    }
+  });
+  el.queue.addEventListener("mouseover", function (e) {
+    if (e.target === e.relatedTarget) return; /* rebuild under a stationary mouse: not a real move */
+    var card = e.target && e.target.closest ? e.target.closest(".qcard") : null;
+    setHover(card && el.queue.contains(card) ? card.getAttribute("data-key") : null);
+  });
+  el.queue.addEventListener("mouseout", function (e) {
+    if (!e.relatedTarget || !el.queue.contains(e.relatedTarget)) setHover(null);
+  });
+
+  /* Fix popup: suggestion buttons (the rest of the popup keeps its own
+     listeners - it is a handful of buttons rebuilt per open). */
+  el.pop.addEventListener("click", function (e) {
+    var opt = e.target && e.target.closest ? e.target.closest(".qs-opt") : null;
+    if (opt && el.pop.contains(opt)) {
+      pickSuggestion(S.byKey[opt.getAttribute("data-key")],
+        parseInt(opt.getAttribute("data-sugg"), 10));
     }
   });
 }
@@ -2542,26 +2686,28 @@ function init() {
   wireAiAll();
   wireSidenav();
 
+  wireDelegates();
   wireHotkeys();
   probeConn();
 
   var raf = 0;
   /* The paper can change width without a window resize (the scan pane's
-     scrollbar appearing, the heat legend toggling): keep boxes in step. */
-  if (window.ResizeObserver) {
-    new ResizeObserver(function () {
-      if (S.page && el.paper.clientWidth && el.paper.clientWidth !== S.renderedW) {
-        renderScan();
-      }
-    }).observe(el.paper);
-  }
-  window.addEventListener("resize", function () {
+     scrollbar appearing, the heat legend toggling): keep boxes in step.
+     Both observers route through one rAF throttle, so a resize burst costs
+     at most one re-render per frame instead of one per notification. */
+  function scheduleScanRender() {
     if (raf) return;
     raf = requestAnimationFrame(function () {
       raf = 0;
-      if (S.page) renderScan();
+      if (S.page && el.paper.clientWidth && el.paper.clientWidth !== S.renderedW) {
+        renderScan();
+      }
     });
-  });
+  }
+  if (window.ResizeObserver) {
+    new ResizeObserver(scheduleScanRender).observe(el.paper);
+  }
+  window.addEventListener("resize", scheduleScanRender);
 
   bootData();
 }
