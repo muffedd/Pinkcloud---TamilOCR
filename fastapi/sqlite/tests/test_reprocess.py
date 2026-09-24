@@ -263,3 +263,27 @@ def test_reprocess_blank_crop_means_no_crop(env):
                     params={"rotate": 0, "crop": ""})
     assert r.status_code == 200, r.text
     assert "crop" not in r.json()
+
+
+def test_pdf_export_embeds_the_cropped_render(env):
+    """After a rotate+crop reprocess the page's bboxes live in the new
+    render's pixel space, so the PDF scan page must be that render (same
+    size), not the uncropped master - else the invisible text layer lands
+    in the wrong place."""
+    import pypdfium2 as pdfium
+
+    from app.export import PT_PER_PX
+
+    client, job_id = env
+    r = client.post(f"/jobs/{job_id}/pages/1/reprocess",
+                    params={"rotate": 90, "crop": "0.1,0.1,0.9,0.9"})
+    assert r.status_code == 200, r.text
+    render = cv2.imread(str(storage.UPLOAD_ROOT / job_id / "page-1.png"))
+    pdf = client.get(f"/jobs/{job_id}/export.pdf")
+    assert pdf.status_code == 200, pdf.text
+    doc = pdfium.PdfDocument(pdf.content)
+    # text pages first, then the scans: page 1's scan follows the text pages
+    sizes = [doc[i].get_size() for i in range(len(doc))]
+    want = (render.shape[1] * PT_PER_PX, render.shape[0] * PT_PER_PX)
+    assert any(abs(w - want[0]) < 0.5 and abs(h - want[1]) < 0.5
+               for w, h in sizes), (sizes, want)

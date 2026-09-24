@@ -750,6 +750,29 @@ def _add_text_pages(pdf, font, helv, hb_font, upem: int, pages: list[dict],
     return added
 
 
+def _current_renders(master: Path | list[Path], images: list) -> list:
+    """Swap in each page's CURRENT render (uploads/<job>/page-<n>.png) when
+    one exists. A rotate/crop reprocess replaces that render and re-OCRs it,
+    so the page's bboxes live in the render's pixel space, not the master's;
+    embedding the master there would misplace the invisible text layer (and
+    show the uncropped scan). Untouched pages' renders come from the same
+    loader as `images`, so they embed the same pixels as before."""
+    import cv2
+
+    first = master[0] if isinstance(master, (list, tuple)) else master
+    if first is None:
+        return images
+    job_dir = Path(first).parent
+    out = list(images)
+    for i in range(len(out)):
+        cur = job_dir / f"page-{i + 1}.png"
+        if cur.is_file():
+            img = cv2.imread(str(cur), cv2.IMREAD_COLOR)
+            if img is not None:
+                out[i] = img
+    return out
+
+
 def _build_pdf(master: Path | list[Path], pages: list[dict],
                receipt: dict, include_scans: bool = True) -> bytes:
     import pypdfium2 as pdfium
@@ -762,6 +785,7 @@ def _build_pdf(master: Path | list[Path], pages: list[dict],
     if not images:
         # Never ship a PDF without the document: fail loudly instead.
         raise RuntimeError("no page images for the export PDF")
+    images = _current_renders(master, images)
     by_no = {int(p.get("page", i + 1)): p for i, p in enumerate(pages)}
 
     pdf = pdfium.PdfDocument.new()
