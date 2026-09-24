@@ -5,6 +5,7 @@ ZIP with metadata/page_NNN.json) and the page JSON the team captured from a
 real Sarvam run (ocr_outputs/sarvam/raw/sample1/json/sample1.json).
 """
 
+import threading
 import io
 import json
 import zipfile
@@ -312,3 +313,22 @@ def test_status_before_any_page_neither_key_is_stub(env):
     env.delenv("SARVAM_API_KEY", raising=False)
     env.delenv("GEMINI_API_KEY", raising=False)
     assert ocr.engine_status()["ocr_engine"] == "stub"
+
+
+def test_completed_job_is_downloaded_even_at_the_deadline(env):
+    # The job finished (Sarvam has billed the page) just as the page budget
+    # ran out: the result must still be downloaded, not thrown away for a
+    # second, billed Gemini call.
+    env.setenv("SARVAM_TIMEOUT_S", "0.3")
+    fake = FakeSarvam(statuses=("completed",))
+    real = fake.__call__
+
+    def slow_status(request):
+        if request.url.path.endswith("/status"):
+            threading.Event().wait(0.35)  # real sleep past the deadline
+        return real(request)
+
+    _patch_client(env, slow_status)
+    lines, _ = ocr.ocr_page(_img(), "HEAVY")
+    assert not _is_stub(lines)
+    assert ocr.page_engine()[0] == "sarvam"

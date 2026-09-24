@@ -263,6 +263,8 @@ def ocr_page(img, profile: str | None = None) -> tuple[list[dict], float]:
 
 _SARVAM_TERMINAL = {"completed", "partially_completed", "failed", "rejected"}
 _SARVAM_OK = {"completed", "partially_completed"}
+# Minimum time kept for download-url + download once a job has completed.
+_SARVAM_DOWNLOAD_GRACE_S = 30.0
 
 
 class SarvamError(RuntimeError):
@@ -429,6 +431,10 @@ def _sarvam_ocr(img, client=None) -> list[dict]:
             time.sleep(poll)
         if status not in _SARVAM_OK:
             raise SarvamError(f"job {job_id} ended with status '{status}'")
+        # The job is done and Sarvam has billed the page: always leave time
+        # to fetch the result, or a job that finished right at the deadline
+        # is thrown away and the page is billed again on the fallback.
+        deadline = max(deadline, time.monotonic() + _SARVAM_DOWNLOAD_GRACE_S)
 
         dl = _sarvam_request(
             client, "GET", f"{base}/doc-ai/v1/job/{job_id}/download-url", deadline,
